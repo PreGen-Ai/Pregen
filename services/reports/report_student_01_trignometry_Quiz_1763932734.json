@@ -1,0 +1,139 @@
+{
+  "student_id": "student_01",
+  "assignment_name": "trignometry Quiz",
+  "subject": "Mathematics",
+  "curriculum": "IGCSE",
+  "overall_score": 3,
+  "graded_questions": [
+    {
+      "id": "1",
+      "question": "In a right-angled triangle, if the angle θ is opposite side 'a' and adjacent to side 'b', what is tan θ?",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "2",
+      "question": "What is the value of sin(90° - θ)?",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "B",
+      "correct_answer": "B",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "3",
+      "question": "Given that cos θ = 5/13, and θ is an acute angle, what is the value of sin θ?",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "4",
+      "question": "Simplify the expression: (sin²θ + cos²θ) / cos²θ",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "D",
+      "correct_answer": "D",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "5",
+      "question": "What is the period of the function y = sin(2x)?",
+      "type": "multiple_choice",
+      "student_answer": "D",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    }
+  ],
+  "concept_analytics": [
+    {
+      "concept": "Concept",
+      "count": 2
+    }
+  ],
+  "question_analysis": [
+    {
+      "id": "1",
+      "question": "In a right-angled triangle, if the angle θ is opposite side 'a' and adjacent to side 'b', what is tan θ?",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "2",
+      "question": "What is the value of sin(90° - θ)?",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "B",
+      "correct_answer": "B",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "3",
+      "question": "Given that cos θ = 5/13, and θ is an acute angle, what is the value of sin θ?",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "4",
+      "question": "Simplify the expression: (sin²θ + cos²θ) / cos²θ",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "D",
+      "correct_answer": "D",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "5",
+      "question": "What is the period of the function y = sin(2x)?",
+      "type": "multiple_choice",
+      "student_answer": "D",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    }
+  ],
+  "study_plan": [],
+  "summary_recommendations": []
+}

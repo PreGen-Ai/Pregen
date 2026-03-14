@@ -1,0 +1,135 @@
+{
+  "student_id": "student_01",
+  "assignment_name": "trignometry math olevel Quiz",
+  "subject": "Mathematics",
+  "curriculum": "IGCSE",
+  "overall_score": 0,
+  "total_possible": 5,
+  "percentage": 0.0,
+  "graded_questions": [
+    {
+      "id": "1",
+      "question": "A ship is observed from a lighthouse. The angle of depression to the ship is 30°. If the lighthouse is 45 meters tall, and the height of the ship is negligible, what is the horizontal distance from the base of the lighthouse to the ship?",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect. Review the concepts.",
+      "is_correct": false,
+      "grading_metadata": {
+        "student_letter": "B",
+        "correct_letter": "A",
+        "semantic_validation_used": 0,
+        "validation_method": "direct_match",
+        "fallback_used": false
+      }
+    },
+    {
+      "id": "2",
+      "question": "Given that sin(x) = 5/13, and x is an obtuse angle, find the exact value of cos(x).",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "B",
+      "correct_answer": "B",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect. Review the concepts.",
+      "is_correct": false,
+      "grading_metadata": {
+        "student_letter": "A",
+        "correct_letter": "B",
+        "semantic_validation_used": 0,
+        "validation_method": "direct_match",
+        "fallback_used": false
+      }
+    },
+    {
+      "id": "3",
+      "question": "Triangle ABC has sides AB = 8 cm, BC = 5 cm, and angle ABC = 60°. Calculate the area of triangle ABC.",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect. Review the concepts.",
+      "is_correct": false,
+      "grading_metadata": {
+        "student_letter": "A",
+        "correct_letter": "C",
+        "semantic_validation_used": 0,
+        "validation_method": "direct_match",
+        "fallback_used": false
+      }
+    },
+    {
+      "id": "4",
+      "question": "In a triangle PQR, PQ = 7 cm, QR = 9 cm, and angle PRQ = 40°. Find the two possible values of angle QPR.",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "D",
+      "correct_answer": "D",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect. Review the concepts.",
+      "is_correct": false,
+      "grading_metadata": {
+        "student_letter": "C",
+        "correct_letter": "D",
+        "semantic_validation_used": 0,
+        "validation_method": "direct_match",
+        "fallback_used": false
+      }
+    },
+    {
+      "id": "5",
+      "question": "Solve the equation 2cos²(θ) + 3sin(θ) = 0 for 0° ≤ θ ≤ 360°.",
+      "type": "multiple_choice",
+      "student_answer": "D",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect. Review the concepts.",
+      "is_correct": false,
+      "grading_metadata": {
+        "student_letter": "D",
+        "correct_letter": "A",
+        "semantic_validation_used": 0,
+        "validation_method": "direct_match",
+        "fallback_used": false
+      }
+    }
+  ],
+  "concept_analytics": [
+    {
+      "concept": "General",
+      "weakness_count": 5
+    }
+  ],
+  "study_plan": [
+    {
+      "priority": "high",
+      "concept": "General",
+      "recommendation": "Review General fundamentals and practice related problems",
+      "resources": [
+        "Textbook Chapter on General",
+        "Practice worksheets"
+      ]
+    }
+  ],
+  "summary_recommendations": [
+    "Overall performance: 0.0%",
+    "Focus on: General"
+  ],
+  "grading_metadata": {
+    "total_questions": 5,
+    "questions_graded": 5,
+    "hallucination_checks_performed": 0,
+    "semantic_validations_performed": 0,
+    "fallback_gradings": 0
+  },
+  "timestamp": "2025-11-22T17:28:12.884116"
+}

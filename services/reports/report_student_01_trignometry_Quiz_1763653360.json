@@ -1,0 +1,139 @@
+{
+  "student_id": "student_01",
+  "assignment_name": "trignometry Quiz",
+  "subject": "Mathematics",
+  "curriculum": "IGCSE",
+  "overall_score": 0,
+  "graded_questions": [
+    {
+      "id": "1",
+      "question": "In a right-angled triangle, if the angle θ is opposite to the side of length 5 and the hypotenuse has length 13, what is the value of cos(θ)?",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "2",
+      "question": "What is the exact value of sin(60°)?",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "3",
+      "question": "If tan(x) = 3/4, and x is an acute angle, what is the value of cot(x)?",
+      "type": "multiple_choice",
+      "student_answer": "D",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "4",
+      "question": "Simplify the expression: sin²(θ) + cos²(θ) + tan²(θ)",
+      "type": "multiple_choice",
+      "student_answer": "D",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "5",
+      "question": "A ladder leans against a wall, making an angle of 60° with the ground. If the foot of the ladder is 3 meters away from the wall, how high up the wall does the ladder reach? (Assume the wall is vertical and the ground is horizontal.)",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    }
+  ],
+  "concept_analytics": [
+    {
+      "concept": "Concept",
+      "count": 5
+    }
+  ],
+  "question_analysis": [
+    {
+      "id": "1",
+      "question": "In a right-angled triangle, if the angle θ is opposite to the side of length 5 and the hypotenuse has length 13, what is the value of cos(θ)?",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "2",
+      "question": "What is the exact value of sin(60°)?",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "3",
+      "question": "If tan(x) = 3/4, and x is an acute angle, what is the value of cot(x)?",
+      "type": "multiple_choice",
+      "student_answer": "D",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "4",
+      "question": "Simplify the expression: sin²(θ) + cos²(θ) + tan²(θ)",
+      "type": "multiple_choice",
+      "student_answer": "D",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "5",
+      "question": "A ladder leans against a wall, making an angle of 60° with the ground. If the foot of the ladder is 3 meters away from the wall, how high up the wall does the ladder reach? (Assume the wall is vertical and the ground is horizontal.)",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    }
+  ],
+  "study_plan": [],
+  "summary_recommendations": []
+}

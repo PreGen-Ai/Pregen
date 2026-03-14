@@ -1,0 +1,135 @@
+{
+  "student_id": "student_01",
+  "assignment_name": "trignometry math olevel Quiz",
+  "subject": "Mathematics",
+  "curriculum": "IGCSE",
+  "overall_score": 2,
+  "total_possible": 5,
+  "percentage": 40.0,
+  "graded_questions": [
+    {
+      "id": "1",
+      "question": "A surveyor stands 30 meters from the base of a building. The angle of elevation to the top of the building is 65°. Find the height of the building, correct to the nearest meter.",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect. Review the concepts.",
+      "is_correct": false,
+      "grading_metadata": {
+        "student_letter": "B",
+        "correct_letter": "A",
+        "semantic_validation_used": 0,
+        "validation_method": "direct_match",
+        "fallback_used": false
+      }
+    },
+    {
+      "id": "2",
+      "question": "Given that sin(x) = 3/5 and x is an obtuse angle, find the value of cos(x).",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "B",
+      "correct_answer": "B",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true,
+      "grading_metadata": {
+        "student_letter": "B",
+        "correct_letter": "B",
+        "semantic_validation_used": 0,
+        "validation_method": "direct_match",
+        "fallback_used": false
+      }
+    },
+    {
+      "id": "3",
+      "question": "In triangle ABC, AB = 8 cm, BC = 5 cm, and angle ABC = 60°. Find the length of AC, correct to two decimal places.",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect. Review the concepts.",
+      "is_correct": false,
+      "grading_metadata": {
+        "student_letter": "A",
+        "correct_letter": "C",
+        "semantic_validation_used": 0,
+        "validation_method": "direct_match",
+        "fallback_used": false
+      }
+    },
+    {
+      "id": "4",
+      "question": "Solve the equation 2cos²(θ) - cos(θ) - 1 = 0 for 0° ≤ θ ≤ 360°.",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "D",
+      "correct_answer": "D",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect. Review the concepts.",
+      "is_correct": false,
+      "grading_metadata": {
+        "student_letter": "B",
+        "correct_letter": "D",
+        "semantic_validation_used": 0,
+        "validation_method": "direct_match",
+        "fallback_used": false
+      }
+    },
+    {
+      "id": "5",
+      "question": "A ship sails 10 km on a bearing of 045° from port A to point B. It then sails 15 km on a bearing of 135° to point C. Find the distance AC, correct to the nearest kilometer.",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true,
+      "grading_metadata": {
+        "student_letter": "A",
+        "correct_letter": "A",
+        "semantic_validation_used": 0,
+        "validation_method": "direct_match",
+        "fallback_used": false
+      }
+    }
+  ],
+  "concept_analytics": [
+    {
+      "concept": "General",
+      "weakness_count": 3
+    }
+  ],
+  "study_plan": [
+    {
+      "priority": "high",
+      "concept": "General",
+      "recommendation": "Review General fundamentals and practice related problems",
+      "resources": [
+        "Textbook Chapter on General",
+        "Practice worksheets"
+      ]
+    }
+  ],
+  "summary_recommendations": [
+    "Overall performance: 40.0%",
+    "Focus on: General"
+  ],
+  "grading_metadata": {
+    "total_questions": 5,
+    "questions_graded": 5,
+    "hallucination_checks_performed": 0,
+    "semantic_validations_performed": 0,
+    "fallback_gradings": 0
+  },
+  "timestamp": "2025-11-22T17:11:46.947181"
+}

@@ -1,0 +1,25 @@
+{
+  "student_id": "health_check",
+  "assignment_name": "Health Check",
+  "curriculum": "General",
+  "subject": "Physics",
+  "overall_score": 6.0,
+  "correct_answers": 0,
+  "total_questions": 1,
+  "graded_questions": [
+    {
+      "question": "Define gravity.",
+      "answer": "Gravity pulls objects toward Earth.",
+      "result": {
+        "is_correct": false,
+        "overall_score": 6.0,
+        "max_score": 10,
+        "feedback": "Be more specific and connect your ideas clearly.",
+        "explanation": "Partial understanding shown.",
+        "fallback": true
+      }
+    }
+  ],
+  "feedback": "Be more specific and connect your ideas clearly.",
+  "suggestions": []
+}

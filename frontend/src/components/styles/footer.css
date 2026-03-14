@@ -1,0 +1,279 @@
+/* ================================
+   Urbanist Fonts (WOFF + swap)
+   Path: src/assets/fonts/
+   ================================ */
+
+@font-face {
+  font-family: "Urbanist";
+  src: url("../../assets/fonts/Urbanist-Regular.woff") format("woff");
+  font-display: swap;
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Urbanist";
+  src: url("../../assets/fonts/Urbanist-Bold.woff") format("woff");
+  font-display: swap;
+  font-weight: 700;
+  font-style: normal;
+}
+
+/* Optional: use one extra weight for nicer hierarchy in footer */
+@font-face {
+  font-family: "Urbanist";
+  src: url("../../assets/fonts/Urbanist-SemiBold.woff") format("woff");
+  font-display: swap;
+  font-weight: 600;
+  font-style: normal;
+}
+
+/* Footer Styles */
+.footer {
+  background-color: #000000;
+  color: #fff;
+  padding: 60px 0 30px;
+  font-family: "Urbanist", sans-serif;
+  font-weight: 400;
+}
+
+.footer-content {
+  margin-bottom: 30px;
+}
+
+/* Footer Brand */
+/* Footer Brand Layout */
+.footer-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Logo should align with text baseline rhythm */
+.footer-logo {
+  display: block;
+  object-fit: contain;
+}
+
+.footer-brand p {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  font-weight: 400;
+  text-align: center;
+}
+
+/* Footer Headings */
+.footer-heading {
+  font-family: "Urbanist", sans-serif;
+  font-weight: 700; /* Bold */
+  font-size: 1.2rem;
+  margin-bottom: 20px;
+  color: #ffffff;
+  position: relative;
+}
+
+.footer-heading::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -8px;
+  width: 30px;
+  height: 2px;
+  background-color: #0066cc;
+}
+
+/* Footer Links */
+.footer-links {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.footer-links li {
+  margin-bottom: 12px;
+}
+
+.footer-links a {
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+  transition: color 0.2s ease;
+  font-size: 0.95rem;
+  font-weight: 400;
+}
+
+.footer-links a:hover {
+  color: #ffffff;
+  text-decoration: none;
+}
+
+/* Social Links */
+.social-links {
+  display: flex;
+  margin-top: 20px;
+}
+
+.social-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  margin-right: 12px;
+  color: #ffffff;
+  transition:
+    transform 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.social-icon:hover {
+  background-color: #0066cc;
+  color: #ffffff;
+  transform: translateY(-3px);
+}
+
+/* Newsletter Form */
+.newsletter-form {
+  margin-top: 15px;
+}
+
+.newsletter-input {
+  background-color: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #ffffff;
+  padding: 10px 15px;
+  border-radius: 4px 0 0 4px;
+  font-family: "Urbanist", sans-serif;
+  font-weight: 400;
+}
+
+.newsletter-input:focus {
+  background-color: rgba(255, 255, 255, 0.15);
+  box-shadow: none;
+  border-color: transparent;
+  color: #ffffff;
+}
+
+.newsletter-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.newsletter-button {
+  background-color: #0066cc;
+  color: #ffffff;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 0 4px 4px 0;
+  transition:
+    background-color 0.2s ease,
+    transform 0.2s ease;
+  font-family: "Urbanist", sans-serif;
+  font-weight: 600; /* SemiBold */
+}
+
+.newsletter-button:hover {
+  background-color: #0055aa;
+  transform: translateY(-1px);
+}
+
+/* Footer Divider */
+.footer-divider {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 30px 0;
+}
+
+/* Footer Bottom */
+.footer-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.copyright {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9rem;
+  margin-bottom: 0;
+  font-weight: 400;
+}
+
+.footer-bottom-links {
+  display: flex;
+}
+
+.footer-bottom-links a {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.9rem;
+  margin-left: 20px;
+  text-decoration: none;
+  transition: color 0.2s ease;
+  font-weight: 400;
+}
+
+.footer-bottom-links a:hover {
+  color: #ffffff;
+}
+
+/* Responsive Styles */
+@media (max-width: 992px) {
+  .footer {
+    padding: 50px 0 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .footer-heading::after {
+    width: 25px;
+  }
+
+  .footer-bottom {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .copyright {
+    margin-bottom: 15px;
+  }
+
+  .footer-bottom-links {
+    justify-content: center;
+  }
+
+  .footer-bottom-links a:first-child {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 576px) {
+  .social-links {
+    justify-content: center;
+  }
+
+  .footer-logo {
+    margin: 0 auto 15px;
+  }
+
+  .footer-brand p {
+    text-align: center;
+  }
+
+  .footer-heading {
+    text-align: center;
+    margin-top: 30px;
+  }
+
+  .footer-heading::after {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .footer-links li {
+    text-align: center;
+  }
+
+  .newsletter-form {
+    max-width: 100%;
+  }
+}

@@ -1,0 +1,144 @@
+{
+  "student_id": "student_01",
+  "assignment_name": "c++ Quiz",
+  "subject": "General",
+  "curriculum": "IGCSE",
+  "overall_score": 20.0,
+  "raw_score": 1,
+  "max_score": 5,
+  "graded_questions": [
+    {
+      "id": "1",
+      "question": "Which of the following functions is the starting point for execution in a standard C++ program?",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect.",
+      "is_correct": false
+    },
+    {
+      "id": "2",
+      "question": "Which C++ data type would you typically use to store a student's age (a whole number)?",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "D",
+      "correct_answer": "D",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect.",
+      "is_correct": false
+    },
+    {
+      "id": "3",
+      "question": "To display text or values on the console in C++, which standard output stream object is commonly used?",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "B",
+      "correct_answer": "B",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "4",
+      "question": "Consider the following C++ code snippet:\n```cpp\nint x = 10;\nif (x > 10) {\n    std::cout << \"Greater\";\n} else if (x == 10) {\n    std::cout << \"Equal\";\n} else {\n    std::cout << \"Smaller\";\n}\n```\nWhat will be the output when this code is executed?",
+      "type": "multiple_choice",
+      "student_answer": "D",
+      "expected_answer": "B",
+      "correct_answer": "B",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect.",
+      "is_correct": false
+    },
+    {
+      "id": "5",
+      "question": "How many times will the word \"Loop\" be printed by the following `for` loop in C++?\n```cpp\nfor (int i = 1; i <= 3; i++) {\n    std::cout << \"Loop\";\n}\n```",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "D",
+      "correct_answer": "D",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect.",
+      "is_correct": false
+    }
+  ],
+  "concept_analytics": [
+    {
+      "concept": "Concept",
+      "count": 4
+    }
+  ],
+  "question_analysis": [
+    {
+      "id": "1",
+      "question": "Which of the following functions is the starting point for execution in a standard C++ program?",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect.",
+      "is_correct": false
+    },
+    {
+      "id": "2",
+      "question": "Which C++ data type would you typically use to store a student's age (a whole number)?",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "D",
+      "correct_answer": "D",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect.",
+      "is_correct": false
+    },
+    {
+      "id": "3",
+      "question": "To display text or values on the console in C++, which standard output stream object is commonly used?",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "B",
+      "correct_answer": "B",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "4",
+      "question": "Consider the following C++ code snippet:\n```cpp\nint x = 10;\nif (x > 10) {\n    std::cout << \"Greater\";\n} else if (x == 10) {\n    std::cout << \"Equal\";\n} else {\n    std::cout << \"Smaller\";\n}\n```\nWhat will be the output when this code is executed?",
+      "type": "multiple_choice",
+      "student_answer": "D",
+      "expected_answer": "B",
+      "correct_answer": "B",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect.",
+      "is_correct": false
+    },
+    {
+      "id": "5",
+      "question": "How many times will the word \"Loop\" be printed by the following `for` loop in C++?\n```cpp\nfor (int i = 1; i <= 3; i++) {\n    std::cout << \"Loop\";\n}\n```",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "D",
+      "correct_answer": "D",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect.",
+      "is_correct": false
+    }
+  ],
+  "study_plan": [],
+  "summary_recommendations": [
+    "Review 'Concept' and solve 10 practice questions (focus on mistakes).",
+    "Re-attempt wrong questions after 24 hours for better retention."
+  ]
+}

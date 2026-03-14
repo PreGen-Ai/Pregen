@@ -1,0 +1,139 @@
+{
+  "student_id": "student_01",
+  "assignment_name": "trignometry math olevel Quiz",
+  "subject": "Mathematics",
+  "curriculum": "IGCSE",
+  "overall_score": 0,
+  "graded_questions": [
+    {
+      "id": "1",
+      "question": "A vertical tower stands on level ground. From a point on the ground 40m away from the foot of the tower, the angle of elevation of the top of the tower is 60°. Find the height of the tower.",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "2",
+      "question": "Given that sin θ = 5/13 and θ is an obtuse angle, find the value of cos θ.",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "B",
+      "correct_answer": "B",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "3",
+      "question": "In triangle ABC, angle A = 30°, side b = 8 cm and side a = 5 cm. Find the possible values of angle B.",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "4",
+      "question": "Solve the equation 2 cos²x - 3 cos x + 1 = 0 for 0° ≤ x ≤ 360°",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "D",
+      "correct_answer": "D",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "5",
+      "question": "In triangle PQR, PQ = 7 cm, QR = 8 cm, and PR = 9 cm. Calculate the size of angle PQR.",
+      "type": "multiple_choice",
+      "student_answer": "D",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    }
+  ],
+  "concept_analytics": [
+    {
+      "concept": "Concept",
+      "count": 5
+    }
+  ],
+  "question_analysis": [
+    {
+      "id": "1",
+      "question": "A vertical tower stands on level ground. From a point on the ground 40m away from the foot of the tower, the angle of elevation of the top of the tower is 60°. Find the height of the tower.",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "2",
+      "question": "Given that sin θ = 5/13 and θ is an obtuse angle, find the value of cos θ.",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "B",
+      "correct_answer": "B",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "3",
+      "question": "In triangle ABC, angle A = 30°, side b = 8 cm and side a = 5 cm. Find the possible values of angle B.",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "4",
+      "question": "Solve the equation 2 cos²x - 3 cos x + 1 = 0 for 0° ≤ x ≤ 360°",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "D",
+      "correct_answer": "D",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "5",
+      "question": "In triangle PQR, PQ = 7 cm, QR = 8 cm, and PR = 9 cm. Calculate the size of angle PQR.",
+      "type": "multiple_choice",
+      "student_answer": "D",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    }
+  ],
+  "study_plan": [],
+  "summary_recommendations": []
+}

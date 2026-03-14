@@ -1,0 +1,313 @@
+/* ==============================
+   🌐 FONT & THEME VARIABLES
+============================== */
+@font-face {
+  font-family: "Urbanist-Reg";
+  src: url("../../assets/fonts/Urbanist-Regular.ttf") format("truetype");
+}
+
+:root {
+  --primary-blue: #2563eb;
+  --primary-green: #10b981;
+  --primary-red: #ef4444;
+  --primary-gray: #cbd5e1;
+  --text-light: #f8fafc;
+  --text-dark: #1e293b;
+  --bg-dark: #0f172a;
+  --bg-glass: rgba(15, 23, 42, 0.6);
+  --bg-hover: rgba(255, 255, 255, 0.12);
+  --border-glow: rgba(255, 255, 255, 0.08);
+  --transition: all 0.3s ease;
+  --shadow-lg: 0 4px 18px rgba(0, 0, 0, 0.3);
+}
+
+/* ==============================
+   🧭 NAVBAR BASE STYLE
+============================== */
+.navbar-custom {
+  position: fixed;
+  top: 0;
+  width: 100%;
+  height: 75px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-glow);
+  transition: var(--transition);
+  z-index: 1050;
+  font-family: "Urbanist-Reg", sans-serif;
+  box-shadow: var(--shadow-lg);
+}
+
+/* 🔹 Scroll Effect */
+.navbar-scrolled {
+  background: rgba(15, 23, 42, 0.95);
+  height: 68px;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.4);
+}
+
+/* ==============================
+   🎨 BRAND / LOGO
+============================== */
+.navbar-logo img {
+  border-radius: 8px;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.navbar-logo img:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+}
+
+/* ==============================
+   🔗 NAV LINKS
+============================== */
+.navbar-custom .nav-link {
+  color: var(--text-light) !important;
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  opacity: 0.9;
+  position: relative;
+  transition: var(--transition);
+}
+
+.navbar-custom .nav-link:hover {
+  opacity: 1;
+  color: #fff !important;
+}
+
+.navbar-custom .nav-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: 0;
+  height: 2px;
+  background-color: var(--primary-blue);
+  transition: width 0.3s ease;
+}
+
+.navbar-custom .nav-link:hover::after,
+.navbar-custom .nav-link.active::after {
+  width: 100%;
+}
+
+/* ==============================
+   🔍 SEARCH FORM
+============================== */
+.navbar-custom form input[type="search"] {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text-light);
+  border: 1px solid var(--border-glow);
+  border-radius: 6px;
+  padding: 6px 10px;
+  transition: var(--transition);
+}
+
+.navbar-custom form input[type="search"]:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.25);
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 6px var(--primary-blue);
+}
+
+.navbar-custom form button {
+  color: var(--text-light);
+  border: 1px solid var(--border-glow);
+  transition: var(--transition);
+}
+
+.navbar-custom form button:hover {
+  background: var(--primary-blue);
+  color: #fff;
+  border-color: var(--primary-blue);
+}
+
+/* ==============================
+   👤 PROFILE DROPDOWN
+============================== */
+.dropdown-menu-dark {
+  background: rgba(17, 24, 39, 0.95);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-glow);
+  border-radius: 10px;
+  min-width: 200px;
+  padding: 0.4rem 0;
+}
+
+.dropdown-menu-dark .dropdown-item {
+  color: var(--text-light);
+  font-size: 0.9rem;
+  padding: 8px 16px;
+  transition: var(--transition);
+}
+
+.dropdown-menu-dark .dropdown-item:hover {
+  background-color: var(--bg-hover);
+  color: #fff;
+}
+
+.dropdown-menu-dark .dropdown-header {
+  padding: 0.6rem 1rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-glow);
+}
+
+/* Role color accents */
+.dropdown-header svg {
+  color: var(--primary-gray);
+}
+.dropdown-header.admin svg {
+  color: var(--primary-red);
+}
+.dropdown-header.teacher svg {
+  color: var(--primary-blue);
+}
+.dropdown-header.student svg {
+  color: var(--primary-green);
+}
+
+/* ==============================
+   🔒 AUTH BUTTONS
+============================== */
+.navbar-custom .btn-outline-light {
+  border-color: var(--primary-blue);
+  color: var(--text-light);
+  font-size: 0.9rem;
+  border-radius: 6px;
+  padding: 6px 14px;
+  transition: var(--transition);
+}
+
+.navbar-custom .btn-outline-light:hover {
+  background-color: var(--primary-blue);
+  border-color: var(--primary-blue);
+  color: #fff;
+  transform: translateY(-2px);
+}
+
+/* ==============================
+   📱 RESPONSIVE DESIGN
+============================== */
+@media (max-width: 992px) {
+  .navbar-custom {
+    height: 70px;
+    background: rgba(15, 23, 42, 0.98);
+  }
+
+  .navbar-custom .navbar-collapse {
+    background: rgba(15, 23, 42, 0.98);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid var(--border-glow);
+    padding: 1rem;
+    transition: var(--transition);
+  }
+
+  .navbar-custom .nav-link {
+    padding: 10px 0;
+    font-size: 1rem;
+    text-align: center;
+  }
+
+  .navbar-custom form {
+    margin: 1rem 0;
+    justify-content: center;
+  }
+
+  .navbar-custom .btn-outline-light {
+    width: 100%;
+    margin-top: 10px;
+  }
+}
+
+@media (max-width: 576px) {
+  .navbar-custom {
+    height: 65px;
+  }
+
+  .navbar-logo img {
+    height: 42px;
+  }
+
+  .navbar-custom .nav-link {
+    font-size: 0.95rem;
+  }
+}
+
+/* ==============================
+   ✨ HOVER & TRANSITION EFFECTS
+============================== */
+.navbar-custom .dropdown-toggle:hover,
+.navbar-custom .dropdown-toggle:focus {
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.3);
+}
+
+.navbar-custom .nav-link:hover::after {
+  background-color: var(--primary-blue);
+}
+
+/* ==============================
+   🌈 ROLE BADGE COLORS
+============================== */
+.role-admin {
+  color: var(--primary-red);
+}
+
+.role-teacher {
+  color: var(--primary-blue);
+}
+
+.role-student {
+  color: var(--primary-green);
+}
+
+/* ==============================
+   🧭 SMALL UI TOUCHES
+============================== */
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.navbar-custom .dropdown-toggle img {
+  transition: transform 0.3s ease;
+}
+
+.navbar-custom .dropdown-toggle:hover img {
+  transform: scale(1.05);
+}
+
+
+
+.login-modal-wrapper {
+  position: relative;
+}
+
+/* Force it to the top-right no matter what other CSS is doing */
+.login-modal-close {
+  position: absolute !important;
+  top: 14px !important;
+  right: 14px !important;
+  z-index: 99999;
+
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 0;
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 22px;
+  line-height: 1;
+
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+}
+
+.login-modal-close:hover {
+  background: rgba(0, 0, 0, 0.4);
+}

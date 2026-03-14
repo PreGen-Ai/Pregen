@@ -1,0 +1,568 @@
+/* =========================================================
+   admin.css (Merged)
+   - Keeps your simple admin-layout + sticky topbar card
+   - Keeps the full dark/glass/gold design system
+   - Avoids conflicts with your new AdminSidebar (as- classes)
+   - Provides mobile table usability
+   ========================================================= */
+
+/* =========================
+   TOKENS / DESIGN SYSTEM
+   ========================= */
+:root {
+  --navy-900: #0f172a;
+  --navy-800: #0b1f3a;
+  --navy-700: #102a43;
+
+  --black-900: #111111;
+  --black-800: #121212;
+
+  --text-100: #ffffff;
+  --text-200: #e5e7eb;
+  --text-300: #d1d5db;
+  --muted: rgba(229, 231, 235, 0.8);
+
+  --gold-1: #d4af37;
+  --gold-2: #c9a227;
+  --gold-3: #f5c542;
+
+  --baby-100: #b3e5fc;
+  --baby-200: #cfe9f7;
+  --baby-300: #a7d8ff;
+
+  --green-1: #39ff14;
+  --green-2: #00ff7f;
+  --green-3: #32cd32;
+
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 18px;
+
+  --shadow-soft: 0 8px 30px rgba(2, 6, 23, 0.6);
+  --shadow-strong: 0 22px 60px rgba(2, 6, 23, 0.65);
+
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-border-soft: rgba(255, 255, 255, 0.06);
+  --glass-bg: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.01)
+  );
+  --glass-blur: 10px;
+
+  --ff-sans: "Urbanist", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --focus-ring: 3px solid rgba(212, 175, 55, 0.18);
+
+  /* Layout hooks */
+  --admin-topbar-h: 64px;
+  --admin-main-pad: clamp(14px, 2.6vw, 28px);
+}
+
+/* =========================
+   BASE
+   ========================= */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--ff-sans);
+  color: var(--text-200);
+  background:
+    radial-gradient(1200px 600px at 10% 10%, rgba(11, 31, 58, 0.55), transparent),
+    linear-gradient(180deg, var(--navy-900), var(--navy-800) 40%, var(--navy-700) 100%);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.45;
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 8px;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+.small {
+  font-size: 13px;
+  color: var(--text-200);
+}
+.text-gold {
+  color: var(--gold-1);
+  font-weight: 800;
+}
+
+/* =========================
+   LAYOUT WRAPPERS (supports both patterns)
+   ========================= */
+/* Your original layout class */
+.admin-layout {
+  display: flex;
+  min-height: 100svh;
+  background: var(--navy-900);
+  color: var(--text-200);
+}
+
+/* If you use a page container wrapper */
+.admin-page-container {
+  min-height: 100vh;
+}
+
+/* =========================
+   TOPBAR (merged behavior)
+   - Use as "card topbar" OR full-width fixed topbar
+   - If you want the full width bar: add class "admin-topbar--fixed"
+   ========================= */
+.admin-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+/* Optional: fixed full-width topbar variant (from the big system) */
+.admin-topbar.admin-topbar--fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--admin-topbar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  gap: 12px;
+  margin-bottom: 0;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  background: linear-gradient(180deg, rgba(10, 20, 36, 0.45), rgba(8, 18, 34, 0.25));
+  backdrop-filter: blur(6px);
+}
+
+.topbar-left,
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-100);
+  font-weight: 800;
+}
+
+.brand-mark {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--gold-1), var(--gold-3));
+  color: #071018;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(201, 162, 39, 0.12);
+  font-weight: 800;
+}
+
+.brand-title {
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.brand-sub {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* =========================
+   MAIN CONTENT
+   - Works with your new AdminSidebar (as-shell) because it doesn't rely on padding-left
+   - If you still have a fixed sidebar elsewhere, you can add admin-main--withSidebar
+   ========================= */
+.admin-main {
+  flex: 1;
+  min-width: 0;
+  padding: var(--admin-main-pad);
+}
+
+/* Optional: if you use fixed sidebar + fixed topbar layout */
+.admin-main.admin-main--fixedTopbar {
+  padding-top: calc(var(--admin-topbar-h) + 32px);
+}
+
+/* Optional: legacy fixed sidebar padding (only if needed) */
+.admin-main.admin-main--withSidebar {
+  padding-left: 260px;
+}
+
+/* =========================
+   LEGACY SIDEBAR CLASSES (keep for older pages)
+   - Your new sidebar uses .as-shell, but we keep these so nothing breaks
+   ========================= */
+.admin-sidebar {
+  width: 280px;
+  background: #0B1F3A;
+  border-right: 1px solid rgba(255,255,255,0.10);
+  padding: 18px;
+}
+
+.admin-sidebar-offcanvas {
+  background: #0B1F3A;
+  color: #E5E7EB;
+}
+
+.admin-sidebar-inner {
+  width: 100%;
+}
+
+.admin-sidebar-header {
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  margin-bottom: 14px;
+}
+
+.admin-nav-link {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.82);
+  text-decoration: none;
+  border: 1px solid transparent;
+}
+
+.admin-nav-link:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.admin-nav-link.active {
+  color: #fff;
+  background: rgba(212, 175, 55, 0.10);
+  border-color: rgba(212, 175, 55, 0.22);
+}
+
+/* =========================
+   BUTTONS / BADGES
+   ========================= */
+.btn {
+  border: 0;
+  padding: 10px 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--text-200);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 48px rgba(2, 6, 23, 0.35);
+}
+
+.btn:focus {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-200);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.btn-primary {
+  background: linear-gradient(180deg, var(--gold-1), var(--gold-2));
+  color: #071018;
+  box-shadow: 0 8px 30px rgba(201, 162, 39, 0.12),
+    0 1px 0 rgba(255, 255, 255, 0.06) inset;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.btn-primary:hover {
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: 0 18px 48px rgba(212, 175, 55, 0.14);
+}
+
+.badge {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--text-200);
+}
+
+.badge.green {
+  background: linear-gradient(90deg, var(--green-2), var(--green-3));
+  color: #021006;
+  border: 1px solid rgba(255, 255, 255, 0.02);
+  box-shadow: 0 8px 24px rgba(56, 255, 84, 0.06);
+}
+
+.badge.gold {
+  background: linear-gradient(90deg, var(--gold-1), var(--gold-3));
+  color: #071018;
+  border: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.badge.info {
+  background: rgba(179, 229, 252, 0.1);
+  border-color: rgba(179, 229, 252, 0.2);
+}
+.badge.warn {
+  background: rgba(245, 197, 66, 0.12);
+  border-color: rgba(245, 197, 66, 0.2);
+}
+.badge.error {
+  background: rgba(255, 107, 107, 0.12);
+  border-color: rgba(255, 107, 107, 0.2);
+}
+
+/* =========================
+   CARDS / HEADERS / GRIDS
+   ========================= */
+.card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(var(--glass-blur));
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-strong);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.admin-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -0.3px;
+}
+
+.admin-header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* KPI grid */
+.admin-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.admin-kpi-grid.dense {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.kpi-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.kpi-value {
+  margin-top: 8px;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.kpi-meta {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-200);
+  opacity: 0.95;
+}
+.kpi-meta.up { color: var(--green-2); }
+.kpi-meta.down { color: #ff6b6b; }
+
+/* Health + Trend strip */
+.admin-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.strip-sub {
+  color: var(--text-200);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+/* Quick actions */
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+/* =========================
+   TABLES (merged: wide tables on phones)
+   ========================= */
+.table-responsive,
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+
+.table-responsive table {
+  min-width: 720px;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 720px;
+  background: rgba(2, 6, 23, 0.25);
+}
+
+.admin-table thead th {
+  position: sticky;
+  top: 0;
+  background: rgba(15, 23, 42, 0.85);
+  color: var(--text-100);
+  text-align: left;
+  padding: 12px 14px;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  z-index: 1;
+}
+
+.admin-table td {
+  padding: 12px 14px;
+  color: var(--text-200);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 13px;
+}
+
+.admin-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Loading / empty / error */
+.state-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 160px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.01), rgba(255, 255, 255, 0.005));
+  border: 1px dashed rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+  text-align: center;
+  padding: 18px;
+}
+.state-empty { color: var(--text-200); opacity: 0.95; }
+.state-error { color: #ff6b6b; }
+
+/* Gate screen */
+.admin-gate {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+/* =========================
+   REDUCED MOTION
+   ========================= */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* =========================
+   RESPONSIVE
+   ========================= */
+@media (max-width: 1100px) {
+  .admin-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-strip { grid-template-columns: 1fr; }
+  .quick-actions-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .admin-main {
+    padding-left: 20px;
+    padding-right: 20px;
+    padding-top: 110px;
+  }
+}
+
+@media (max-width: 720px) {
+  .admin-topbar.admin-topbar--fixed {
+    height: 56px;
+    padding: 0 12px;
+  }
+
+  .brand-text { display: none; }
+
+  .admin-main {
+    padding: 92px 14px 60px 14px;
+  }
+
+  .admin-kpi-grid,
+  .admin-kpi-grid.dense { grid-template-columns: 1fr; }
+
+  .quick-actions-grid { grid-template-columns: 1fr; }
+
+  .admin-table { min-width: 560px; }
+}
