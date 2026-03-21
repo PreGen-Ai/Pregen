@@ -16,7 +16,8 @@ function resolveTenantId(req, { allowSuperadminOverride = false } = {}) {
 
   // Superadmin can optionally specify tenantId for cross-tenant ops
   if (allowSuperadminOverride && role === "SUPERADMIN") {
-    const t = req.body?.tenantId || req.query?.tenantId;
+    const t =
+      req.get("x-tenant-id") || req.body?.tenantId || req.query?.tenantId;
     if (t) return t;
   }
 
@@ -32,7 +33,6 @@ function resolveTenantId(req, { allowSuperadminOverride = false } = {}) {
 }
 
 function baseNotDeletedFilter() {
-  // Support both styles: deleted boolean and deletedAt timestamp
   return {
     deleted: { $ne: true },
     deletedAt: { $in: [null, undefined] },
@@ -46,9 +46,31 @@ function normalizeEmail(email) {
 }
 
 /**
+ * Enforce single-tenant constraint for ADMIN and STUDENT roles.
+ * Teachers can be in multiple tenants, so no check for them.
+ */
+async function enforceSingleTenant(email, role, currentTenantId) {
+  const upperRole = String(role || "").toUpperCase();
+  if (upperRole === "TEACHER") return null; // teachers can be multi-tenant
+
+  const existing = await User.findOne({
+    email: normalizeEmail(email),
+    ...baseNotDeletedFilter(),
+  }).lean();
+
+  if (!existing) return null; // new user, no conflict
+
+  if (String(existing.tenantId) !== String(currentTenantId)) {
+    return `A user with this email already belongs to a different tenant. ${upperRole === "ADMIN" ? "Admins" : "Students"} can only belong to one tenant.`;
+  }
+
+  return null; // same tenant — duplicate check handled separately
+}
+
+/**
  * GET /api/admin/users
- * - SUPERADMIN: global list, optional ?tenantId=
- * - ADMIN: tenant-scoped using tenant resolver
+ * - SUPERADMIN: global list, optional ?tenantId= or x-tenant-id header
+ * - ADMIN: tenant-scoped
  *
  * Query:
  * - q: search (username, email, firstName, lastName, name)
@@ -60,7 +82,7 @@ export async function listUsers(req, res) {
     const role = roleOf(req);
 
     const tenantId = isSuperAdmin(req)
-      ? req.query?.tenantId || null
+      ? req.get("x-tenant-id") || req.query?.tenantId || null
       : resolveTenantId(req);
 
     if (!isSuperAdmin(req) && !tenantId) {
@@ -85,14 +107,14 @@ export async function listUsers(req, res) {
         { email: rx },
         { firstName: rx },
         { lastName: rx },
-        { name: rx }, // legacy field support
+        { name: rx },
       ];
     }
 
-    if (roleFilter) filter.role = roleFilter;
+    if (roleFilter) filter.role = roleFilter.toUpperCase();
 
-    if (status === "enabled") filter.enabled = true;
-    if (status === "disabled") filter.enabled = false;
+    if (status === "enabled") filter.disabled = { $ne: true };
+    if (status === "disabled") filter.disabled = true;
 
     const items = await User.find(filter)
       .select("-password")
@@ -110,12 +132,173 @@ export async function listUsers(req, res) {
 }
 
 /**
+ * POST /api/admin/users/create
+ * Create a user with explicit email + password (tenant-scoped).
+ * - ADMIN/STUDENT: single-tenant enforced (cannot be in two tenants)
+ * - TEACHER: can be in multiple tenants
+ *
+ * Body: { email, password, username?, firstName?, lastName?, gender?, role? }
+ */
+export async function createUser(req, res) {
+  try {
+    const tenantId = resolveTenantId(req, { allowSuperadminOverride: true });
+    if (!tenantId) return res.status(400).json({ message: "Missing tenantId" });
+
+    const {
+      email,
+      password,
+      username,
+      firstName = "",
+      lastName = "",
+      gender = "other",
+      role = "STUDENT",
+    } = req.body;
+
+    if (!email || !password) {
+      return res
+        .status(400)
+        .json({ message: "email and password are required" });
+    }
+
+    if (password.length < 6) {
+      return res
+        .status(400)
+        .json({ message: "password must be at least 6 characters" });
+    }
+
+    const emailLower = normalizeEmail(email);
+    const upperRole = String(role || "STUDENT").toUpperCase();
+    const allowedRoles = ["STUDENT", "TEACHER", "ADMIN"];
+    if (!allowedRoles.includes(upperRole)) {
+      return res.status(400).json({
+        message: `Invalid role. Allowed roles for admin creation: ${allowedRoles.join(", ")}`,
+      });
+    }
+
+    // For TEACHER: if user already exists globally, add this tenant to their tenantIds
+    if (upperRole === "TEACHER") {
+      const existingTeacher = await User.findOne({
+        email: emailLower,
+        role: "TEACHER",
+        ...baseNotDeletedFilter(),
+      }).lean();
+
+      if (existingTeacher) {
+        // Teacher already exists; just add this tenant to their memberships
+        if ((existingTeacher.tenantIds || []).includes(tenantId)) {
+          return res.status(409).json({
+            message: "Teacher is already a member of this tenant.",
+          });
+        }
+        await User.updateOne(
+          { _id: existingTeacher._id },
+          { $addToSet: { tenantIds: tenantId } },
+        );
+        return res.status(200).json({
+          success: true,
+          message: "Teacher added to tenant",
+          user: {
+            id: existingTeacher._id,
+            email: existingTeacher.email,
+            username: existingTeacher.username,
+            role: existingTeacher.role,
+            tenantId: existingTeacher.tenantId,
+            tenantIds: [...(existingTeacher.tenantIds || []), tenantId],
+            user_code: existingTeacher.user_code,
+          },
+        });
+      }
+    } else {
+      // Single-tenant constraint for ADMIN and STUDENT
+      const tenantConflict = await enforceSingleTenant(
+        emailLower,
+        upperRole,
+        tenantId,
+      );
+      if (tenantConflict)
+        return res.status(409).json({ message: tenantConflict });
+    }
+
+    // Check duplicate in same tenant
+    const existing = await User.findOne({
+      tenantId,
+      email: emailLower,
+      ...baseNotDeletedFilter(),
+    }).lean();
+    if (existing) {
+      return res
+        .status(409)
+        .json({ message: "User with this email already exists in this tenant." });
+    }
+
+    const derivedUsername =
+      String(username || "").trim() ||
+      emailLower.split("@")[0].replace(/[^a-z0-9._-]/g, "_");
+
+    // Ensure username is unique
+    let finalUsername = derivedUsername;
+    const usernameConflict = await User.findOne({
+      username: finalUsername,
+    }).lean();
+    if (usernameConflict) {
+      finalUsername = `${derivedUsername}_${Date.now().toString(36)}`;
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = await User.create({
+      tenantId,
+      tenantIds: [tenantId],
+      username: finalUsername,
+      email: emailLower,
+      password: hashedPassword,
+      firstName,
+      lastName,
+      gender,
+      role: upperRole,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "User created successfully",
+      user: {
+        id: newUser._id,
+        email: newUser.email,
+        username: newUser.username,
+        role: newUser.role,
+        tenantId: newUser.tenantId,
+        user_code: newUser.user_code,
+      },
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0] || "field";
+      return res
+        .status(409)
+        .json({ message: `${field} already exists`, success: false });
+    }
+    console.error("Create User Error:", error);
+    return res.status(500).json({
+      message: "Failed to create user",
+      error: error.message,
+    });
+  }
+}
+
+/**
  * POST /api/admin/createAdmin
  * tenant-scoped (superadmin may pass tenantId in body)
  */
 export async function createAdmin(req, res) {
   try {
-    const { username, email, password, firstName, lastName, gender } = req.body;
+    const {
+      username,
+      email,
+      password,
+      firstName,
+      lastName,
+      gender,
+    } = req.body;
 
     if (!username || !email || !password) {
       return res.status(400).json({
@@ -127,6 +310,10 @@ export async function createAdmin(req, res) {
     if (!tenantId) return res.status(400).json({ message: "Missing tenantId" });
 
     const emailLower = normalizeEmail(email);
+
+    // Admins are single-tenant
+    const tenantConflict = await enforceSingleTenant(emailLower, "ADMIN", tenantId);
+    if (tenantConflict) return res.status(409).json({ message: tenantConflict });
 
     const existing = await User.findOne({
       tenantId,
@@ -150,8 +337,8 @@ export async function createAdmin(req, res) {
       lastName,
       gender,
       role: "ADMIN",
-      enabled: true,
       tenantId,
+      tenantIds: [tenantId],
     });
 
     return res.status(201).json({
@@ -208,19 +395,37 @@ export async function promoteUserToAdmin(req, res) {
 /**
  * POST /api/admin/users/invite
  * tenant-scoped (superadmin may pass tenantId in body)
+ * Accepts optional explicit password; generates temp password if not provided.
  */
 export async function inviteUser(req, res) {
   try {
     const tenantId = resolveTenantId(req, { allowSuperadminOverride: true });
     if (!tenantId) return res.status(400).json({ message: "Missing tenantId" });
 
-    const { name = "", email, role = "STUDENT" } = req.body;
+    const {
+      name = "",
+      email,
+      role = "STUDENT",
+      password: explicitPassword,
+      firstName = "",
+      lastName = "",
+      username: providedUsername,
+    } = req.body;
 
     if (!String(email || "").trim()) {
       return res.status(400).json({ message: "Email is required" });
     }
 
     const emailLower = normalizeEmail(email);
+    const upperRole = String(role || "STUDENT").toUpperCase();
+
+    // Single-tenant constraint for ADMIN and STUDENT
+    const tenantConflict = await enforceSingleTenant(
+      emailLower,
+      upperRole,
+      tenantId,
+    );
+    if (tenantConflict) return res.status(409).json({ message: tenantConflict });
 
     const exists = await User.findOne({
       tenantId,
@@ -228,32 +433,58 @@ export async function inviteUser(req, res) {
       ...baseNotDeletedFilter(),
     }).lean();
 
-    if (exists) return res.status(409).json({ message: "User already exists" });
+    if (exists) return res.status(409).json({ message: "User already exists in this tenant" });
 
-    const tempPassword = Math.random().toString(36).slice(2, 10) + "A1";
-    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    const plainPassword = explicitPassword || Math.random().toString(36).slice(2, 10) + "A1!";
+    const passwordHash = await bcrypt.hash(plainPassword, 10);
+
+    const derivedUsername =
+      String(providedUsername || "").trim() ||
+      emailLower.split("@")[0].replace(/[^a-z0-9._-]/g, "_");
+
+    let finalUsername = derivedUsername;
+    const usernameConflict = await User.findOne({ username: finalUsername }).lean();
+    if (usernameConflict) {
+      finalUsername = `${derivedUsername}_${Date.now().toString(36)}`;
+    }
 
     const user = await User.create({
       tenantId,
+      tenantIds: [tenantId],
       name,
+      firstName,
+      lastName,
+      username: finalUsername,
       email: emailLower,
-      role,
-      enabled: true,
+      role: upperRole,
       password: passwordHash,
-      mustChangePassword: true,
-      invitedAt: new Date(),
     });
 
-    // Email sending hook goes here (nodemailer/SES/etc).
     return res.status(201).json({
-      message: "Invite created",
+      success: true,
+      message: "User created",
       userId: user._id,
-      tempPassword, // remove this in production, send via email instead
+      user: {
+        id: user._id,
+        email: user.email,
+        username: user.username,
+        role: user.role,
+        tenantId: user.tenantId,
+        user_code: user.user_code,
+      },
+      // Only return tempPassword if no explicit password was provided
+      ...(explicitPassword ? {} : { tempPassword: plainPassword }),
     });
   } catch (e) {
+    if (e?.code === 11000) {
+      const field = Object.keys(e.keyPattern || {})[0] || "field";
+      return res
+        .status(409)
+        .json({ message: `${field} already exists`, success: false });
+    }
     return res
       .status(500)
-      .json({ message: "Failed to invite user", error: String(e) });
+      .json({ message: "Failed to create user", error: String(e) });
   }
 }
 
@@ -271,7 +502,7 @@ export async function setUserStatus(req, res) {
 
     const user = await User.findOneAndUpdate(
       { _id: id, tenantId, ...baseNotDeletedFilter() },
-      { enabled: !!enabled },
+      { disabled: !enabled, blocked: !enabled },
       { new: true },
     ).select("-password");
 
@@ -301,7 +532,7 @@ export async function setUserRole(req, res) {
 
     const user = await User.findOneAndUpdate(
       { _id: id, tenantId, ...baseNotDeletedFilter() },
-      { role },
+      { role: role.toUpperCase() },
       { new: true },
     ).select("-password");
 
@@ -325,20 +556,23 @@ export async function resetPassword(req, res) {
     if (!tenantId) return res.status(400).json({ message: "Missing tenantId" });
 
     const { id } = req.params;
+    const { newPassword } = req.body;
 
-    const tempPassword = Math.random().toString(36).slice(2, 10) + "A1";
-    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    const plainPassword = newPassword || Math.random().toString(36).slice(2, 10) + "A1!";
+    const passwordHash = await bcrypt.hash(plainPassword, 10);
 
     const user = await User.findOneAndUpdate(
       { _id: id, tenantId, ...baseNotDeletedFilter() },
-      { password: passwordHash, mustChangePassword: true },
+      { password: passwordHash },
       { new: true },
     ).select("-password");
 
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Email hook here
-    return res.json({ message: "Reset issued", tempPassword }); // remove in production
+    return res.json({
+      message: "Password reset successfully",
+      ...(newPassword ? {} : { tempPassword: plainPassword }),
+    });
   } catch (e) {
     return res
       .status(500)

@@ -230,9 +230,19 @@ export const courseOwnerAuth = async (req, res, next) => {
 
 /**
  * Tenant helper
+ * Resolution order:
+ * 1. req.tenantId (set by prior middleware)
+ * 2. x-tenant-id header (superadmin cross-tenant override)
+ * 3. req.user.tenantId / req.user.orgId
  */
 export function getTenantId(req) {
-  return req.user?.tenantId || req.user?.orgId || req.tenantId || null;
+  return (
+    req.tenantId ||
+    (req.get ? req.get("x-tenant-id") : null) ||
+    req.user?.tenantId ||
+    req.user?.orgId ||
+    null
+  );
 }
 
 /**

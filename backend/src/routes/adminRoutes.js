@@ -374,11 +374,11 @@ adminRouter.patch("/users/:userId/status", async (req, res) => {
       { returnDocument: "after" },
     );
 
-    if (!r.value)
+    if (!r)
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
-    return res.json({ success: true, user: pickUser(r.value) });
+    return res.json({ success: true, user: pickUser(r) });
   } catch (e) {
     console.error("PATCH /admin/users/:id/status error:", e);
     return res
@@ -423,11 +423,11 @@ adminRouter.patch("/users/:userId/role", async (req, res) => {
       { returnDocument: "after" },
     );
 
-    if (!r.value)
+    if (!r)
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
-    return res.json({ success: true, user: pickUser(r.value) });
+    return res.json({ success: true, user: pickUser(r) });
   } catch (e) {
     console.error("PATCH /admin/users/:id/role error:", e);
     return res
@@ -460,14 +460,14 @@ adminRouter.post("/users/:userId/reset-password", async (req, res) => {
       { returnDocument: "after" },
     );
 
-    if (!r.value)
+    if (!r)
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
 
     return res.json({
       success: true,
-      user: pickUser(r.value),
+      user: pickUser(r),
       tempPassword,
     });
   } catch (e) {
@@ -584,11 +584,11 @@ adminRouter.post("/classes/:classId/assign-teacher", async (req, res) => {
       { returnDocument: "after" },
     );
 
-    if (!r.value)
+    if (!r)
       return res
         .status(404)
         .json({ success: false, message: "Class not found" });
-    return res.json({ success: true, item: r.value });
+    return res.json({ success: true, item: r });
   } catch (e) {
     console.error("POST /admin/classes/:id/assign-teacher error:", e);
     return res
@@ -629,11 +629,11 @@ adminRouter.post("/classes/:classId/enroll", async (req, res) => {
       { returnDocument: "after" },
     );
 
-    if (!r.value)
+    if (!r)
       return res
         .status(404)
         .json({ success: false, message: "Class not found" });
-    return res.json({ success: true, item: r.value });
+    return res.json({ success: true, item: r });
   } catch (e) {
     console.error("POST /admin/classes/:id/enroll error:", e);
     return res
@@ -1261,11 +1261,14 @@ adminSystemRouter.post(
         String(req.body.username || "").trim() || email.split("@")[0];
       const name = String(req.body.name || "").trim() || username;
 
-      const tempPassword = crypto.randomBytes(6).toString("base64url");
-      const passwordHash = await bcrypt.hash(tempPassword, 10);
+      // Accept explicit password or generate a temp one
+      const explicitPassword = String(req.body.password || "").trim();
+      const plainPassword = explicitPassword || crypto.randomBytes(6).toString("base64url");
+      const passwordHash = await bcrypt.hash(plainPassword, 10);
 
       const doc = {
         tenantId,
+        tenantIds: [tenantId],
         email,
         username,
         name,
@@ -1273,18 +1276,21 @@ adminSystemRouter.post(
         enabled: true,
         blocked: false,
         password: passwordHash,
-        mustChangePassword: true,
+        mustChangePassword: !explicitPassword,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
       const ins = await col("users").insertOne(doc);
 
-      return res.status(201).json({
+      const responsePayload = {
         success: true,
         user: pickUser({ ...doc, _id: ins.insertedId }),
-        tempPassword,
-      });
+      };
+      // Only reveal tempPassword if no explicit password was provided
+      if (!explicitPassword) responsePayload.tempPassword = plainPassword;
+
+      return res.status(201).json(responsePayload);
     } catch (e) {
       console.error("createAdmin error:", e);
       return res
@@ -1311,11 +1317,11 @@ adminSystemRouter.put(
         { returnDocument: "after" },
       );
 
-      if (!r.value)
+      if (!r)
         return res
           .status(404)
           .json({ success: false, message: "User not found" });
-      return res.json({ success: true, user: pickUser(r.value) });
+      return res.json({ success: true, user: pickUser(r) });
     } catch (e) {
       console.error("promote error:", e);
       return res

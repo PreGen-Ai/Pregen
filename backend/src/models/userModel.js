@@ -15,6 +15,10 @@ const UserSchema = new Schema(
     // Multi-tenant scope (string tenant key; can be null for internal superadmins if you want)
     tenantId: { type: String, index: true, default: null },
 
+    // Teachers can belong to multiple tenants (tenantIds tracks all memberships)
+    // For ADMIN and STUDENT roles, only tenantId is used (single-tenant constraint enforced at API layer)
+    tenantIds: { type: [String], index: true, default: [] },
+
     username: {
       type: String,
       required: true,
