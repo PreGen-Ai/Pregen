@@ -82,6 +82,7 @@ const corsOptions = {
     "x-request-id",
     "Accept",
     "X-Requested-With",
+    "x-tenant-id",
   ],
   exposedHeaders: ["Content-Disposition", "Content-Type"],
 };

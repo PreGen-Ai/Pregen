@@ -3,6 +3,7 @@ import { requireAdmin } from "../../middleware/authMiddleware.js";
 
 import {
   listUsers,
+  createUser,
   inviteUser,
   setUserStatus,
   setUserRole,
@@ -18,8 +19,15 @@ const router = express.Router();
 router.get("/", requireAdmin, listUsers);
 
 /**
+ * POST /api/admin/users/create
+ * Create a user with explicit email + password
+ * Body: { email, password, username?, firstName?, lastName?, gender?, role? }
+ */
+router.post("/create", requireAdmin, createUser);
+
+/**
  * POST /api/admin/users/invite
- * Body: { name?, email, role? }
+ * Body: { name?, email, role?, password?, username?, firstName?, lastName? }
  */
 router.post("/invite", requireAdmin, inviteUser);
 
@@ -37,7 +45,7 @@ router.patch("/:id/role", requireAdmin, setUserRole);
 
 /**
  * POST /api/admin/users/:id/reset-password
- * Generates a new temp password + sets mustChangePassword=true
+ * Body: { newPassword? } — generates temp if omitted
  */
 router.post("/:id/reset-password", requireAdmin, resetPassword);
 

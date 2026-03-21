@@ -3,9 +3,10 @@ import mongoose from "mongoose";
 const ClassroomSchema = new mongoose.Schema(
   {
     tenantId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: String,
       index: true,
       required: false,
+      default: null,
     },
     name: { type: String, required: true, trim: true },
     grade: { type: String, default: "" },
