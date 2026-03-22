@@ -9,7 +9,12 @@
       "Bash(__NEW_LINE_6dee47e8eac42f8d__ echo:*)",
       "Bash(curl -s $BASE/api/health)",
       "Bash(node -e \":*)",
-      "Bash(netstat -ano)"
+      "Bash(netstat -ano)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)"
     ]
   }
 }
