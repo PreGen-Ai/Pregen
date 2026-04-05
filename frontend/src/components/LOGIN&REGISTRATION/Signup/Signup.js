@@ -1,226 +1,63 @@
 import { Link } from "react-router-dom";
-import "../../styles/signup.css"; // Shared CSS
-import { useSignup } from "../../../hooks/useSignup";
+import "../../styles/signup.css";
 
 const Signup = () => {
-  const {
-    username,
-    setUsername,
-    email,
-    setEmail,
-    password,
-    setPassword,
-    confirmPassword,
-    setConfirmPassword,
-    showPassword,
-    setShowPassword,
-    showConfirmPassword,
-    setShowConfirmPassword,
-    gender,
-    setGender,
-    firstName,
-    setFirstName,
-    lastName,
-    setLastName,
-    errorMessage,
-    successMessage,
-    isLoading,
-    handleSignup,
-  } = useSignup();
-
   return (
     <div className="main-Container">
       <div className="frame-Container">
         <div className="left-sign">
-          <h2 className="signup_title">
-            Sign Up 
-          </h2>
+          <h2 className="signup_title">Request Access</h2>
 
-          <form
-            style={{ width: "90%", margin: "auto", gap: "20px" }}
-            onSubmit={handleSignup}
+          <div
+            style={{
+              width: "90%",
+              margin: "auto",
+              display: "grid",
+              gap: 18,
+              color: "#fff",
+            }}
           >
-            {/* Username */}
-            <div className="field">
-              <div className="field-wrapper">
-                <label htmlFor="username">Username</label>
-                <input
-                  placeholder="Enter your username"
-                  type="text"
-                  id="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  maxLength={30} // Max length per model is 30
-                  required
-                />
-              </div>
+            <p style={{ margin: 0, lineHeight: 1.6 }}>
+              Public signup is disabled. All accounts are created by a Super
+              Admin or your school administrator for this LMS.
+            </p>
+
+            <div
+              style={{
+                border: "1px solid rgba(255,255,255,0.18)",
+                borderRadius: 16,
+                padding: 18,
+                background: "rgba(255,255,255,0.05)",
+                lineHeight: 1.6,
+              }}
+            >
+              Use the email and password shared with you by your administrator.
+              If you need an account, contact your tenant admin or request a
+              demo for a new school setup.
             </div>
 
-            {/* Email */}
-            <div className="field">
-              <div className="field-wrapper">
-                <label htmlFor="email">Email</label>
-                <input
-                  placeholder="Enter your email"
-                  type="email"
-                  id="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  maxLength={100} // Slightly more lenient
-                  required
-                />
-              </div>
-            </div>
-
-            {/* First Name */}
-            <div className="field">
-              <div className="field-wrapper">
-                <label htmlFor="firstName">First Name</label>
-                <input
-                  placeholder="Enter your first name"
-                  type="text"
-                  id="firstName"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  maxLength={50}
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Last Name */}
-            <div className="field">
-              <div className="field-wrapper">
-                <label htmlFor="lastName">Last Name</label>
-                <input
-                  placeholder="Enter your last name"
-                  type="text"
-                  id="lastName"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  maxLength={50}
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div className="field password-container">
-              <div className="field-wrapper">
-                <label htmlFor="password">Password</label>
-                <input
-                  placeholder="Enter your password"
-                  type={showPassword ? "text" : "password"}
-                  id="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  minLength={8}
-                  required
-                />
-                <button
-                  type="button"
-                  className="show-password"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  <i
-                    className={showPassword ? "fas fa-eye-slash" : "fas fa-eye"}
-                  />
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <Link to="/login">
+                <button className="left_btn" type="button">
+                  Go to Login
                 </button>
-              </div>
-            </div>
+              </Link>
 
-            {/* Confirm Password */}
-            <div className="field password-container">
-              <div className="field-wrapper">
-                <label htmlFor="confirmPassword">Confirm Password</label>
-                <input
-                  placeholder="Confirm your password"
-                  type={showConfirmPassword ? "text" : "password"}
-                  id="confirmPassword"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  minLength={8}
-                  required
-                />
-                <button
-                  type="button"
-                  className="show-password"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                >
-                  <i
-                    className={
-                      showConfirmPassword ? "fas fa-eye-slash" : "fas fa-eye"
-                    }
-                  />
+              <Link to="/contact">
+                <button className="right_btn custom_reg" type="button">
+                  Contact Us
                 </button>
-              </div>
+              </Link>
             </div>
-
-            {/* Gender */}
-            <fieldset className="field_gender" required>
-              <legend>Gender</legend>
-              <div className="gender-container">
-                <label>
-                  <input
-                    type="radio"
-                    name="gender"
-                    value="male"
-                    checked={gender === "male"}
-                    onChange={(e) => setGender(e.target.value)}
-                    required
-                  />
-                  Male
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="gender"
-                    value="female"
-                    checked={gender === "female"}
-                    onChange={(e) => setGender(e.target.value)}
-                    required
-                  />
-                  Female
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="gender"
-                    value="other"
-                    checked={gender === "other"}
-                    onChange={(e) => setGender(e.target.value)}
-                    required
-                  />
-                  Other
-                </label>
-                <label>
-                  <input
-                    type="radio"
-                    name="gender"
-                    value="prefer-not-to-say"
-                    checked={gender === "prefer-not-to-say"}
-                    onChange={(e) => setGender(e.target.value)}
-                    required
-                  />
-                  Prefer not to say
-                </label>
-              </div>
-            </fieldset>
-
-            {/* Error / Success messages */}
-            {errorMessage && <div className="error">{errorMessage}</div>}
-            {successMessage && <div className="success">{successMessage}</div>}
-
-            {/* Submit */}
-            <button className="left_btn" type="submit" disabled={isLoading}>
-              {isLoading ? "Signing up..." : "Signup"}
-            </button>
-          </form>
+          </div>
         </div>
 
-        {/* Right Section */}
         <div className="right-sign">
           <h1>Already have an account?</h1>
+          <p style={{ color: "#fff", opacity: 0.85, lineHeight: 1.6 }}>
+            Sign in with the credentials your school administrator created for
+            you.
+          </p>
           <Link to="/login">
             <button className="right_btn custom_reg" type="button">
               Login

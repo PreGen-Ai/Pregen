@@ -42,6 +42,11 @@ const submissionSchema = new mongoose.Schema({
 });
 
 const assignmentSchema = new mongoose.Schema({
+  tenantId: {
+    type: String,
+    default: null,
+    index: true,
+  },
   title: {
     type: String,
     required: true,
@@ -60,14 +65,19 @@ const assignmentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
     required: true,
+    index: true,
   },
   workspace: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Workspace",
+    ref: "Course",
+    default: null,
+    index: true,
   },
   class: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Class",
+    ref: "Classroom",
+    default: null,
+    index: true,
   },
   // File-based assignments
   materials: [
@@ -114,6 +124,16 @@ const assignmentSchema = new mongoose.Schema({
     type: String,
     enum: ["draft", "published", "closed"],
     default: "draft",
+    index: true,
+  },
+  deleted: {
+    type: Boolean,
+    default: false,
+    index: true,
+  },
+  deletedAt: {
+    type: Date,
+    default: null,
   },
   createdAt: {
     type: Date,
@@ -125,9 +145,61 @@ const assignmentSchema = new mongoose.Schema({
   },
 });
 
+assignmentSchema.set("toJSON", { virtuals: true });
+assignmentSchema.set("toObject", { virtuals: true });
+
 assignmentSchema.pre("save", function (next) {
   this.updatedAt = Date.now();
   next();
+});
+
+assignmentSchema.virtual("teacherId")
+  .get(function () {
+    return this.teacher || null;
+  })
+  .set(function (value) {
+    this.teacher = value;
+  });
+
+assignmentSchema.virtual("courseId")
+  .get(function () {
+    return this.workspace || null;
+  })
+  .set(function (value) {
+    this.workspace = value;
+  });
+
+assignmentSchema.virtual("workspaceId")
+  .get(function () {
+    return this.workspace || null;
+  })
+  .set(function (value) {
+    this.workspace = value;
+  });
+
+assignmentSchema.virtual("classroomId")
+  .get(function () {
+    return this.class || null;
+  })
+  .set(function (value) {
+    this.class = value;
+  });
+
+assignmentSchema.virtual("classId")
+  .get(function () {
+    return this.class || null;
+  })
+  .set(function (value) {
+    this.class = value;
+  });
+
+assignmentSchema.index({ teacher: 1, deleted: 1, createdAt: -1 });
+assignmentSchema.index({
+  tenantId: 1,
+  workspace: 1,
+  deleted: 1,
+  status: 1,
+  dueDate: 1,
 });
 
 export default mongoose.model("Assignment", assignmentSchema);

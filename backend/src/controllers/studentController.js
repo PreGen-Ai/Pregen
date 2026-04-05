@@ -1,24 +1,36 @@
-// controllers/studentController.js
-
 import Assignment from "../models/Assignment.js";
 import AssignmentAssignment from "../models/AssignmentAssignment.js";
 import Submission from "../models/Submission.js";
-
 import Quiz from "../models/quiz.js";
 import QuizAssignment from "../models/QuizAssignment.js";
 import QuizAttempt from "../models/QuizAttempt.js";
-
 import Leaderboard from "../models/leaderboardModel.js";
 import Course from "../models/CourseModel.js";
-import CourseMember from "../models/CourseMember.js";
+import {
+  answersInputToAttemptArray,
+  attemptAnswersToMap,
+  buildTenantMatch,
+  getCorrectAnswerValue,
+  getRequestTenantId,
+  getStudentAcademicContext,
+  hasStudentTargetAccess,
+  isValidObjectId,
+  serializeAssignment,
+  serializeAttemptForUi,
+  serializeQuiz,
+  serializeSubmission,
+  toId,
+  userFields,
+} from "../utils/academicContract.js";
 
-/**
- * Cursor helpers: "2026-01-20T10:00:00.000Z|<id>"
- */
 const applyCursor = (filter, cursor) => {
   if (!cursor) return;
-  const [createdAtStr, id] = cursor.split("|");
+
+  const [createdAtStr, id] = String(cursor).split("|");
   const createdAt = new Date(createdAtStr);
+
+  if (Number.isNaN(createdAt.getTime()) || !id) return;
+
   filter.$or = [
     { createdAt: { $lt: createdAt } },
     { createdAt, _id: { $lt: id } },
@@ -31,65 +43,161 @@ const makeNextCursor = (docs, limit) => {
   return `${last.createdAt.toISOString()}|${last._id}`;
 };
 
-/**
- * ============================================================
- * ✅ Get assignments for student (NO assignedStudents array)
- * Uses AssignmentAssignment targeting + Assignment definition
- * ============================================================
- * Query:
- *  /student/assignments?courseId=...&limit=20&cursor=...
- */
+const getAssignmentTargetScope = async ({ studentId, courseIds, classroomIds, tenantId }) =>
+  AssignmentAssignment.find({
+    status: "assigned",
+    ...buildTenantMatch(tenantId),
+    $or: [
+      { studentId },
+      {
+        studentId: null,
+        classId: { $in: classroomIds.length ? classroomIds : [null] },
+      },
+      {
+        studentId: null,
+        classId: null,
+        workspaceId: { $in: courseIds.length ? courseIds : [null] },
+      },
+    ],
+  }).lean();
+
+const getQuizTargetScope = async ({ studentId, courseIds, classroomIds, tenantId }) =>
+  QuizAssignment.find({
+    status: "assigned",
+    ...buildTenantMatch(tenantId),
+    $or: [
+      { studentId },
+      {
+        studentId: null,
+        classId: { $in: classroomIds.length ? classroomIds : [null] },
+      },
+      {
+        studentId: null,
+        classId: null,
+        workspaceId: { $in: courseIds.length ? courseIds : [null] },
+      },
+    ],
+  }).lean();
+
+const pickPreferredTarget = (rows) => {
+  const byOwner = new Map();
+
+  const scoreRow = (row) => {
+    if (row.studentId) return 3;
+    if (row.classId) return 2;
+    return 1;
+  };
+
+  rows
+    .slice()
+    .sort((a, b) => {
+      const diff = scoreRow(b) - scoreRow(a);
+      if (diff !== 0) return diff;
+      return new Date(a.assignedAt || 0) - new Date(b.assignedAt || 0);
+    })
+    .forEach((row) => {
+      const ownerId = toId(row.assignmentId || row.quizId);
+      if (!ownerId || byOwner.has(ownerId)) return;
+      byOwner.set(ownerId, row);
+    });
+
+  return byOwner;
+};
+
 export const getAssignments = async (req, res) => {
   try {
     const studentId = req.user._id;
-    const { courseId } = req.query;
-
+    const tenantId = getRequestTenantId(req);
+    const requestedCourseId = req.query.courseId || null;
     const limit = Math.min(parseInt(req.query.limit || "20", 10), 100);
     const cursor = req.query.cursor || null;
 
-    // 1) Find student memberships (courses they belong to)
-    // If courseId provided, validate membership in that course
-    const memberFilter = { userId: studentId, status: "active" };
-    if (courseId) memberFilter.courseId = courseId;
+    if (requestedCourseId && !isValidObjectId(requestedCourseId)) {
+      return res.status(400).json({ success: false, error: "Invalid courseId" });
+    }
 
-    const memberships =
-      await CourseMember.find(memberFilter).select("courseId");
-    const courseIds = memberships.map((m) => m.courseId);
+    const context = await getStudentAcademicContext(studentId, tenantId);
+    const courseIds = requestedCourseId
+      ? context.courseIds.filter((id) => String(id) === String(requestedCourseId))
+      : context.courseIds;
 
-    if (courseId && courseIds.length === 0) {
+    if (requestedCourseId && !courseIds.length) {
       return res
         .status(403)
         .json({ success: false, message: "Not enrolled in this course" });
     }
 
-    // 2) Get AssignmentAssignment rows assigned to:
-    // - the student specifically OR
-    // - a class/workspace (if you use those) OR
-    // - generally per course (if you decided to store courseId in assignment itself)
-    // For now: show assignments linked by courseId via Assignment model itself.
+    if (!courseIds.length) {
+      return res.json({
+        success: true,
+        data: [],
+        cursor: { next: null },
+        count: 0,
+      });
+    }
+
+    const [targetRows, targetScopeIds] = await Promise.all([
+      getAssignmentTargetScope({
+        studentId,
+        courseIds,
+        classroomIds: context.classroomIds,
+        tenantId,
+      }),
+      AssignmentAssignment.distinct("assignmentId", {
+        status: "assigned",
+        ...buildTenantMatch(tenantId),
+        workspaceId: { $in: courseIds },
+      }),
+    ]);
+
+    const preferredTargets = pickPreferredTarget(targetRows);
+    const targetedIds = Array.from(preferredTargets.keys());
+
     const assignmentFilter = {
-      status: "published",
       deleted: false,
-      courseId: { $in: courseIds },
+      status: "published",
+      ...buildTenantMatch(tenantId),
+      $or: [
+        { _id: { $in: targetedIds.length ? targetedIds : [null] } },
+        {
+          workspace: { $in: courseIds },
+          _id: { $nin: targetScopeIds.length ? targetScopeIds : [null] },
+        },
+      ],
     };
     applyCursor(assignmentFilter, cursor);
 
-    // assignments ordered by dueDate primarily, but cursor uses createdAt.
-    // For stable pagination at scale, paginate on createdAt then sort dueDate in UI.
     const assignments = await Assignment.find(assignmentFilter)
-      .select("-__v")
-      .sort({ createdAt: -1, _id: -1 })
+      .populate("teacher", userFields)
+      .populate("class", "name grade section")
+      .sort({ dueDate: 1, createdAt: -1, _id: -1 })
       .limit(limit)
-      .populate("teacherId", "firstName lastName email");
+      .lean();
 
-    // 3) Attach "assigned" state via AssignmentAssignment (optional)
-    // If you are using AssignmentAssignment, you can filter assignments further.
-    // Minimal: show published course assignments. If you need strict assignment targeting,
-    // tell me and I'll enforce it fully based on your assignmentAssignment rows.
+    const submissions = await Submission.find({
+      assignmentId: {
+        $in: assignments.length ? assignments.map((assignment) => assignment._id) : [null],
+      },
+      studentId,
+      deleted: false,
+    }).lean();
+
+    const submissionsByAssignmentId = new Map(
+      submissions.map((submission) => [String(submission.assignmentId), submission]),
+    );
 
     return res.json({
       success: true,
-      data: assignments,
+      data: assignments.map((assignment) => {
+        const target = preferredTargets.get(String(assignment._id)) || null;
+        const submission = submissionsByAssignmentId.get(String(assignment._id)) || null;
+        return serializeAssignment(assignment, {
+          dueDate: target?.dueDate || assignment.dueDate,
+          assignedAt: target?.assignedAt || assignment.createdAt,
+          targetId: target?._id || null,
+          submission: submission ? serializeSubmission(submission) : null,
+        });
+      }),
       cursor: { next: makeNextCursor(assignments, limit) },
       count: assignments.length,
     });
@@ -101,25 +209,22 @@ export const getAssignments = async (req, res) => {
   }
 };
 
-/**
- * ============================================================
- * ✅ Submit assignment (NO embedded submissions)
- * Uses Submission collection (1 submission per student per assignment)
- * ============================================================
- */
 export const submitAssignment = async (req, res) => {
   try {
     const studentId = req.user._id;
-    const { assignmentId, answers, textSubmission, courseId } = req.body;
+    const assignmentId = req.body.assignmentId;
     const files = req.files || [];
+    const tenantId = getRequestTenantId(req);
 
-    if (!assignmentId) {
+    if (!isValidObjectId(assignmentId)) {
       return res
         .status(400)
         .json({ success: false, error: "assignmentId is required" });
     }
 
-    const assignment = await Assignment.findById(assignmentId);
+    const assignment = await Assignment.findById(assignmentId).select(
+      "_id tenantId teacher workspace class dueDate status deleted",
+    );
     if (!assignment || assignment.deleted) {
       return res
         .status(404)
@@ -132,67 +237,90 @@ export const submitAssignment = async (req, res) => {
         .json({ success: false, error: "Assignment is not available" });
     }
 
-    if (new Date() > new Date(assignment.dueDate)) {
+    if (assignment.dueDate && new Date() > new Date(assignment.dueDate)) {
       return res
         .status(400)
         .json({ success: false, error: "Assignment due date has passed" });
     }
 
-    // Optional: verify student is enrolled in assignment course
-    const effectiveCourseId = courseId || assignment.courseId;
-    if (effectiveCourseId) {
-      const isMember = await CourseMember.exists({
-        userId: studentId,
-        courseId: effectiveCourseId,
-        status: "active",
+    const courseId = toId(assignment.workspace);
+    if (!courseId || !isValidObjectId(courseId)) {
+      return res.status(409).json({
+        success: false,
+        error: "Assignment is missing a valid course relationship",
       });
-      if (!isMember) {
-        return res
-          .status(403)
-          .json({ success: false, error: "Not enrolled in this course" });
-      }
     }
 
-    // Process files
+    const context = await getStudentAcademicContext(studentId, tenantId);
+    if (!context.courseIds.includes(String(courseId))) {
+      return res
+        .status(403)
+        .json({ success: false, error: "Not enrolled in this course" });
+    }
+
+    const hasAccess = await hasStudentTargetAccess({
+      TargetModel: AssignmentAssignment,
+      key: "assignmentId",
+      ownerId: assignment._id,
+      studentId,
+      courseId,
+      classroomIds: context.classroomIds,
+      tenantId,
+    });
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        error: "Assignment is not assigned to this student",
+      });
+    }
+
     const submittedFiles = files.map((file) => ({
-      name: file.filename,
+      name: file.originalname,
       path: file.path,
       mimetype: file.mimetype,
       size: file.size,
     }));
 
-    const payloadAnswers = answers ?? textSubmission;
-
-    // ✅ One submission per student per assignment (upsert)
-    // Your Submission.js schema uses: assignmentId + workspaceId + studentId
-    // But you moved to course. Let's store workspaceId only if you use it;
-    // otherwise set workspaceId to courseId for now (or update schema).
-    const workspaceId = assignment.workspaceId || null; // if you still have it
-
     const submission = await Submission.findOneAndUpdate(
       {
         assignmentId: assignment._id,
         studentId,
-        workspaceId: workspaceId, // keep aligned with your Submission schema
+        workspaceId: courseId,
       },
       {
         $set: {
+          tenantId: tenantId || assignment.tenantId || null,
+          assignmentId: assignment._id,
+          workspaceId: courseId,
+          studentId,
+          teacherId: assignment.teacher || null,
+          classroomId: assignment.class || null,
           files: submittedFiles,
-          feedback: "",
+          answers: req.body.answers ?? null,
+          textSubmission: String(req.body.textSubmission || "").trim(),
           submittedAt: new Date(),
-          // store answers (your Submission schema currently does not have `answers`
-          // If you want answers, add it to Submission model. For now put in feedback/metadata.
+          gradingStatus: "submitted",
+          gradedBy: "NONE",
+          deleted: false,
+          deletedAt: null,
         },
         $setOnInsert: {
           grade: null,
+          score: 0,
         },
       },
-      { upsert: true, new: true },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+      },
     );
 
     return res.json({
       success: true,
       message: "Assignment submitted successfully",
+      submission: serializeSubmission(submission),
       submissionId: submission._id,
     });
   } catch (err) {
@@ -203,47 +331,100 @@ export const submitAssignment = async (req, res) => {
   }
 };
 
-/**
- * ============================================================
- * ✅ Get quizzes for student (NO assignedStudents array)
- * Uses QuizAssignment + Quiz definition
- * ============================================================
- */
 export const getQuizzes = async (req, res) => {
   try {
     const studentId = req.user._id;
-    const { courseId } = req.query;
-
+    const tenantId = getRequestTenantId(req);
+    const requestedCourseId = req.query.courseId || null;
     const limit = Math.min(parseInt(req.query.limit || "20", 10), 100);
     const cursor = req.query.cursor || null;
 
-    // memberships
-    const memberFilter = { userId: studentId, status: "active" };
-    if (courseId) memberFilter.courseId = courseId;
+    if (requestedCourseId && !isValidObjectId(requestedCourseId)) {
+      return res.status(400).json({ success: false, error: "Invalid courseId" });
+    }
 
-    const memberships =
-      await CourseMember.find(memberFilter).select("courseId");
-    const courseIds = memberships.map((m) => m.courseId);
+    const context = await getStudentAcademicContext(studentId, tenantId);
+    const courseIds = requestedCourseId
+      ? context.courseIds.filter((id) => String(id) === String(requestedCourseId))
+      : context.courseIds;
 
-    if (courseId && courseIds.length === 0) {
+    if (requestedCourseId && !courseIds.length) {
       return res
         .status(403)
         .json({ success: false, message: "Not enrolled in this course" });
     }
 
-    // simple: published quizzes under those courses
-    const filter = { status: "published", courseId: { $in: courseIds } };
-    applyCursor(filter, cursor);
+    if (!courseIds.length) {
+      return res.json({
+        success: true,
+        data: [],
+        cursor: { next: null },
+        count: 0,
+      });
+    }
 
-    const quizzes = await Quiz.find(filter)
-      .select("-questions.correctAnswer -__v")
+    const [targetRows, targetScopeIds] = await Promise.all([
+      getQuizTargetScope({
+        studentId,
+        courseIds,
+        classroomIds: context.classroomIds,
+        tenantId,
+      }),
+      QuizAssignment.distinct("quizId", {
+        status: "assigned",
+        ...buildTenantMatch(tenantId),
+        workspaceId: { $in: courseIds },
+      }),
+    ]);
+
+    const preferredTargets = pickPreferredTarget(targetRows);
+    const targetedIds = Array.from(preferredTargets.keys());
+
+    const quizFilter = {
+      deleted: false,
+      status: "published",
+      ...buildTenantMatch(tenantId),
+      $or: [
+        { _id: { $in: targetedIds.length ? targetedIds : [null] } },
+        {
+          workspace: { $in: courseIds },
+          _id: { $nin: targetScopeIds.length ? targetScopeIds : [null] },
+        },
+      ],
+    };
+    applyCursor(quizFilter, cursor);
+
+    const quizzes = await Quiz.find(quizFilter)
+      .select("-questions.correctAnswer")
+      .populate("teacher", userFields)
+      .populate("class", "name grade section")
       .sort({ createdAt: -1, _id: -1 })
       .limit(limit)
-      .populate("teacher", "firstName lastName email");
+      .lean();
+
+    const attempts = await QuizAttempt.find({
+      quizId: { $in: quizzes.map((quiz) => quiz._id) },
+      studentId,
+      deleted: false,
+    }).lean();
+
+    const attemptsByQuizId = new Map(
+      attempts.map((attempt) => [String(attempt.quizId), serializeAttemptForUi(attempt)]),
+    );
 
     return res.json({
       success: true,
-      data: quizzes,
+      data: quizzes.map((quiz) => {
+        const target = preferredTargets.get(String(quiz._id)) || null;
+        return serializeQuiz(quiz, {
+          extras: {
+            dueDate: target?.dueDate || null,
+            assignedAt: target?.assignedAt || quiz.createdAt,
+            targetId: target?._id || null,
+            attempt: attemptsByQuizId.get(String(quiz._id)) || null,
+          },
+        });
+      }),
       cursor: { next: makeNextCursor(quizzes, limit) },
       count: quizzes.length,
     });
@@ -255,20 +436,23 @@ export const getQuizzes = async (req, res) => {
   }
 };
 
-/**
- * ============================================================
- * ✅ Start quiz attempt (1 attempt total per quiz per student)
- * Uses QuizAttempt collection
- * ============================================================
- */
 export const startQuiz = async (req, res) => {
   try {
     const studentId = req.user._id;
+    const tenantId = getRequestTenantId(req);
     const { quizId } = req.params;
 
-    const quiz = await Quiz.findById(quizId).select("-questions.correctAnswer");
-    if (!quiz)
+    if (!isValidObjectId(quizId)) {
+      return res.status(400).json({ success: false, error: "Invalid quizId" });
+    }
+
+    const quiz = await Quiz.findById(quizId)
+      .select("-questions.correctAnswer")
+      .populate("teacher", userFields);
+
+    if (!quiz || quiz.deleted) {
       return res.status(404).json({ success: false, error: "Quiz not found" });
+    }
 
     if (quiz.status !== "published") {
       return res
@@ -276,53 +460,67 @@ export const startQuiz = async (req, res) => {
         .json({ success: false, error: "Quiz not available" });
     }
 
-    // enforce membership in quiz course (if courseId exists)
-    if (quiz.courseId) {
-      const isMember = await CourseMember.exists({
-        userId: studentId,
-        courseId: quiz.courseId,
-        status: "active",
-      });
-      if (!isMember)
-        return res
-          .status(403)
-          .json({ success: false, error: "Not enrolled in this course" });
-    }
-
-    // ✅ only 1 attempt total
-    const existing = await QuizAttempt.findOne({ quizId, studentId });
-    if (existing) {
-      return res.status(400).json({
+    const courseId = toId(quiz.workspace);
+    if (!courseId || !isValidObjectId(courseId)) {
+      return res.status(409).json({
         success: false,
-        error: "You already started/submitted this quiz",
+        error: "Quiz is missing a valid course relationship",
       });
     }
 
-    const attempt = await QuizAttempt.create({
+    const context = await getStudentAcademicContext(studentId, tenantId);
+    if (!context.courseIds.includes(String(courseId))) {
+      return res
+        .status(403)
+        .json({ success: false, error: "Not enrolled in this course" });
+    }
+
+    const hasAccess = await hasStudentTargetAccess({
+      TargetModel: QuizAssignment,
+      key: "quizId",
+      ownerId: quiz._id,
+      studentId,
+      courseId,
+      classroomIds: context.classroomIds,
+      tenantId,
+    });
+
+    if (!hasAccess) {
+      return res
+        .status(403)
+        .json({ success: false, error: "Quiz is not assigned to this student" });
+    }
+
+    let attempt = await QuizAttempt.findOne({
       quizId,
       studentId,
-      status: "in_progress",
-      startedAt: new Date(),
+      deleted: false,
     });
+
+    if (attempt && attempt.status !== "in_progress") {
+      return res.status(400).json({
+        success: false,
+        error: "You already submitted this quiz",
+      });
+    }
+
+    if (!attempt) {
+      attempt = await QuizAttempt.create({
+        tenantId: tenantId || quiz.tenantId || null,
+        quizId,
+        workspaceId: courseId,
+        studentId,
+        status: "in_progress",
+        startedAt: new Date(),
+        locked: false,
+      });
+    }
 
     return res.json({
       success: true,
       attemptId: attempt._id,
-      quiz: {
-        _id: quiz._id,
-        title: quiz.title,
-        description: quiz.description,
-        timeLimit: quiz.timeLimit,
-        totalPoints: quiz.totalPoints,
-        questions: quiz.questions.map((q) => ({
-          _id: q._id,
-          questionText: q.questionText,
-          questionType: q.questionType,
-          options: q.options?.map((opt) => ({ text: opt.text })),
-          points: q.points,
-          fileUploadConfig: q.fileUploadConfig,
-        })),
-      },
+      attempt: serializeAttemptForUi(attempt),
+      quiz: serializeQuiz(quiz, { includeAnswers: false }),
     });
   } catch (err) {
     console.error("Start quiz error:", err);
@@ -332,97 +530,113 @@ export const startQuiz = async (req, res) => {
   }
 };
 
-/**
- * ============================================================
- * ✅ Submit quiz answers (grade + save attempt)
- * Uses QuizAttempt + Quiz definition
- * ============================================================
- */
 export const submitQuiz = async (req, res) => {
   try {
     const studentId = req.user._id;
     const { quizId, attemptId } = req.params;
-    const { answers = [] } = req.body;
+    const tenantId = getRequestTenantId(req);
 
-    const quiz = await Quiz.findById(quizId); // needs correctAnswer for grading
-    if (!quiz)
+    if (!isValidObjectId(quizId) || !isValidObjectId(attemptId)) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid quizId or attemptId" });
+    }
+
+    const quiz = await Quiz.findById(quizId).select("+questions.correctAnswer");
+    if (!quiz || quiz.deleted) {
       return res.status(404).json({ success: false, error: "Quiz not found" });
+    }
 
     const attempt = await QuizAttempt.findById(attemptId);
-    if (!attempt || attempt.studentId.toString() !== studentId.toString()) {
+    if (!attempt || String(attempt.studentId) !== String(studentId)) {
       return res
         .status(404)
         .json({ success: false, error: "Quiz attempt not found" });
     }
 
-    if (attempt.status !== "in_progress") {
+    if (String(attempt.quizId) !== String(quizId)) {
       return res
         .status(400)
-        .json({ success: false, error: "Attempt already submitted" });
+        .json({ success: false, error: "Attempt does not belong to quiz" });
     }
 
-    // grade
-    let totalScore = 0;
+    if (attempt.status !== "in_progress") {
+      return res.json({
+        success: true,
+        score: attempt.score,
+        passed: attempt.score >= (quiz.passingScore ?? 60),
+        timeSpent: attempt.timeSpent,
+        showResults: quiz.showResults,
+        attempt: serializeAttemptForUi(attempt),
+      });
+    }
 
-    const processedAnswers = answers
-      .map((a) => {
-        const q = quiz.questions.id(a.questionId);
-        if (!q) return null;
+    const rawAnswers = answersInputToAttemptArray(quiz, req.body.answers);
+    let pointsEarnedTotal = 0;
 
-        let isCorrect = false;
-        let pointsEarned = 0;
+    const processedAnswers = rawAnswers.map((answer) => {
+      const question = quiz.questions.id(answer.questionId);
+      if (!question) return null;
 
-        if (q.questionType === "multiple_choice") {
-          // client might send option id or index; your schema stores options with _id
-          const selected = q.options.id(a.answer);
-          isCorrect = !!selected?.isCorrect;
-        } else if (q.questionType === "true_false") {
-          isCorrect = a.answer === q.correctAnswer;
-        } else {
-          // short_answer/essay/file_upload: no auto grading
-          isCorrect = false;
-        }
+      let isCorrect = null;
+      let pointsEarned = 0;
 
-        if (isCorrect) {
-          pointsEarned = q.points || 1;
-          totalScore += pointsEarned;
-        }
+      if (question.questionType === "multiple_choice") {
+        const expected = String(getCorrectAnswerValue(question) || "")
+          .trim()
+          .toUpperCase();
+        const submitted = String(answer.answer || "")
+          .trim()
+          .toUpperCase();
+        isCorrect = expected && submitted ? expected === submitted : false;
+      } else if (question.questionType === "true_false") {
+        const expected = String(getCorrectAnswerValue(question) || "")
+          .trim()
+          .toLowerCase();
+        const submitted = String(answer.answer || "")
+          .trim()
+          .toLowerCase();
+        isCorrect = expected === submitted;
+      }
 
-        return {
-          questionId: a.questionId,
-          answer: a.answer,
-          uploadedFiles: a.uploadedFiles || [],
-          isCorrect,
-          pointsEarned,
-        };
-      })
-      .filter(Boolean);
+      if (isCorrect) {
+        pointsEarned = Number(question.points || 0);
+        pointsEarnedTotal += pointsEarned;
+      }
+
+      return {
+        questionId: question._id,
+        answer: answer.answer ?? null,
+        uploadedFiles: Array.isArray(answer.uploadedFiles) ? answer.uploadedFiles : [],
+        isCorrect,
+        pointsEarned,
+      };
+    }).filter(Boolean);
 
     const totalPoints =
-      quiz.totalPoints ||
-      quiz.questions.reduce((s, q) => s + (q.points || 1), 0);
+      Number(quiz.totalPoints) ||
+      quiz.questions.reduce((sum, question) => sum + Number(question.points || 0), 0);
     const percentageScore =
-      totalPoints > 0 ? (totalScore / totalPoints) * 100 : 0;
+      totalPoints > 0 ? Math.round((pointsEarnedTotal / totalPoints) * 10000) / 100 : 0;
 
-    // update attempt
+    attempt.tenantId = attempt.tenantId || tenantId || quiz.tenantId || null;
+    attempt.workspaceId = attempt.workspaceId || quiz.workspace || null;
     attempt.answers = processedAnswers;
-    attempt.score = percentageScore;
+    attempt.pointsEarnedTotal = pointsEarnedTotal;
     attempt.maxScore = totalPoints;
+    attempt.score = percentageScore;
     attempt.submittedAt = new Date();
     attempt.status = "submitted";
-    attempt.timeSpent = Math.floor(
-      (Date.now() - new Date(attempt.startedAt).getTime()) / 1000,
+    attempt.timeSpent = Math.max(
+      attempt.timeSpent || 0,
+      Math.floor((Date.now() - new Date(attempt.startedAt).getTime()) / 1000),
     );
+    attempt.locked = true;
 
     await attempt.save();
 
-    // Update leaderboard if passed (if you want)
     if (percentageScore >= (quiz.passingScore ?? 60)) {
-      await updateLeaderboard(
-        studentId,
-        percentageScore,
-        quiz.courseId || null,
-      );
+      await updateLeaderboard(studentId, percentageScore, toId(quiz.workspace));
     }
 
     return res.json({
@@ -431,6 +645,7 @@ export const submitQuiz = async (req, res) => {
       passed: percentageScore >= (quiz.passingScore ?? 60),
       timeSpent: attempt.timeSpent,
       showResults: quiz.showResults,
+      attempt: serializeAttemptForUi(attempt),
     });
   } catch (err) {
     console.error("Submit quiz error:", err);
@@ -440,30 +655,20 @@ export const submitQuiz = async (req, res) => {
   }
 };
 
-/**
- * ============================================================
- * ✅ Get student's courses (was getWorkspaces)
- * Uses CourseMember instead of Course.students/teachers arrays
- * ============================================================
- */
 export const getWorkspaces = async (req, res) => {
   try {
     const studentId = req.user._id;
-
-    const memberships = await CourseMember.find({
-      userId: studentId,
-      status: "active",
-    })
-      .sort({ createdAt: -1 })
-      .limit(200);
-
-    const courseIds = memberships.map((m) => m.courseId);
+    const tenantId = getRequestTenantId(req);
+    const context = await getStudentAcademicContext(studentId, tenantId);
 
     const courses = await Course.find({
-      _id: { $in: courseIds },
+      _id: { $in: context.courseIds.length ? context.courseIds : [null] },
       deleted: false,
       archived: false,
-    }).sort({ createdAt: -1 });
+      ...buildTenantMatch(tenantId),
+    })
+      .sort({ createdAt: -1 })
+      .lean();
 
     return res.json({
       success: true,
@@ -478,47 +683,53 @@ export const getWorkspaces = async (req, res) => {
   }
 };
 
-/**
- * ============================================================
- * ✅ Get student results
- * - assignments from Submission collection
- * - quizzes from QuizAttempt collection
- * ============================================================
- */
 export const getResults = async (req, res) => {
   try {
     const studentId = req.user._id;
+    const tenantId = getRequestTenantId(req);
 
-    // latest submissions
-    const submissions = await Submission.find({ studentId })
-      .sort({ createdAt: -1 })
-      .limit(200)
-      .populate("assignmentId", "title dueDate teacherId courseId");
-
-    // latest quiz attempts
-    const attempts = await QuizAttempt.find({ studentId, status: "submitted" })
-      .sort({ createdAt: -1 })
-      .limit(200)
-      .populate("quizId", "title passingScore showResults courseId teacher");
+    const [submissions, attempts] = await Promise.all([
+      Submission.find({
+        studentId,
+        deleted: false,
+        ...buildTenantMatch(tenantId),
+      })
+        .sort({ createdAt: -1 })
+        .limit(200)
+        .populate("assignmentId", "title dueDate teacher workspace class")
+        .lean(),
+      QuizAttempt.find({
+        studentId,
+        status: { $in: ["submitted", "graded"] },
+        deleted: false,
+        ...buildTenantMatch(tenantId),
+      })
+        .sort({ createdAt: -1 })
+        .limit(200)
+        .populate("quizId", "title passingScore showResults workspace teacher")
+        .lean(),
+    ]);
 
     const results = {
-      assignments: submissions.map((s) => ({
+      assignments: submissions.map((submission) => ({
         type: "assignment",
-        id: s.assignmentId?._id,
-        title: s.assignmentId?.title,
-        score: s.grade,
-        graded: s.grade !== null,
-        submittedAt: s.submittedAt || s.createdAt,
-        dueDate: s.assignmentId?.dueDate,
+        id: submission.assignmentId?._id || submission.assignmentId,
+        title: submission.assignmentId?.title || "Assignment",
+        score: submission.grade ?? submission.score ?? null,
+        graded: submission.grade !== null || submission.gradedBy !== "NONE",
+        submittedAt: submission.submittedAt || submission.createdAt,
+        dueDate: submission.assignmentId?.dueDate || null,
+        courseId: toId(submission.assignmentId?.workspace || submission.workspaceId),
       })),
-      quizzes: attempts.map((a) => ({
+      quizzes: attempts.map((attempt) => ({
         type: "quiz",
-        id: a.quizId?._id,
-        title: a.quizId?.title,
-        score: a.score,
-        passed: a.score >= (a.quizId?.passingScore ?? 60),
-        submittedAt: a.submittedAt,
-        timeSpent: a.timeSpent,
+        id: attempt.quizId?._id || attempt.quizId,
+        title: attempt.quizId?.title || "Quiz",
+        score: attempt.score,
+        passed: attempt.score >= (attempt.quizId?.passingScore ?? 60),
+        submittedAt: attempt.submittedAt,
+        timeSpent: attempt.timeSpent,
+        courseId: toId(attempt.quizId?.workspace || attempt.workspaceId),
       })),
     };
 
@@ -531,21 +742,22 @@ export const getResults = async (req, res) => {
   }
 };
 
-/**
- * ============================================================
- * ✅ Leaderboard
- * ============================================================
- */
-
 const updateLeaderboard = async (studentId, score, courseId) => {
   try {
-    // Your leaderboard schema currently has: student, points, subject, className
-    // If you want course leaderboard, add courseId field to Leaderboard model.
-    // For now, just increment global points:
+    const filter = courseId
+      ? { student: studentId, courseId }
+      : { student: studentId };
+
     await Leaderboard.findOneAndUpdate(
-      { student: studentId },
-      { $inc: { points: score } },
-      { upsert: true, new: true },
+      filter,
+      {
+        $setOnInsert: {
+          student: studentId,
+          courseId: courseId || null,
+        },
+        $inc: { points: score },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
     );
   } catch (err) {
     console.error("Update leaderboard error:", err);
@@ -555,17 +767,23 @@ const updateLeaderboard = async (studentId, score, courseId) => {
 export const getLeaderboard = async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit || "10", 10), 50);
+    const courseId = req.query.courseId || null;
 
-    const leaderboard = await Leaderboard.find({})
+    const filter = {};
+    if (courseId && isValidObjectId(courseId)) {
+      filter.courseId = courseId;
+    }
+
+    const leaderboard = await Leaderboard.find(filter)
       .populate("student", "firstName lastName email")
-      .sort({ points: -1 })
+      .sort({ points: -1, updatedAt: -1 })
       .limit(limit);
 
     return res.json({
       success: true,
       data: leaderboard.map((entry) => ({
         student: entry.student
-          ? `${entry.student.firstName} ${entry.student.lastName}`
+          ? `${entry.student.firstName} ${entry.student.lastName}`.trim()
           : "Unknown",
         email: entry.student?.email || "",
         points: entry.points,

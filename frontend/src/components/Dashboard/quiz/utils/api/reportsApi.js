@@ -3,6 +3,19 @@
 import api from "./apiConfig";
 import { handleApiError, ApiError } from "../errorHandler";
 
+const stripReportPath = (value, prefixes) => {
+  let normalized = String(value || "").trim();
+
+  for (const prefix of prefixes) {
+    if (normalized.startsWith(prefix)) {
+      normalized = normalized.slice(prefix.length);
+      break;
+    }
+  }
+
+  return normalized.replace(/^\/+/, "");
+};
+
 export const reportsApi = {
   /**
    * ---------------------------------------------------
@@ -16,7 +29,12 @@ export const reportsApi = {
       if (!reportId)
         throw new ApiError("Missing report ID", "VALIDATION_ERROR");
 
-      const res = await api.get(`/api/download-report/${reportId}`, {
+      const normalizedId = stripReportPath(reportId, [
+        "/api/reports/pdf/",
+        "/api/download-report/",
+      ]);
+
+      const res = await api.get(`/api/reports/pdf/${normalizedId}`, {
         responseType: "blob",
         timeout: 60000,
       });
@@ -38,7 +56,12 @@ export const reportsApi = {
       if (!reportId)
         throw new ApiError("Missing report ID", "VALIDATION_ERROR");
 
-      const res = await api.get(`/api/report/${reportId}`, {
+      const normalizedId = stripReportPath(reportId, [
+        "/api/reports/json/",
+        "/api/report/",
+      ]);
+
+      const res = await api.get(`/api/reports/json/${normalizedId}`, {
         timeout: 30000,
       });
 
@@ -59,7 +82,11 @@ export const reportsApi = {
       if (!reportId)
         throw new ApiError("Missing report ID", "VALIDATION_ERROR");
 
-      const res = await api.get(`/api/reports/download/${reportId}`, {
+      const normalizedId = stripReportPath(reportId, [
+        "/api/reports/download/",
+      ]);
+
+      const res = await api.get(`/api/reports/download/${normalizedId}`, {
         responseType: "blob",
         timeout: 60000,
       });

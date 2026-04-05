@@ -144,15 +144,12 @@ export default function SuperAdminAICenterPage() {
       if (model) params.model = model;
       if (cacheHit) params.cacheHit = cacheHit;
 
-      const [summaryRes, listRes] = await Promise.all([
-        api.get("/api/admin/super/ai-requests/summary", { params: { range } }),
-        api.get("/api/admin/super/ai-requests", { params }),
+      const [summary, list] = await Promise.all([
+        api.admin.getAiRequestsSummary({ range }),
+        api.admin.listAiRequests(params),
       ]);
 
-      const s = summaryRes?.data ?? summaryRes;
-      const list = listRes?.data ?? listRes;
-
-      setReqSummary(s);
+      setReqSummary(summary || null);
 
       const items = Array.isArray(list?.items)
         ? list.items
@@ -177,11 +174,7 @@ export default function SuperAdminAICenterPage() {
 
       // Expected:
       // { byTenant:[{tenantId,name,tokens,cost,requests}], byFeature:[{feature,tokens,cost,requests}] }
-      const res = await api.get("/api/admin/super/ai-cost", {
-        params: { range },
-      });
-
-      const data = res?.data ?? res;
+      const data = await api.admin.getAICost({ range });
 
       setByTenant(Array.isArray(data?.byTenant) ? data.byTenant : []);
       setByFeature(Array.isArray(data?.byFeature) ? data.byFeature : []);

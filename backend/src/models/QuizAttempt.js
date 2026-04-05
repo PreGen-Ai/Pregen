@@ -24,15 +24,26 @@ const attemptAnswerSchema = new Schema(
 
 const quizAttemptSchema = new Schema(
   {
+    tenantId: {
+      type: String,
+      default: null,
+      index: true,
+    },
     quizId: {
       type: Schema.Types.ObjectId,
       ref: "Quiz",
       required: true,
       index: true,
     },
+    quizAssignmentId: {
+      type: Schema.Types.ObjectId,
+      ref: "QuizAssignment",
+      default: null,
+      index: true,
+    },
     workspaceId: {
       type: Schema.Types.ObjectId,
-      ref: "Workspace",
+      ref: "Course",
       default: null,
       index: true,
     },
@@ -73,6 +84,7 @@ const quizAttemptSchema = new Schema(
       index: true,
     },
     gradedAt: { type: Date, default: null },
+    feedback: { type: String, default: "", maxlength: 10000 },
 
     // Optional: block re-entry once submitted
     locked: { type: Boolean, default: false, index: true },
@@ -82,6 +94,9 @@ const quizAttemptSchema = new Schema(
   },
   { timestamps: true },
 );
+
+quizAttemptSchema.set("toJSON", { virtuals: true });
+quizAttemptSchema.set("toObject", { virtuals: true });
 
 /** -------------------------
  * Enforce "1 attempt total"
@@ -93,10 +108,19 @@ quizAttemptSchema.index({ quizId: 1, studentId: 1 }, { unique: true });
 quizAttemptSchema.index({ studentId: 1, createdAt: -1 });
 quizAttemptSchema.index({ quizId: 1, submittedAt: -1 });
 quizAttemptSchema.index({ workspaceId: 1, quizId: 1, submittedAt: -1 });
+quizAttemptSchema.index({ tenantId: 1, studentId: 1, createdAt: -1 });
 
 // Optional helper
 quizAttemptSchema.query.notDeleted = function () {
   return this.where({ deleted: false });
 };
+
+quizAttemptSchema.virtual("courseId")
+  .get(function () {
+    return this.workspaceId || null;
+  })
+  .set(function (value) {
+    this.workspaceId = value;
+  });
 
 export default mongoose.model("QuizAttempt", quizAttemptSchema);

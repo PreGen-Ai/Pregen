@@ -23,12 +23,12 @@ const fileSchema = new Schema(
 const SubmissionSchema = new Schema(
   {
     // -------- Multi-tenant (old) --------
-    tenantId: { type: Schema.Types.ObjectId, index: true, required: false },
+    tenantId: { type: String, index: true, required: false, default: null },
 
     // -------- Core relations --------
     workspaceId: {
       type: Schema.Types.ObjectId,
-      ref: "Workspace",
+      ref: "Course",
       required: true,
       index: true,
     },
@@ -51,9 +51,17 @@ const SubmissionSchema = new Schema(
       default: null,
       index: true,
     }, // from old schema
+    classroomId: {
+      type: Schema.Types.ObjectId,
+      ref: "Classroom",
+      default: null,
+      index: true,
+    },
 
     // -------- Submission payload --------
     files: { type: [fileSchema], default: [] },
+    answers: { type: Schema.Types.Mixed, default: null },
+    textSubmission: { type: String, default: "", maxlength: 50000 },
 
     submittedAt: { type: Date, default: Date.now, index: true },
 
@@ -96,6 +104,9 @@ const SubmissionSchema = new Schema(
   },
   { timestamps: true },
 );
+
+SubmissionSchema.set("toJSON", { virtuals: true });
+SubmissionSchema.set("toObject", { virtuals: true });
 
 /* -------------------------
  * Compatibility normalization
@@ -159,6 +170,14 @@ SubmissionSchema.index({ tenantId: 1, submittedAt: -1 });
 SubmissionSchema.query.notDeleted = function () {
   return this.where({ deleted: false });
 };
+
+SubmissionSchema.virtual("courseId")
+  .get(function () {
+    return this.workspaceId || null;
+  })
+  .set(function (value) {
+    this.workspaceId = value;
+  });
 
 /**
  * IMPORTANT: nodemon / hot-reload safe export

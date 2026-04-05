@@ -1,23 +1,17 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
+import { useAuthContext } from "../../context/AuthContext";
 
 const AdminRoute = ({ children }) => {
-  const token = localStorage.getItem("token");
+  const { isAuthenticated, loading, user } = useAuthContext();
 
-  // Try to parse user from localStorage
-  let isAdmin = false;
-  try {
-    const user = JSON.parse(localStorage.getItem("user"));
-    isAdmin = user?.role === "admin";
-  } catch (error) {
-    console.error("❌ Error parsing user data:", error);
+  if (loading) return null;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+
+  const role = String(user?.role || "").toUpperCase();
+  if (!["ADMIN", "SUPERADMIN"].includes(role)) {
+    return <Navigate to="/dashboard" replace />;
   }
-
-  // Redirect if not authenticated
-  if (!token) return <Navigate to="/login" replace />;
-
-  // Redirect non-admin users to dashboard
-  if (!isAdmin) return <Navigate to="/Dashboard" replace />;
 
   return children;
 };

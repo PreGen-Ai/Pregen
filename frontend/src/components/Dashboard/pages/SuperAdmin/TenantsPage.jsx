@@ -11,6 +11,7 @@ import {
   FaSortAmountUp,
   FaTimes,
 } from "react-icons/fa";
+import { toast } from "react-toastify";
 
 // ✅ adjust if your path differs
 import api from "../../../../services/api/api.js";
@@ -18,6 +19,14 @@ import api from "../../../../services/api/api.js";
 import "../../../styles/admin-tools.css";
 
 const GOLD = "#D4AF37";
+const EMPTY_TENANT_FORM = {
+  tenantId: "",
+  name: "",
+  status: "trial",
+  plan: "basic",
+  subdomain: "",
+  primaryColor: "",
+};
 
 const fmtInt = (v) => new Intl.NumberFormat().format(Number(v || 0));
 const fmtMoney = (v) =>
@@ -410,6 +419,9 @@ export default function TenantsPage() {
 
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
   const [selectedTenant, setSelectedTenant] = useState(null);
+  const [tenantForm, setTenantForm] = useState(EMPTY_TENANT_FORM);
+  const [tenantSaving, setTenantSaving] = useState(false);
+  const [editingTenantId, setEditingTenantId] = useState("");
 
   const aliveRef = useRef(true);
   useEffect(() => {
@@ -448,6 +460,82 @@ export default function TenantsPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const resetTenantForm = () => {
+    setTenantForm(EMPTY_TENANT_FORM);
+    setEditingTenantId("");
+  };
+
+  const startEditTenant = (tenant) => {
+    setEditingTenantId(tenant.tenantId || "");
+    setTenantForm({
+      tenantId: tenant.tenantId || "",
+      name: tenant.name || "",
+      status: tenant.status || "trial",
+      plan: tenant.plan || "basic",
+      subdomain: tenant.branding?.subdomain || "",
+      primaryColor: tenant.branding?.primaryColor || "",
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const saveTenant = async () => {
+    if (!String(tenantForm.tenantId || "").trim() || !String(tenantForm.name || "").trim()) {
+      toast.error("Tenant ID and name are required");
+      return;
+    }
+
+    const payload = {
+      tenantId: tenantForm.tenantId.trim(),
+      name: tenantForm.name.trim(),
+      status: tenantForm.status,
+      plan: tenantForm.plan,
+      branding: {
+        subdomain: tenantForm.subdomain.trim(),
+        primaryColor: tenantForm.primaryColor.trim(),
+      },
+    };
+
+    try {
+      setTenantSaving(true);
+      if (editingTenantId) {
+        await api.admin.updateTenant(editingTenantId, payload);
+        toast.success("Tenant updated");
+      } else {
+        await api.admin.createTenant(payload);
+        toast.success("Tenant created");
+      }
+      resetTenantForm();
+      await load();
+    } catch (e) {
+      toast.error(e?.message || "Failed to save tenant");
+    } finally {
+      setTenantSaving(false);
+    }
+  };
+
+  const deleteTenant = async (tenant) => {
+    const tenantId = tenant?.tenantId;
+    if (!tenantId) return;
+    if (!window.confirm(`Delete tenant "${tenant.name || tenantId}"?`)) return;
+
+    try {
+      setTenantSaving(true);
+      await api.admin.deleteTenant(tenantId);
+      toast.success("Tenant deleted");
+      if (selectedTenant?.tenantId === tenantId) {
+        setSelectedTenant(null);
+      }
+      if (editingTenantId === tenantId) {
+        resetTenantForm();
+      }
+      await load();
+    } catch (e) {
+      toast.error(e?.message || "Failed to delete tenant");
+    } finally {
+      setTenantSaving(false);
+    }
+  };
 
   useEffect(() => setPage(1), [q, status, plan]);
 
@@ -646,6 +734,20 @@ export default function TenantsPage() {
                 gap: 10,
                 alignItems: "center",
               }}
+              onClick={resetTenantForm}
+            >
+              New Tenant
+            </button>
+
+            <button
+              type="button"
+              className="btn-ghost"
+              style={{
+                borderRadius: 14,
+                display: "inline-flex",
+                gap: 10,
+                alignItems: "center",
+              }}
               onClick={() => exportCsv(sorted)}
               disabled={loading || !sorted.length}
             >
@@ -671,6 +773,156 @@ export default function TenantsPage() {
               <FaSyncAlt />
               Refresh
             </button>
+          </div>
+        </div>
+
+        <div style={{ height: 14 }} />
+
+        <div className="card" style={{ borderRadius: 22, overflow: "hidden" }}>
+          <div className="card-inner">
+            <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 1000, color: "#F9FAFB" }}>
+                  {editingTenantId ? "Edit tenant" : "Create tenant"}
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.7 }}>
+                  Use the canonical superadmin tenant CRUD route.
+                </div>
+              </div>
+              {editingTenantId ? (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  style={{ borderRadius: 14, padding: "10px 14px" }}
+                  onClick={resetTenantForm}
+                >
+                  Cancel Edit
+                </button>
+              ) : null}
+            </div>
+
+            <div className="row g-3">
+              <div className="col-md-3">
+                <label className="form-label">Tenant ID</label>
+                <input
+                  className="input"
+                  value={tenantForm.tenantId}
+                  disabled={!!editingTenantId}
+                  onChange={(e) =>
+                    setTenantForm((prev) => ({ ...prev, tenantId: e.target.value }))
+                  }
+                  placeholder="tenant-id"
+                />
+              </div>
+              <div className="col-md-3">
+                <label className="form-label">Name</label>
+                <input
+                  className="input"
+                  value={tenantForm.name}
+                  onChange={(e) =>
+                    setTenantForm((prev) => ({ ...prev, name: e.target.value }))
+                  }
+                  placeholder="Tenant name"
+                />
+              </div>
+              <div className="col-md-2">
+                <label className="form-label">Status</label>
+                <select
+                  className="select"
+                  value={tenantForm.status}
+                  onChange={(e) =>
+                    setTenantForm((prev) => ({ ...prev, status: e.target.value }))
+                  }
+                >
+                  <option value="trial">trial</option>
+                  <option value="active">active</option>
+                  <option value="suspended">suspended</option>
+                </select>
+              </div>
+              <div className="col-md-2">
+                <label className="form-label">Plan</label>
+                <select
+                  className="select"
+                  value={tenantForm.plan}
+                  onChange={(e) =>
+                    setTenantForm((prev) => ({ ...prev, plan: e.target.value }))
+                  }
+                >
+                  <option value="basic">basic</option>
+                  <option value="pro">pro</option>
+                  <option value="enterprise">enterprise</option>
+                </select>
+              </div>
+              <div className="col-md-2">
+                <label className="form-label">Subdomain</label>
+                <input
+                  className="input"
+                  value={tenantForm.subdomain}
+                  onChange={(e) =>
+                    setTenantForm((prev) => ({ ...prev, subdomain: e.target.value }))
+                  }
+                  placeholder="subdomain"
+                />
+              </div>
+              <div className="col-md-3">
+                <label className="form-label">Primary Color</label>
+                <input
+                  className="input"
+                  value={tenantForm.primaryColor}
+                  onChange={(e) =>
+                    setTenantForm((prev) => ({ ...prev, primaryColor: e.target.value }))
+                  }
+                  placeholder="#D4AF37"
+                />
+              </div>
+            </div>
+
+            <div className="d-flex gap-2 flex-wrap mt-3">
+              <button
+                type="button"
+                className="btn-gold"
+                style={{
+                  borderRadius: 14,
+                  padding: "10px 14px",
+                  background: GOLD,
+                  color: "#111827",
+                  fontWeight: 1000,
+                }}
+                onClick={saveTenant}
+                disabled={tenantSaving}
+              >
+                {tenantSaving
+                  ? "Saving..."
+                  : editingTenantId
+                    ? "Update Tenant"
+                    : "Create Tenant"}
+              </button>
+              <Link
+                className="btn-ghost"
+                style={{ borderRadius: 14, padding: "10px 14px", textDecoration: "none" }}
+                to="/dashboard/admin/branding"
+              >
+                Manage Branding
+              </Link>
+              <Link
+                className="btn-ghost"
+                style={{ borderRadius: 14, padding: "10px 14px", textDecoration: "none" }}
+                to="/dashboard/superadmin/ai-cost"
+              >
+                View AI Usage
+              </Link>
+              <Link
+                className="btn-ghost"
+                style={{ borderRadius: 14, padding: "10px 14px", textDecoration: "none" }}
+                to={
+                  selectedTenant?.tenantId
+                    ? `/dashboard/superadmin/tenants/${encodeURIComponent(selectedTenant.tenantId)}`
+                    : "/dashboard/admin/users"
+                }
+              >
+                {selectedTenant?.tenantId ? "Manage Selected Tenant" : "Open User Tools"}
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -1015,6 +1267,18 @@ export default function TenantsPage() {
                               >
                                 View
                               </Link>
+                              <Link
+                                className="btn-ghost"
+                                style={{
+                                  borderRadius: 12,
+                                  padding: "8px 12px",
+                                  textDecoration: "none",
+                                }}
+                                to={`/dashboard/superadmin/tenants/${encodeURIComponent(t.tenantId)}`}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Users
+                              </Link>
 
                               <button
                                 type="button"
@@ -1029,6 +1293,38 @@ export default function TenantsPage() {
                                 }}
                               >
                                 Details
+                              </button>
+
+                              <button
+                                type="button"
+                                className="btn-ghost"
+                                style={{
+                                  borderRadius: 12,
+                                  padding: "8px 12px",
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startEditTenant(t);
+                                }}
+                              >
+                                Edit
+                              </button>
+
+                              <button
+                                type="button"
+                                className="btn-ghost"
+                                style={{
+                                  borderRadius: 12,
+                                  padding: "8px 12px",
+                                  color: "#fecaca",
+                                  borderColor: "rgba(239,68,68,0.35)",
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteTenant(t);
+                                }}
+                              >
+                                Delete
                               </button>
                             </div>
                           </td>

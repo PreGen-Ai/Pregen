@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -8,17 +7,8 @@ import "katex/dist/katex.min.css";
 
 import "../../styles/AITutor.css";
 import "../../styles/dashboard.css";
-import { useAuthContext } from "../../../context/AuthContext"; // enable when ready
-
-const API_BASE_URL =
-  window.location.hostname === "localhost"
-    ? "http://localhost:8000"
-    : "https://pregen.onrender.com";
-
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  withCredentials: true,
-});
+import { useAuthContext } from "../../../context/AuthContext";
+import api from "../../../services/api/api";
 
 /** -----------------------------
  * Safe text conversion (always returns string)
@@ -99,8 +89,7 @@ const normalizeApiError = (err) => {
 };
 
 export default function AITutor() {
-  // const { user } = useAuthContext();
-  const user = null; // replace with auth user when ready
+  const { user } = useAuthContext() || {};
 
   const [messages, setMessages] = useState([
     {
@@ -163,7 +152,7 @@ export default function AITutor() {
         const newSessionId = `session_${Date.now()}`;
         setSessionId(newSessionId);
 
-        await api.post(`/api/tutor/session/${newSessionId}`, {
+        await api.ai.startTutorSession(newSessionId, {
           context: { subject: "general", level: "student" },
         });
       } catch (error) {
@@ -205,9 +194,7 @@ export default function AITutor() {
       const form = new FormData();
       form.append("file", file);
 
-      await api.post(`/api/tutor/material/${sessionId}`, form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      await api.ai.uploadTutorMaterial(sessionId, form);
 
       setMessages((prev) => [
         ...prev,
@@ -273,30 +260,27 @@ export default function AITutor() {
 
         form.append("file", attachedFile);
 
-        res = await api.post("/api/tutor/chat", form, {
-          headers: { "Content-Type": "multipart/form-data" },
+        res = await api.ai.tutorChat(form, {
           signal: controller.signal,
         });
       } else {
-        res = await api.post(
-          "/api/tutor/chat",
-          {
-            session_id: sessionId,
-            message: msgText,
-            subject,
-            tone,
-            language,
-            curriculum,
-            user_profile: user?._id ? { _id: user._id } : undefined,
-          },
-          { signal: controller.signal },
-        );
+        res = await api.ai.tutorChat({
+          session_id: sessionId,
+          message: msgText,
+          subject,
+          tone,
+          language,
+          curriculum,
+          user_profile: user?._id ? { _id: user._id } : undefined,
+        }, {
+          signal: controller.signal,
+        });
       }
 
       const botReply =
-        res?.data?.reply ??
-        res?.data?.message ??
-        res?.data?.text ??
+        res?.reply ??
+        res?.message ??
+        res?.text ??
         "No response.";
 
       setMessages((prev) => [

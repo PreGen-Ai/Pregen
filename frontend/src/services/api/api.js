@@ -2,7 +2,7 @@
 // One API module for the whole app
 // Uses ONE axios source of truth: ./http
 
-import { apiClient, aiClient, pdfClient, normalizeApiError } from "./http";
+import { apiClient, pdfClient, normalizeApiError } from "./http";
 import axios from "axios";
 
 /**
@@ -54,6 +54,23 @@ function unwrapItems(data) {
   if (Array.isArray(data?.items)) return data.items;
   return [];
 }
+
+function isFormDataValue(value) {
+  return typeof FormData !== "undefined" && value instanceof FormData;
+}
+
+function normalizeReportId(value, prefixes = []) {
+  let normalized = String(value || "").trim();
+
+  for (const prefix of prefixes) {
+    if (normalized.startsWith(prefix)) {
+      normalized = normalized.slice(prefix.length);
+      break;
+    }
+  }
+
+  return normalized.replace(/^\/+/, "");
+}
 /**
  * Helper: unwrap axios response + normalize backend errors
  */
@@ -62,6 +79,9 @@ async function safe(promise) {
     const res = await promise;
     return res.data;
   } catch (err) {
+    if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") {
+      throw err;
+    }
     throw new Error(normalizeApiError(err));
   }
 }
@@ -74,6 +94,9 @@ async function safeBlob(promise) {
     const res = await promise;
     return res.data;
   } catch (err) {
+    if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") {
+      throw err;
+    }
     throw new Error(normalizeApiError(err));
   }
 }
@@ -191,6 +214,184 @@ export const api = {
         ),
       ),
   },
+
+  lessons: {
+    listCourseLessons: (courseId, config = {}) =>
+      safe(apiClient.get(`/api/lessons/courses/${courseId}`, config)),
+    createModule: (courseId, payload, config = {}) =>
+      safe(apiClient.post(`/api/lessons/courses/${courseId}/modules`, payload, config)),
+    updateModule: (moduleId, payload, config = {}) =>
+      safe(apiClient.patch(`/api/lessons/modules/${moduleId}`, payload, config)),
+    deleteModule: (moduleId, config = {}) =>
+      safe(apiClient.delete(`/api/lessons/modules/${moduleId}`, config)),
+    createContent: (moduleId, formData, config = {}) =>
+      safe(
+        apiClient.post(`/api/lessons/modules/${moduleId}/content`, formData, {
+          ...config,
+          headers: {
+            ...(config.headers || {}),
+            "Content-Type": "multipart/form-data",
+          },
+        }),
+      ),
+    updateContent: (contentId, payload, config = {}) =>
+      safe(apiClient.patch(`/api/lessons/content/${contentId}`, payload, config)),
+    deleteContent: (contentId, config = {}) =>
+      safe(apiClient.delete(`/api/lessons/content/${contentId}`, config)),
+  },
+
+  announcements: {
+    list: (params, config = {}) =>
+      safe(
+        apiClient.get("/api/announcements", {
+          ...config,
+          params: cleanParams(params),
+        }),
+      ),
+    create: (payload, config = {}) =>
+      safe(apiClient.post("/api/announcements", payload, config)),
+    update: (id, payload, config = {}) =>
+      safe(apiClient.patch(`/api/announcements/${id}`, payload, config)),
+    delete: (id, config = {}) =>
+      safe(apiClient.delete(`/api/announcements/${id}`, config)),
+  },
+
+  gradebook: {
+    list: (params, config = {}) =>
+      safe(
+        apiClient.get("/api/gradebook", {
+          ...config,
+          params: cleanParams(params),
+        }),
+      ),
+    updateSubmission: (submissionId, payload, config = {}) =>
+      safe(
+        apiClient.patch(
+          `/api/gradebook/submissions/${submissionId}`,
+          payload,
+          config,
+        ),
+      ),
+    updateQuizAttempt: (attemptId, payload, config = {}) =>
+      safe(
+        apiClient.patch(
+          `/api/gradebook/quiz-attempts/${attemptId}`,
+          payload,
+          config,
+        ),
+      ),
+  },
+
+  teachers: {
+    getDashboard: (params, config = {}) =>
+      safe(
+        apiClient.get("/api/teachers/dashboard", {
+          ...config,
+          params: cleanParams(params),
+        }),
+      ),
+    getContent: (params, config = {}) =>
+      safe(
+        apiClient.get("/api/teachers/content", {
+          ...config,
+          params: cleanParams(params),
+        }),
+      ),
+    getCourseRoster: (courseId, config = {}) =>
+      safe(apiClient.get(`/api/teachers/courses/${courseId}/roster`, config)),
+    listAssignments: (params, config = {}) =>
+      safe(
+        apiClient.get("/api/teachers/assignments", {
+          ...config,
+          params: cleanParams(params),
+        }),
+      ),
+    createAssignment: (payload, config = {}) =>
+      safe(apiClient.post("/api/teachers/assignments", payload, config)),
+    updateAssignment: (assignmentId, payload, config = {}) =>
+      safe(
+        apiClient.patch(
+          `/api/teachers/assignments/${assignmentId}`,
+          payload,
+          config,
+        ),
+      ),
+    getAssignmentSubmissions: (assignmentId, params, config = {}) =>
+      safe(
+        apiClient.get(`/api/teachers/assignments/${assignmentId}/submissions`, {
+          ...config,
+          params: cleanParams(params),
+        }),
+      ),
+    listQuizzes: (params, config = {}) =>
+      safe(
+        apiClient.get("/api/teachers/quizzes", {
+          ...config,
+          params: cleanParams(params),
+        }),
+      ),
+    createQuiz: (payload, config = {}) =>
+      safe(apiClient.post("/api/teachers/quizzes", payload, config)),
+    updateQuiz: (quizId, payload, config = {}) =>
+      safe(apiClient.patch(`/api/teachers/quizzes/${quizId}`, payload, config)),
+    getQuizResults: (quizId, params, config = {}) =>
+      safe(
+        apiClient.get(`/api/teachers/quizzes/${quizId}/results`, {
+          ...config,
+          params: cleanParams(params),
+        }),
+      ),
+  },
+
+  students: {
+    listAssignments: (params, config = {}) =>
+      safe(
+        apiClient.get("/api/students/assignments", {
+          ...config,
+          params: cleanParams(params),
+        }),
+      ),
+    submitAssignment: (formData, config = {}) =>
+      safe(
+        apiClient.post("/api/students/assignments/submit", formData, {
+          ...config,
+          headers: {
+            ...(config.headers || {}),
+            "Content-Type": "multipart/form-data",
+          },
+        }),
+      ),
+    listQuizzes: (params, config = {}) =>
+      safe(
+        apiClient.get("/api/students/quizzes", {
+          ...config,
+          params: cleanParams(params),
+        }),
+      ),
+  },
+
+  quizzes: {
+    listAssignedForStudent: (config = {}) =>
+      safe(apiClient.get("/api/quizzes/student/my", config)),
+    getAssignedContent: (assignmentId, config = {}) =>
+      safe(apiClient.get(`/api/quizzes/assignments/${assignmentId}/content`, config)),
+    startAssignedQuiz: (assignmentId, payload = {}, config = {}) =>
+      safe(
+        apiClient.post(
+          `/api/quizzes/assignments/${assignmentId}/start`,
+          payload,
+          config,
+        ),
+      ),
+    saveAttemptAnswers: (attemptId, payload, config = {}) =>
+      safe(
+        apiClient.patch(`/api/quizzes/attempts/${attemptId}/answers`, payload, config),
+      ),
+    submitAttempt: (attemptId, payload, config = {}) =>
+      safe(
+        apiClient.post(`/api/quizzes/attempts/${attemptId}/submit`, payload, config),
+      ),
+  },
   getSuperAiUsage: (params) =>
     axios.get("/api/admin/super/ai-usage", { params }).then((r) => r.data),
 
@@ -253,15 +454,21 @@ export const api = {
     previewDocument: (id) =>
       safe(apiClient.get(`/api/documents/preview/${id}`)),
 
-    exportPdf: async (payload) => {
+    exportPdf: async (payload, config = {}) => {
       try {
-        const res = await apiClient.post("/api/documents/export-pdf", payload, {
-          responseType: "blob",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/pdf",
+        const res = await apiClient.post(
+          "/api/documents/export-pdf",
+          payload,
+          {
+            ...config,
+            responseType: "blob",
+            headers: {
+              ...(config.headers || {}),
+              "Content-Type": "application/json",
+              Accept: "application/pdf",
+            },
           },
-        });
+        );
         return res.data;
       } catch (err) {
         throw new Error(normalizeApiError(err));
@@ -323,24 +530,137 @@ export const api = {
     updateAiSettings: (payload, config = {}) =>
       safe(apiClient.put(`${ADMIN_BASE}/ai/settings`, payload, config)),
 
-    // AI microservice
-    generateQuiz: (payload) =>
-      safe(aiClient.post("/api/quiz/generate", payload)),
-    generateAssignment: (payload) =>
-      safe(aiClient.post("/api/assignments/generate", payload)),
-    validateAssignment: (payload) =>
-      safe(aiClient.post("/api/assignments/validate", payload)),
-    uploadAssignmentFile: (formData) =>
+    // Canonical Node -> FastAPI bridge
+    generateQuiz: (payload, config = {}) =>
+      safe(apiClient.post("/api/ai/quiz/generate", payload, config)),
+    gradeQuiz: (payload, config = {}) =>
+      safe(apiClient.post("/api/ai/grade-quiz", payload, config)),
+    gradeQuestion: (payload, config = {}) =>
+      safe(apiClient.post("/api/ai/grade-question", payload, config)),
+    getGradingHealth: (config = {}) =>
+      safe(apiClient.get("/api/ai/grade/health", config)),
+
+    generateAssignment: (payload, config = {}) =>
+      safe(apiClient.post("/api/ai/assignments/generate", payload, config)),
+    validateAssignment: (payload, config = {}) =>
+      safe(apiClient.post("/api/ai/assignments/validate", payload, config)),
+    uploadAssignmentFile: (formData, config = {}) =>
       safe(
-        aiClient.post("/api/assignments/upload", formData, {
+        apiClient.post("/api/ai/assignments/upload", formData, {
+          ...config,
           headers: { "Content-Type": "multipart/form-data" },
         }),
       ),
-    gradeAssignment: (payload) =>
-      safe(aiClient.post("/api/assignments/grade", payload)),
-    getAssignmentById: (assignmentId) =>
-      safe(aiClient.get(`/api/assignments/${assignmentId}`)),
-    listAssignments: () => safe(aiClient.get("/api/assignments")),
+    saveAssignmentReport: (payload, config = {}) =>
+      safe(apiClient.post("/api/ai/assignments/report", payload, config)),
+    gradeAssignment: (payload, config = {}) =>
+      safe(apiClient.post("/api/ai/assignments/grade", payload, config)),
+    getAssignmentById: (assignmentId, config = {}) =>
+      safe(apiClient.get(`/api/ai/assignments/${assignmentId}`, config)),
+    listAssignments: (params, config = {}) =>
+      safe(
+        apiClient.get("/api/ai/assignments", {
+          ...config,
+          params: cleanParams(params),
+        }),
+      ),
+    getAssignmentsHealth: (config = {}) =>
+      safe(apiClient.get("/api/ai/assignments/health", config)),
+
+    startTutorSession: (sessionId, payload = {}, config = {}) =>
+      safe(
+        apiClient.post(
+          `/api/ai/tutor/session/${encodeURIComponent(sessionId)}`,
+          payload,
+          config,
+        ),
+      ),
+    uploadTutorMaterial: (sessionId, formData, config = {}) =>
+      safe(
+        apiClient.post(
+          `/api/ai/tutor/material/${encodeURIComponent(sessionId)}`,
+          formData,
+          {
+            ...config,
+            headers: { "Content-Type": "multipart/form-data" },
+          },
+        ),
+      ),
+    tutorChat: (payload, config = {}) =>
+      safe(
+        apiClient.post("/api/ai/tutor/chat", payload, {
+          ...config,
+          headers: isFormDataValue(payload)
+            ? { "Content-Type": "multipart/form-data" }
+            : undefined,
+        }),
+      ),
+
+    generateExplanation: (payload, config = {}) =>
+      safe(apiClient.post("/api/ai/learning/explanation", payload, config)),
+    generateEnhancedExplanations: (payload, config = {}) =>
+      safe(
+        apiClient.post("/api/ai/learning/explanations/batch", payload, config),
+      ),
+
+    downloadReportPdf: async (reportIdOrPath) => {
+      const reportId = normalizeReportId(reportIdOrPath, [
+        "/api/reports/pdf/",
+        "/api/download-report/",
+      ]);
+
+      try {
+        const res = await apiClient.get(`/api/ai/reports/pdf/${reportId}`, {
+          responseType: "blob",
+        });
+        return res.data;
+      } catch (err) {
+        throw new Error(normalizeApiError(err));
+      }
+    },
+    downloadReportJson: (reportIdOrPath) => {
+      const reportId = normalizeReportId(reportIdOrPath, [
+        "/api/reports/json/",
+        "/api/report/",
+      ]);
+      return safe(apiClient.get(`/api/ai/reports/json/${reportId}`));
+    },
+    downloadReportZip: async (reportIdOrPath) => {
+      const reportId = normalizeReportId(reportIdOrPath, [
+        "/api/reports/download/",
+      ]);
+
+      try {
+        const res = await apiClient.get(`/api/ai/reports/download/${reportId}`, {
+          responseType: "blob",
+        });
+        return res.data;
+      } catch (err) {
+        throw new Error(normalizeApiError(err));
+      }
+    },
+    getReportStatus: (reportId) =>
+      safe(apiClient.get(`/api/ai/reports/status/${reportId}`)),
+    getStudentReports: (studentId, params = {}) =>
+      safe(
+        apiClient.post("/api/ai/reports/student", {
+          student_id: studentId,
+          limit: params.limit,
+        }),
+      ),
+    getStudentProgress: (studentId, days = 30) =>
+      safe(
+        apiClient.post("/api/ai/reports/progress", {
+          student_id: studentId,
+          days,
+        }),
+      ),
+    getReportDashboard: (userIdentifier) =>
+      safe(
+        apiClient.get(
+          `/api/ai/reports/dashboard/${encodeURIComponent(userIdentifier)}`,
+        ),
+      ),
 
     // PDF export via pdfClient
     exportPdf: async (payload) => {
@@ -407,6 +727,11 @@ export const api = {
       if (body.role) body.role = upper(body.role);
       return safe(apiClient.post(`${ADMIN_BASE}/users/invite`, body, config));
     },
+    createUser: (payload, config = {}) => {
+      const body = { ...(payload || {}) };
+      if (body.role) body.role = upper(body.role);
+      return safe(apiClient.post(`${ADMIN_BASE}/users/create`, body, config));
+    },
 
     setUserStatus: (userId, enabled, config = {}) =>
       safe(
@@ -464,6 +789,28 @@ export const api = {
           config,
         ),
       ),
+    unenrollStudents: (classId, studentIds, config = {}) =>
+      safe(
+        apiClient.delete(`${ADMIN_BASE}/classes/${classId}/unenroll`, {
+          ...config,
+          data: { studentIds },
+        }),
+      ),
+
+    // Subjects
+    listSubjects: (params, config = {}) =>
+      safe(
+        apiClient.get(`${ADMIN_BASE}/subjects`, {
+          ...config,
+          params: cleanParams(params),
+        }),
+      ),
+    createSubject: (payload, config = {}) =>
+      safe(apiClient.post(`${ADMIN_BASE}/subjects`, payload, config)),
+    updateSubject: (id, payload, config = {}) =>
+      safe(apiClient.put(`${ADMIN_BASE}/subjects/${id}`, payload, config)),
+    deleteSubject: (id, config = {}) =>
+      safe(apiClient.delete(`${ADMIN_BASE}/subjects/${id}`, config)),
 
     // Branding
     getBranding: (config = {}) =>

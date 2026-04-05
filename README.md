@@ -97,3 +97,15 @@ PreGen is an actively developed project focused on building a reliable AI-driven
 
 This project is proprietary. All rights reserved.  
 Unauthorized copying, modification, or distribution is not permitted without explicit permission.
+
+---
+
+## Backend Startup Notes
+
+- The backend loads environment variables from `backend/.env` by default, even if the server is started from a different working directory.
+- Mongo configuration accepts `MONGO_URL`, `MONGO_URI`, or `MONGODB_URI`.
+- CORS allowlisting accepts `CLIENT_URL` plus optional `CORS_ORIGIN` / `CORS_ALLOWED_ORIGINS` values. These can be comma-separated, and trailing slashes are normalized automatically.
+- For local-only backend verification, set `MONGO_USE_LOCAL_FALLBACK=true` and provide `MONGO_LOCAL_URL` with a running local Mongo instance.
+- If you are using MongoDB Atlas, the current machine must be allowed to reach the cluster hosts on port `27017`; DNS resolution alone is not enough.
+- If Atlas SRV lookup fails in Node on your machine but the resolved Atlas shard hosts are reachable, you can temporarily use a direct-host replica-set URI in `MONGO_URL` for local verification. Keep this as a local-only override and do not commit real credentials.
+- Copy `backend/.env.example` when setting up a fresh local environment.

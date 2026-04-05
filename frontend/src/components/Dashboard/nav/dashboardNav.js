@@ -24,6 +24,12 @@ export const dashboardNav = [
         allowedRoles: [ROLES.STUDENT],
       },
       {
+        key: "materials",
+        label: "Materials",
+        to: "/dashboard/materials",
+        allowedRoles: [ROLES.STUDENT, ROLES.TEACHER],
+      },
+      {
         key: "assignmentsManage",
         label: "Assignments",
         to: "/dashboard/teacher/assignments",
@@ -34,6 +40,18 @@ export const dashboardNav = [
         label: "Quizzes",
         to: "/dashboard/teacher/quizzes",
         allowedRoles: [ROLES.TEACHER],
+      },
+      {
+        key: "announcements",
+        label: "Announcements",
+        to: "/dashboard/announcements",
+        allowedRoles: [ROLES.STUDENT, ROLES.TEACHER, ROLES.ADMIN, ROLES.SUPERADMIN],
+      },
+      {
+        key: "gradebook",
+        label: "Grades",
+        to: "/dashboard/grades",
+        allowedRoles: [ROLES.STUDENT, ROLES.TEACHER],
       },
     ],
   },
@@ -82,10 +100,22 @@ export const dashboardNav = [
         allowedRoles: [ROLES.ADMIN, ROLES.SUPERADMIN],
       },
       {
+        key: "subjects",
+        label: "Subjects",
+        to: "/dashboard/admin/subjects",
+        allowedRoles: [ROLES.ADMIN, ROLES.SUPERADMIN],
+      },
+      {
         key: "branding",
         label: "Branding",
         to: "/dashboard/admin/branding",
         allowedRoles: [ROLES.ADMIN, ROLES.SUPERADMIN],
+      },
+      {
+        key: "tenantAiControls",
+        label: "Tenant AI Controls",
+        to: "/dashboard/admin/ai-controls",
+        allowedRoles: [ROLES.ADMIN],
       },
       {
         key: "tenants",
@@ -97,6 +127,12 @@ export const dashboardNav = [
         key: "aiControls",
         label: "AI Controls",
         to: "/dashboard/superadmin/ai-controls",
+        allowedRoles: [ROLES.SUPERADMIN],
+      },
+      {
+        key: "aiCost",
+        label: "AI Usage & Cost",
+        to: "/dashboard/superadmin/ai-cost",
         allowedRoles: [ROLES.SUPERADMIN],
       },
       {

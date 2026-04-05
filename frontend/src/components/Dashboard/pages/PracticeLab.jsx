@@ -5,160 +5,28 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import axios from "axios";
 import "../../styles/dashboard.css";
 import "../../styles/PracticeLab.css";
-import { FaCalculator } from "react-icons/fa";
 import Casio from "../../casio";
-import { latexToImage } from "../../../utils/latexToImage";
+import api from "../../../services/api/api";
+import { useAuthContext } from "../../../context/AuthContext";
 
-// ==================== Configuration ====================
-const ASSIGNMENT_API_BASE_URL =
-  window.location.hostname === "localhost"
-    ? "http://localhost:8000"
-    : "https://pregen.onrender.com";
-
-const PDF_API_BASE_URL =
-  window.location.hostname === "localhost"
-    ? "http://localhost:4000"
-    : "https://preprod-pregen.onrender.com";
-
-// Axios instances
-const assignmentApi = axios.create({
-  baseURL: ASSIGNMENT_API_BASE_URL,
-  withCredentials: true,
-  timeout: 30000,
-});
-
-const pdfApi = axios.create({
-  baseURL: PDF_API_BASE_URL,
-  withCredentials: true,
-  timeout: 30000,
-});
-
-// ==================== API Service (with retry and config support) ====================
 const apiService = {
-  async postWithRetry(apiInstance, endpoint, data, config = {}, retries = 3) {
-    for (let i = 0; i < retries; i++) {
-      try {
-        const response = await apiInstance.post(endpoint, data, config);
-        return response.data;
-      } catch (error) {
-        console.error(`API POST failed (${i + 1}/${retries})`, {
-          endpoint,
-          status: error.response?.status,
-          message: error.message,
-        });
-
-        if (i === retries - 1) {
-          const enhancedError = new Error(
-            error.response?.data?.detail ||
-              error.response?.data?.message ||
-              error.message ||
-              `API call to ${endpoint} failed`,
-          );
-          enhancedError.status = error.response?.status;
-          enhancedError.data = error.response?.data;
-          throw enhancedError;
-        }
-        await new Promise((r) => setTimeout(r, 900 * (i + 1)));
-      }
-    }
-  },
-
-  async getWithRetry(apiInstance, endpoint, config = {}, retries = 3) {
-    for (let i = 0; i < retries; i++) {
-      try {
-        const response = await apiInstance.get(endpoint, config);
-        return response.data;
-      } catch (error) {
-        if (i === retries - 1) throw error;
-        await new Promise((r) => setTimeout(r, 900 * (i + 1)));
-      }
-    }
-  },
-
-  // Practice endpoints
-  generatePractice(data, config) {
-    return this.postWithRetry(
-      assignmentApi,
-      "/api/assignments/generate",
-      data,
-      config,
-    );
-  },
-  validatePractice(data, config) {
-    return this.postWithRetry(
-      assignmentApi,
-      "/api/assignments/validate",
-      data,
-      config,
-    );
-  },
-  uploadPracticeFile(formData, config) {
-    return this.postWithRetry(
-      assignmentApi,
-      "/api/assignments/upload",
-      formData,
-      {
-        headers: { "Content-Type": "multipart/form-data" },
-        ...(config || {}),
-      },
-    );
-  },
-  savePracticeReport(data, config) {
-    return this.postWithRetry(
-      assignmentApi,
-      "/api/assignments/report",
-      data,
-      config,
-    );
-  },
-  gradePractice(data, config) {
-    return this.postWithRetry(
-      assignmentApi,
-      "/api/assignments/grade",
-      data,
-      config,
-    );
-  },
-  getPracticeById(practiceId, config) {
-    return this.getWithRetry(
-      assignmentApi,
-      `/api/assignments/${practiceId}`,
-      config,
-    );
-  },
-  getAllPractices(config) {
-    return this.getWithRetry(assignmentApi, "/api/assignments", config);
-  },
-  getPracticesHealth(config) {
-    return this.getWithRetry(assignmentApi, "/api/assignments/health", config);
-  },
-
-  // PDF generation (returns blob)
-  async generatePDF({ html, filename }, config = {}) {
-    const res = await pdfApi.post(
-      "/api/documents/export-pdf",
-      { html, filename },
-      {
-        responseType: "blob",
-        headers: { Accept: "application/pdf" },
-        ...config,
-      },
-    );
-    return res.data;
-  },
-
-  // Enhanced explanations
-  generateEnhancedExplanations(data, config) {
-    return this.postWithRetry(
-      assignmentApi,
-      "/api/learning/explanations/batch",
-      data,
-      config,
-    );
-  },
+  generatePractice: (data, config) => api.ai.generateAssignment(data, config),
+  validatePractice: (data, config) => api.ai.validateAssignment(data, config),
+  uploadPracticeFile: (formData, config) =>
+    api.ai.uploadAssignmentFile(formData, config),
+  savePracticeReport: (data, config) =>
+    api.ai.saveAssignmentReport(data, config),
+  gradePractice: (data, config) => api.ai.gradeAssignment(data, config),
+  getPracticeById: (practiceId, config) =>
+    api.ai.getAssignmentById(practiceId, config),
+  getAllPractices: (config) => api.ai.listAssignments(undefined, config),
+  getPracticesHealth: (config) => api.ai.getAssignmentsHealth(config),
+  generatePDF: ({ html, filename }, config) =>
+    api.documents.exportPdf({ html, filename }, config),
+  generateEnhancedExplanations: (data, config) =>
+    api.ai.generateEnhancedExplanations(data, config),
 };
 
 // ==================== Utilities ====================
@@ -170,8 +38,21 @@ const safeFileName = (s = "practice") =>
 const normalizeText = (str = "") =>
   String(str).replace(/\s+/g, " ").replace(/\n+/g, " ").trim();
 
+const asCourses = (value) => {
+  if (Array.isArray(value?.courses)) return value.courses;
+  if (Array.isArray(value?.items)) return value.items;
+  if (Array.isArray(value)) return value;
+  return [];
+};
+
+const compactText = (value, max = 1800) => {
+  const text = normalizeText(value);
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+};
+
 // ==================== Main PracticeLab Component ====================
 export default function PracticeLab() {
+  const { user } = useAuthContext();
   // ---------- Mobile detection and tab state ----------
   const [mobileTab, setMobileTab] = useState("practice");
   const [isMobile, setIsMobile] = useState(
@@ -212,11 +93,37 @@ export default function PracticeLab() {
   const [enhancedExplanations, setEnhancedExplanations] = useState({});
   const [alertMessage, setAlertMessage] = useState("");
   const [apiHealth, setApiHealth] = useState(null);
+  const [courses, setCourses] = useState([]);
+  const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [courseModules, setCourseModules] = useState([]);
+  const [selectedMaterialId, setSelectedMaterialId] = useState("");
 
   // Refs
   const dragRef = useRef({ dragging: false, offsetX: 0, offsetY: 0 });
-  const latexCache = useRef(new Map());
   const abortRef = useRef(null);
+
+  const selectedCourse = useMemo(
+    () => courses.find((course) => course._id === selectedCourseId) || null,
+    [courses, selectedCourseId],
+  );
+
+  const materialOptions = useMemo(
+    () =>
+      (courseModules || []).flatMap((module) =>
+        (module.items || []).map((item) => ({
+          ...item,
+          moduleTitle: module.title || "Module",
+        })),
+      ),
+    [courseModules],
+  );
+
+  const selectedMaterial = useMemo(
+    () =>
+      materialOptions.find((item) => String(item._id) === String(selectedMaterialId)) ||
+      null,
+    [materialOptions, selectedMaterialId],
+  );
 
   // ---------- Initial Load ----------
   useEffect(() => {
@@ -224,6 +131,7 @@ export default function PracticeLab() {
     (async () => {
       await loadPractices(live);
       await checkApiHealth(live);
+      await loadCourseContext(live);
     })();
     return () => {
       live = false;
@@ -262,55 +170,79 @@ export default function PracticeLab() {
     }
   };
 
-  // ---------- LaTeX Helpers ----------
-  const parseLatexSegments = (text = "") => {
-    if (!text) return [{ type: "text", value: "" }];
-    const parts = [];
-    const regex = /\$\$(.*?)\$\$|\$(.*?)\$/gs;
-    let lastIndex = 0;
-    let m;
-    while ((m = regex.exec(text)) !== null) {
-      const matchStart = m.index;
-      if (matchStart > lastIndex) {
-        parts.push({ type: "text", value: text.slice(lastIndex, matchStart) });
-      }
-      const latex = m[1] || m[2] || "";
-      parts.push({ type: "latex", latex });
-      lastIndex = regex.lastIndex;
-    }
-    if (lastIndex < text.length) {
-      parts.push({ type: "text", value: text.slice(lastIndex) });
-    }
-    return parts;
-  };
-
-  const getLatexImage = async (latex) => {
-    if (!latex) return null;
-    const key = latex.trim();
-    if (latexCache.current.has(key)) return latexCache.current.get(key);
+  const loadCourseContext = async (live = true) => {
     try {
-      const imgSrc = await latexToImage(key);
-      latexCache.current.set(key, imgSrc);
-      return imgSrc;
-    } catch (err) {
-      console.warn("latexToImage failed for:", key, err);
-      return null;
+      const response = await api.courses.getAllCourses({ limit: 100 });
+      const nextCourses = asCourses(response);
+      if (!live) return;
+      setCourses(nextCourses);
+      setSelectedCourseId((current) => current || nextCourses[0]?._id || "");
+    } catch (error) {
+      console.warn("Failed to load course context for practice lab:", error);
+      if (live) setCourses([]);
     }
   };
 
-  const renderTextWithLatex = useCallback(async (rawText = "") => {
-    const segments = parseLatexSegments(rawText);
-    const out = [];
-    for (const seg of segments) {
-      if (seg.type === "text") out.push({ type: "text", value: seg.value });
-      else if (seg.type === "latex") {
-        const src = await getLatexImage(seg.latex);
-        if (src) out.push({ type: "image", src });
-        else out.push({ type: "text", value: `\\(${seg.latex}\\)` });
+  const loadCourseMaterials = useCallback(async (courseId, live = true) => {
+    if (!courseId) {
+      if (live) {
+        setCourseModules([]);
+        setSelectedMaterialId("");
+      }
+      return;
+    }
+
+    try {
+      const response = await api.lessons.listCourseLessons(courseId);
+      const modules = Array.isArray(response?.modules) ? response.modules : [];
+      if (!live) return;
+      setCourseModules(modules);
+      setSelectedMaterialId((current) => {
+        if (!current) return "";
+        const exists = modules.some((module) =>
+          (module.items || []).some(
+            (item) => String(item._id) === String(current),
+          ),
+        );
+        return exists ? current : "";
+      });
+    } catch (error) {
+      console.warn("Failed to load lesson context for practice lab:", error);
+      if (live) {
+        setCourseModules([]);
+        setSelectedMaterialId("");
       }
     }
-    return out;
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    loadCourseMaterials(selectedCourseId, live);
+    return () => {
+      live = false;
+    };
+  }, [selectedCourseId, loadCourseMaterials]);
+
+  const buildStudyContext = useCallback(() => {
+    const parts = [];
+
+    if (selectedCourse?.title) parts.push(`Course: ${selectedCourse.title}`);
+    if (selectedMaterial?.moduleTitle) {
+      parts.push(`Module: ${selectedMaterial.moduleTitle}`);
+    }
+    if (selectedMaterial?.title) parts.push(`Material: ${selectedMaterial.title}`);
+    if (selectedMaterial?.description) {
+      parts.push(`Description: ${selectedMaterial.description}`);
+    }
+    if (selectedMaterial?.textContent) {
+      parts.push(`Lesson text: ${compactText(selectedMaterial.textContent)}`);
+    }
+    if (selectedMaterial?.url) {
+      parts.push(`Reference URL: ${selectedMaterial.url}`);
+    }
+
+    return compactText(parts.join("\n"), 2200);
+  }, [selectedCourse, selectedMaterial]);
 
   // ---------- Enhanced Explanations ----------
   const generateEnhancedExplanationsForPractice = async () => {
@@ -381,8 +313,12 @@ export default function PracticeLab() {
             student_answers: studentAnswers,
             grading_results: gradingResults,
           },
-          student_id: "practice_user",
-          workspace_id: "main_workspace",
+          student_id: user?._id ? String(user._id) : "unknown_student",
+          workspace_id:
+            practice.courseId ||
+            selectedCourseId ||
+            practice.workspaceId ||
+            undefined,
           assignment_title: practice.title,
         };
 
@@ -399,7 +335,7 @@ export default function PracticeLab() {
         return null;
       }
     },
-    [studentAnswers, gradingResults],
+    [gradingResults, selectedCourseId, studentAnswers, user?._id],
   );
 
   // ---------- PDF Generation (with preview) ----------
@@ -725,19 +661,46 @@ export default function PracticeLab() {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      const studyContext = buildStudyContext();
+      const scopedInstructions = [
+        "Generate student-safe study practice only.",
+        selectedCourse?.title
+          ? `Keep the practice aligned with the selected course: ${selectedCourse.title}.`
+          : "",
+        selectedMaterial?.title
+          ? `Base the practice primarily on the selected lesson material: ${selectedMaterial.title}.`
+          : "",
+        studyContext ? `Source context:\n${studyContext}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
       const practiceData = {
         topic: topic.split(",")[0].trim(),
-        grade_level: gradeLevel,
-        subject,
+        grade_level:
+          selectedCourse?.gradeLevel ||
+          selectedCourse?.level ||
+          gradeLevel,
+        subject:
+          selectedCourse?.subject?.name ||
+          selectedCourse?.subjectName ||
+          subject,
         num_questions: numQuestions,
         language: "English",
         question_type: questionType,
         difficulty,
         assignment_type: practiceType,
-        curriculum,
+        curriculum: selectedCourse?.curriculum || curriculum,
         exam_focus: examFocus,
-        instructions: "",
-        learning_objectives: [],
+        instructions: scopedInstructions,
+        learning_objectives: [
+          selectedMaterial?.title
+            ? `Review the key ideas in ${selectedMaterial.title}`
+            : "",
+          selectedCourse?.title
+            ? `Practice concepts from ${selectedCourse.title}`
+            : "",
+        ].filter(Boolean),
         total_points: 100,
         estimated_time: "",
       };
@@ -771,21 +734,40 @@ export default function PracticeLab() {
         id: practice.id || `practice-${Date.now()}`,
         title: `Practice: ${practice.topic || topic}`,
         topic: practice.topic || topic,
-        subject: practice.subject || subject,
-        grade_level: practice.grade_level || gradeLevel,
+        subject:
+          practice.subject ||
+          selectedCourse?.subject?.name ||
+          selectedCourse?.subjectName ||
+          subject,
+        grade_level:
+          practice.grade_level ||
+          selectedCourse?.gradeLevel ||
+          selectedCourse?.level ||
+          gradeLevel,
         difficulty: practice.difficulty || difficulty,
         assignment_type: practice.assignment_type || practiceType,
-        curriculum: practice.curriculum || curriculum,
+        curriculum:
+          practice.curriculum || selectedCourse?.curriculum || curriculum,
         questions: formattedQuestions,
         total_points: practice.total_points || 100,
         estimated_time: practice.estimated_time || "",
-        instructions: practice.instructions || "",
-        learning_objectives: practice.learning_objectives || [],
+        instructions: practice.instructions || scopedInstructions,
+        learning_objectives:
+          practice.learning_objectives ||
+          [
+            selectedMaterial?.title
+              ? `Review the key ideas in ${selectedMaterial.title}`
+              : "",
+          ].filter(Boolean),
         confidence:
           typeof practice.confidence === "number" ? practice.confidence : 1.0,
         generated_at: new Date().toISOString(),
         due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         exam_focus: examFocus,
+        courseId: selectedCourseId || null,
+        courseTitle: selectedCourse?.title || "",
+        materialId: selectedMaterial?._id || "",
+        materialTitle: selectedMaterial?.title || "",
       };
 
       const reportId = await savePracticeReport(newPractice);
@@ -840,7 +822,10 @@ export default function PracticeLab() {
 
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("workspace_id", "practices");
+    formData.append(
+      "workspace_id",
+      currentPractice?.courseId || selectedCourseId || "practices",
+    );
     if (currentPractice) formData.append("assignment_id", currentPractice.id);
 
     try {
@@ -1192,6 +1177,54 @@ export default function PracticeLab() {
 
                     <div className="control-row">
                       <div className="control-group">
+                        <label>Course context</label>
+                        <select
+                          value={selectedCourseId}
+                          onChange={(e) => setSelectedCourseId(e.target.value)}
+                        >
+                          <option value="">No specific course</option>
+                          {courses.map((course) => (
+                            <option key={course._id} value={course._id}>
+                              {course.title}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="control-group">
+                        <label>Lesson material</label>
+                        <select
+                          value={selectedMaterialId}
+                          onChange={(e) => setSelectedMaterialId(e.target.value)}
+                          disabled={!selectedCourseId || !materialOptions.length}
+                        >
+                          <option value="">General course practice</option>
+                          {materialOptions.map((item) => (
+                            <option key={item._id} value={item._id}>
+                              {item.moduleTitle}: {item.title}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {(selectedCourse || selectedMaterial) && (
+                      <div className="card-inner" style={{ marginTop: 12 }}>
+                        <h5 className="mb-2">Study scope</h5>
+                        <p className="mb-1">
+                          {selectedMaterial
+                            ? `Practice will stay anchored to ${selectedMaterial.title}${selectedCourse?.title ? ` in ${selectedCourse.title}` : ""}.`
+                            : `Practice will stay aligned to ${selectedCourse?.title || "the selected course"}.`}
+                        </p>
+                        {selectedMaterial?.description ? (
+                          <p className="mb-0 text-muted">
+                            {selectedMaterial.description}
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
+
+                    <div className="control-row">
+                      <div className="control-group">
                         <label>Subject</label>
                         <select
                           value={subject}
@@ -1345,6 +1378,16 @@ export default function PracticeLab() {
                       </div>
                     </div>
                     <div className="assignment-meta-list">
+                      {currentPractice.courseTitle && (
+                        <span className="badge slate">
+                          Course: {currentPractice.courseTitle}
+                        </span>
+                      )}
+                      {currentPractice.materialTitle && (
+                        <span className="badge cyan">
+                          Material: {currentPractice.materialTitle}
+                        </span>
+                      )}
                       <span className="badge mint">
                         {currentPractice.subject}
                       </span>
@@ -1678,6 +1721,16 @@ export default function PracticeLab() {
                           >
                             <h4>{practice.title}</h4>
                             <div className="assignment-meta">
+                              {practice.courseTitle ? (
+                                <span className="badge slate">
+                                  Course: {practice.courseTitle}
+                                </span>
+                              ) : null}
+                              {practice.materialTitle ? (
+                                <span className="badge cyan">
+                                  Material: {practice.materialTitle}
+                                </span>
+                              ) : null}
                               <span className="badge slate">
                                 Topic: {practice.topic}
                               </span>

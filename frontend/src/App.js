@@ -11,7 +11,7 @@ import { ToastContainer } from "react-toastify";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "react-toastify/dist/ReactToastify.css";
 
-import { AuthProvider, useAuthContext } from "./context/AuthContext";
+import { useAuthContext } from "./context/AuthContext";
 import ProtectedRoute from "./components/Auth/ProtectedRoute";
 
 import RequireRole from "./components/Dashboard/guards/RequireRole";
@@ -55,6 +55,7 @@ const UserManagementPage = lazyPage(
 const AcademicStructurePage = lazyPage(
   () => import("./pages/tools/AcademicStructurePage"),
 );
+const SubjectsPage = lazyPage(() => import("./pages/tools/SubjectsPage"));
 const BrandingPage = lazyPage(() => import("./pages/tools/BrandingPage"));
 const AIControlsPage = lazyPage(() => import("./pages/tools/AIControlsPage"));
 const AnalyticsReportsPage = lazyPage(
@@ -66,11 +67,14 @@ const ParentPortal = lazyPage(
   () => import("./pages/ParentPortal"),
 );
 const TeacherPortal = lazyPage(
-  () => import("./components/Dashboard/pages/TeacherQuiz"),
+  () => import("./pages/TeacherPortal"),
 );
 
 const TenantsPage = lazyPage(
   () => import("./components/Dashboard/pages/SuperAdmin/TenantsPage"),
+);
+const SuperDashboardPage = lazyPage(
+  () => import("./components/Dashboard/pages/SuperAdmin/SuperDashboardPage"),
 );
 const AICostPage = lazyPage(
   () => import("./components/Dashboard/pages/SuperAdmin/AICostPage"),
@@ -81,6 +85,9 @@ const AuditLogsPage = lazyPage(
 const FeatureFlagsPage = lazyPage(
   () => import("./components/Dashboard/pages/SuperAdmin/FeatureFlagsPage"),
 );
+const TenantScopeRedirect = lazyPage(
+  () => import("./components/Dashboard/pages/SuperAdmin/TenantScopeRedirect"),
+);
 
 // dashboard feature pages (also shown in pages/SuperAdmin)
 const AITutor = lazyPage(() => import("./components/Dashboard/pages/AITutor"));
@@ -89,6 +96,15 @@ const Assignments = lazyPage(
 );
 const PracticeLab = lazyPage(
   () => import("./components/Dashboard/pages/PracticeLab"),
+);
+const LessonsPage = lazyPage(
+  () => import("./components/Dashboard/pages/LessonsPage"),
+);
+const AnnouncementsPage = lazyPage(
+  () => import("./components/Dashboard/pages/AnnouncementsPage"),
+);
+const GradebookPage = lazyPage(
+  () => import("./components/Dashboard/pages/GradebookPage"),
 );
 const QuizGenerator = lazyPage(
   () => import("./components/Dashboard/pages/QuizGenerator"),
@@ -145,34 +161,33 @@ const DashboardAppLayout = () => (
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <ToastContainer
-          position="bottom-right"
-          theme="colored"
-          autoClose={2500}
-        />
+    <BrowserRouter>
+      <ToastContainer
+        position="bottom-right"
+        theme="colored"
+        autoClose={2500}
+      />
 
-        <Suspense fallback={<AppFallback />}>
-          <Routes>
-            {/* ---------- Public ---------- */}
-            <Route element={<PublicLayout />}>
-              <Route path="/" element={<HomeOrRedirect />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<Signup />} />
-              <Route path="/contact" element={<Contact />} />
-              <Route path="/SearchResults" element={<SearchResults />} />
-              <Route path="/CasioCalculator" element={<CasioCalculator />} />
-            </Route>
+      <Suspense fallback={<AppFallback />}>
+        <Routes>
+          {/* ---------- Public ---------- */}
+          <Route element={<PublicLayout />}>
+            <Route path="/" element={<HomeOrRedirect />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/contact" element={<Contact />} />
+            <Route path="/SearchResults" element={<SearchResults />} />
+            <Route path="/CasioCalculator" element={<CasioCalculator />} />
+          </Route>
 
-            {/* ---------- Protected shell ---------- */}
-            <Route
-              element={
-                <ProtectedRoute>
-                  <Outlet />
-                </ProtectedRoute>
-              }
-            >
+          {/* ---------- Protected shell ---------- */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <Outlet />
+              </ProtectedRoute>
+            }
+          >
               {/* Legacy redirects */}
               <Route
                 path="/settings"
@@ -206,8 +221,8 @@ export default function App() {
                 }
               />
 
-              {/* Unified dashboard */}
-              <Route path="/dashboard" element={<DashboardAppLayout />}>
+            {/* Unified dashboard */}
+            <Route path="/dashboard" element={<DashboardAppLayout />}>
                 <Route index element={<DashboardHomeRedirect />} />
 
                 {/* ---------- STUDENT ---------- */}
@@ -232,6 +247,22 @@ export default function App() {
                   element={
                     <RequireRole allowedRoles={[ROLES.STUDENT]}>
                       <PracticeLab />
+                    </RequireRole>
+                  }
+                />
+                <Route
+                  path="materials"
+                  element={
+                    <RequireRole allowedRoles={[ROLES.STUDENT, ROLES.TEACHER]}>
+                      <LessonsPage />
+                    </RequireRole>
+                  }
+                />
+                <Route
+                  path="grades"
+                  element={
+                    <RequireRole allowedRoles={[ROLES.STUDENT, ROLES.TEACHER]}>
+                      <GradebookPage />
                     </RequireRole>
                   }
                 />
@@ -281,6 +312,21 @@ export default function App() {
                     </RequireRole>
                   }
                 />
+                <Route
+                  path="announcements"
+                  element={
+                    <RequireRole
+                      allowedRoles={[
+                        ROLES.STUDENT,
+                        ROLES.TEACHER,
+                        ROLES.ADMIN,
+                        ROLES.SUPERADMIN,
+                      ]}
+                    >
+                      <AnnouncementsPage />
+                    </RequireRole>
+                  }
+                />
 
                 {/* ---------- ADMIN ---------- */}
                 <Route
@@ -296,6 +342,14 @@ export default function App() {
                   element={
                     <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
                       <AcademicStructurePage />
+                    </RequireRole>
+                  }
+                />
+                <Route
+                  path="admin/subjects"
+                  element={
+                    <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
+                      <SubjectsPage />
                     </RequireRole>
                   }
                 />
@@ -326,22 +380,38 @@ export default function App() {
 
                 {/* ---------- SUPERADMIN ---------- */}
 
-                <Route
-                  path="superadmin/tenants"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
-                      <TenantsPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="superadmin/ai-cost"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
-                      <AICostPage />
-                    </RequireRole>
-                  }
-                />
+              <Route
+                path="superadmin/dashboard"
+                element={
+                  <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
+                    <SuperDashboardPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="superadmin/tenants"
+                element={
+                  <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
+                    <TenantsPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="superadmin/tenants/:tenantId"
+                element={
+                  <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
+                    <TenantScopeRedirect />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="superadmin/ai-cost"
+                element={
+                  <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
+                    <AICostPage />
+                  </RequireRole>
+                }
+              />
                 <Route
                   path="superadmin/feature-flags"
                   element={
@@ -375,18 +445,14 @@ export default function App() {
                   }
                 />
 
-                <Route
-                  path="*"
-                  element={<Navigate to="/dashboard" replace />}
-                />
-              </Route>
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Route>
+          </Route>
 
-            {/* ---------- Catch-all ---------- */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
-    </AuthProvider>
+          {/* ---------- Catch-all ---------- */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </BrowserRouter>
   );
 }

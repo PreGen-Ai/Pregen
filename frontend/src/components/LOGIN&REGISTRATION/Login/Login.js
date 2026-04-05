@@ -150,7 +150,7 @@ const Login = ({ onLoginSuccess }) => {
                   type="button"
                   disabled={isLoading}
                 >
-                  Signup
+                  Request Access
                 </button>
               </Link>
             </div>

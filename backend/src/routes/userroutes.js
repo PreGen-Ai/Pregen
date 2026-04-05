@@ -29,9 +29,9 @@ import {
 const router = express.Router();
 
 /**
- * Public routes
+ * Auth routes
  */
-router.post("/signup", registerUser);
+router.post("/signup", ...requireAdmin, registerUser);
 router.post("/login", loginUser);
 router.post("/logout", logoutUser);
 

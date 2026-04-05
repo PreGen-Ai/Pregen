@@ -1,415 +1,636 @@
-import mongoose from "mongoose";
 import Course from "../models/CourseModel.js";
-import Assignment from "../models/Assignment.js";
-import Submission from "../models/Submission.js";
+import CourseMember from "../models/CourseMember.js";
 import CourseSection from "../models/CourseSectionModel.js";
 import CourseActivity from "../models/CourseActivityModel.js";
+import Assignment from "../models/Assignment.js";
+import AssignmentAssignment from "../models/AssignmentAssignment.js";
+import Submission from "../models/Submission.js";
+import Quiz from "../models/quiz.js";
+import {
+  buildTargetRows,
+  buildTenantMatch,
+  canAccessCourse,
+  getRequestTenantId,
+  getStudentAcademicContext,
+  hasStudentTargetAccess,
+  isAdminLike,
+  isTeacherLike,
+  isValidObjectId,
+  makePagination,
+  serializeAssignment,
+  serializeCourse,
+  serializeSubmission,
+  serializeQuiz,
+  toId,
+  userFields,
+} from "../utils/academicContract.js";
 
-const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+const escapeRegex = (value) =>
+  String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const roleOf = (req) => (req.user?.role || "").toLowerCase();
-const isAdminLike = (req) => ["admin", "superadmin"].includes(roleOf(req));
+async function getAccessibleCourseIdsForUser({ userId, tenantId }) {
+  const [ownedRows, memberRows] = await Promise.all([
+    Course.find({
+      createdBy: userId,
+      deleted: false,
+      ...buildTenantMatch(tenantId),
+    })
+      .select("_id")
+      .lean(),
+    CourseMember.find({
+      userId,
+      status: "active",
+    })
+      .select("courseId")
+      .lean(),
+  ]);
 
-const userFields = "firstName lastName username email role user_code";
+  const ownedIds = ownedRows.map((row) => toId(row._id)).filter(Boolean);
+  const memberIds = memberRows.map((row) => toId(row.courseId)).filter(Boolean);
+  const candidateIds = Array.from(new Set([...ownedIds, ...memberIds]));
 
-const isMemberOfCourse = async (courseId, userId) => {
-  const course = await Course.findOne({
-    _id: courseId,
+  if (!candidateIds.length) return [];
+
+  const tenantCourses = await Course.find({
+    _id: { $in: candidateIds },
     deleted: false,
-    $or: [{ createdBy: userId }, { "members.user": userId }],
-  }).select("_id");
-  return !!course;
-};
+    ...buildTenantMatch(tenantId),
+  })
+    .select("_id")
+    .lean();
 
-const escapeRegex = (s) =>
-  String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return tenantCourses.map((row) => toId(row._id)).filter(Boolean);
+}
 
+async function loadCourseMembers(courseId) {
+  const rows = await CourseMember.find({ courseId, status: "active" })
+    .populate("userId", userFields)
+    .sort({ joinedAt: 1 })
+    .lean();
 
+  return rows.map((row) => ({
+    _id: row._id,
+    role: row.role,
+    status: row.status,
+    joinedAt: row.joinedAt,
+    user: row.userId || null,
+  }));
+}
 
-/* ======================================================
-   0. GET COURSE BY ID (member/admin only)
-====================================================== */
+async function loadCourseBundle(courseId, tenantId) {
+  const courseMatch = { _id: courseId, deleted: false, ...buildTenantMatch(tenantId) };
+
+  const [course, members, sections, assignments, quizzes, activities] =
+    await Promise.all([
+      Course.findOne(courseMatch).populate("createdBy", userFields).lean(),
+      loadCourseMembers(courseId),
+      CourseSection.find({ courseId, deleted: false })
+        .sort({ position: 1, createdAt: 1 })
+        .lean(),
+      Assignment.find({
+        workspace: courseId,
+        deleted: false,
+        ...buildTenantMatch(tenantId),
+      })
+        .populate("teacher", userFields)
+        .populate("class", "name grade section")
+        .sort({ dueDate: 1, createdAt: -1 })
+        .lean(),
+      Quiz.find({
+        workspace: courseId,
+        deleted: false,
+        ...buildTenantMatch(tenantId),
+      })
+        .populate("teacher", userFields)
+        .populate("class", "name grade section")
+        .sort({ createdAt: -1 })
+        .lean(),
+      CourseActivity.find({
+        courseId,
+        deleted: false,
+        visibility: true,
+      })
+        .populate("userId", userFields)
+        .populate("assignmentId", "title dueDate status")
+        .populate("quizId", "title status")
+        .populate("documentId", "title originalName")
+        .sort({ createdAt: -1 })
+        .limit(25)
+        .lean(),
+    ]);
+
+  if (!course) return null;
+
+  return serializeCourse(course, {
+    members,
+    sections,
+    assignments: assignments.map((assignment) => serializeAssignment(assignment)),
+    quizzes: quizzes.map((quiz) => serializeQuiz(quiz)),
+    activities,
+  });
+}
+
+async function listCoursesForUser({ req, userId, page, limit, query, publicOnly = false }) {
+  const tenantId = getRequestTenantId(req);
+  const { page: safePage, limit: safeLimit, skip } = makePagination(page, limit);
+
+  const filter = {
+    deleted: false,
+    ...buildTenantMatch(tenantId),
+  };
+
+  if (publicOnly) {
+    filter.visibility = "public";
+    filter.archived = { $ne: true };
+  } else if (!isAdminLike(req)) {
+    const accessibleIds = await getAccessibleCourseIdsForUser({ userId, tenantId });
+    filter._id = { $in: accessibleIds.length ? accessibleIds : [] };
+  }
+
+  if (query) {
+    const safe = escapeRegex(query);
+    filter.$or = [
+      { title: { $regex: safe, $options: "i" } },
+      { description: { $regex: safe, $options: "i" } },
+      { code: { $regex: safe, $options: "i" } },
+    ];
+  }
+
+  const [total, courses] = await Promise.all([
+    Course.countDocuments(filter),
+    Course.find(filter)
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .populate("createdBy", userFields)
+      .lean(),
+  ]);
+
+  return {
+    page: safePage,
+    limit: safeLimit,
+    total,
+    pages: Math.ceil(total / safeLimit),
+    courses: courses.map((course) => serializeCourse(course)),
+  };
+}
+
 export const getCourseById = async (req, res) => {
   try {
     const { courseId } = req.params;
-    const userId = req.user?._id;
-
     if (!isValidObjectId(courseId)) {
       return res.status(400).json({ message: "Invalid courseId" });
     }
 
-    const allowed =
-      isAdminLike(req) || (await isMemberOfCourse(courseId, userId));
+    const course = await Course.findById(courseId).select(
+      "_id createdBy deleted tenantId",
+    );
+    const allowed = await canAccessCourse({ course, req });
 
-    if (!allowed) return res.status(403).json({ message: "Not allowed" });
+    if (!allowed) {
+      return res.status(403).json({ message: "Not allowed" });
+    }
 
-    const course = await Course.findById(courseId)
-      .populate("createdBy", userFields)
-      .populate("members.user", userFields)
-      .populate("sections")
-      .populate("assignments", "title dueDate status")
-      .populate("quizzes.quiz", "title dueDate status")
-      .populate("documents"); // consider pagination later
+    const bundle = await loadCourseBundle(courseId, getRequestTenantId(req));
+    if (!bundle) {
+      return res.status(404).json({ message: "Course not found" });
+    }
 
-    if (!course) return res.status(404).json({ message: "Course not found" });
-
-    res.json(course);
+    return res.json(bundle);
   } catch (err) {
-    res
+    return res
       .status(500)
       .json({ message: "Failed to fetch course", error: err.message });
   }
 };
 
-/* ======================================================
-   1. CREATE COURSE (admin/teacher/superadmin)
-====================================================== */
 export const createCourse = async (req, res) => {
-  const { title, description, visibility = "private" } = req.body;
-
   try {
-    const role = roleOf(req);
-    if (!["teacher", "admin", "superadmin"].includes(role)) {
+    if (!isTeacherLike(req)) {
       return res
         .status(403)
-        .json({ message: "Only teachers/admins can create courses." });
+        .json({ message: "Only teachers, admins, and superadmins can create courses." });
     }
 
-    const existing = await Course.findOne({ title, deleted: false });
-    if (existing)
-      return res.status(400).json({ message: "Course already exists." });
+    const title = String(req.body.title || "").trim();
+    const description = String(req.body.description || "").trim();
+    const shortName = String(req.body.shortName || "").trim();
+    const visibility = req.body.visibility === "public" ? "public" : "private";
 
-    const course = new Course({
+    if (!title) {
+      return res.status(400).json({ message: "title is required" });
+    }
+
+    const tenantId = getRequestTenantId(req);
+    const course = await Course.create({
       title,
       description,
-      createdBy: req.user._id,
+      shortName,
       visibility,
+      tenantId,
+      createdBy: req.user._id,
       type: "course",
-      members: [{ user: req.user._id, role: "teacher" }],
     });
 
-    await course.save();
-    res.status(201).json(course);
+    await CourseMember.findOneAndUpdate(
+      { courseId: course._id, userId: req.user._id },
+      {
+        $set: {
+          role: normalizeCourseRole(req.user?.role),
+          status: "active",
+        },
+        $setOnInsert: { joinedAt: new Date() },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+
+    const output = await Course.findById(course._id)
+      .populate("createdBy", userFields)
+      .lean();
+
+    return res.status(201).json(serializeCourse(output));
   } catch (err) {
-    res
+    return res
       .status(500)
       .json({ message: "Failed to create course", error: err.message });
   }
 };
 
-/* ======================================================
-   2. CREATE ASSIGNMENT + LINK TO COURSE (teacher/admin)
-====================================================== */
+function normalizeCourseRole(role) {
+  return String(role || "").trim().toUpperCase() === "TEACHER"
+    ? "teacher"
+    : "admin";
+}
+
 export const assignToCourse = async (req, res) => {
   try {
-    const role = roleOf(req);
-    if (!["teacher", "admin", "superadmin"].includes(role)) {
+    if (!isTeacherLike(req)) {
       return res
         .status(403)
-        .json({ message: "Only teachers/admins can assign." });
+        .json({ message: "Only teachers, admins, and superadmins can assign course work." });
     }
 
     const { courseId } = req.params;
-    if (!isValidObjectId(courseId))
+    if (!isValidObjectId(courseId)) {
       return res.status(400).json({ message: "Invalid courseId" });
-
-    const course = await Course.findById(courseId);
-    if (!course || course.deleted)
-      return res.status(404).json({ message: "Course not found" });
-
-    // optional: ensure user is a member/owner
-    const allowed =
-      isAdminLike(req) ||
-      course.createdBy.toString() === req.user._id.toString() ||
-      course.members.some((m) => m.user.toString() === req.user._id.toString());
-
-    if (!allowed) return res.status(403).json({ message: "Not allowed" });
-
-    const assignment = await Assignment.create({
-      title: req.body.title,
-      description: req.body.description,
-      dueDate: req.body.dueDate,
-      teacher: req.user._id,
-      workspace: courseId, // courseId used as workspace
-      type: req.body.type || "text_submission",
-      status: "published",
-      assignedStudents: req.body.assignedStudents || [],
-    });
-
-    course.assignments.push(assignment._id);
-    await course.save();
-
-    res.json({ success: true, message: "Assignment created", assignment });
-  } catch (err) {
-    res.status(500).json({ message: "Failed to assign", error: err.message });
-  }
-};
-
-/* ======================================================
-   3. SUBMIT ASSIGNMENT (use Submission collection) ✅ scalable
-====================================================== */
-export const uploadAssignmentSubmission = async (req, res) => {
-  try {
-    const role = roleOf(req);
-    if (role !== "student")
-      return res.status(403).json({ message: "Only students can submit." });
-
-    const { assignmentId } = req.params;
-    if (!isValidObjectId(assignmentId))
-      return res.status(400).json({ message: "Invalid assignmentId" });
-
-    const assignment = await Assignment.findById(assignmentId);
-    if (!assignment)
-      return res.status(404).json({ message: "Assignment not found" });
-
-    // prevent multiple submissions (basic)
-    const existing = await Submission.findOne({
-      assignmentId: assignment._id,
-      studentId: req.user._id,
-    });
-
-    if (existing) {
-      return res.status(400).json({ message: "Already submitted" });
     }
 
-    const files = (req.files || []).map((f) => ({
-      name: f.originalname,
-      path: f.path,
-      mimetype: f.mimetype,
-      size: f.size,
-    }));
+    const course = await Course.findById(courseId).select(
+      "_id createdBy deleted tenantId",
+    );
+    if (!course || course.deleted) {
+      return res.status(404).json({ message: "Course not found" });
+    }
 
-    const submission = await Submission.create({
-      assignmentId: assignment._id,
-      workspaceId: assignment.workspace, // courseId
-      studentId: req.user._id,
-      files,
-      submittedAt: new Date(),
-      feedback: "",
-      grade: null,
+    const allowed = await canAccessCourse({ course, req });
+    if (!allowed) {
+      return res.status(403).json({ message: "Not allowed" });
+    }
+
+    const title = String(req.body.title || "").trim();
+    const description = String(req.body.description || "").trim();
+    const instructions = String(req.body.instructions || "").trim();
+    const dueDateValue = req.body.dueDate ? new Date(req.body.dueDate) : null;
+    const classroomId = req.body.classroomId || req.body.classId || null;
+    const studentIds =
+      req.body.studentIds ||
+      req.body.assignToStudentIds ||
+      req.body.assignedStudents ||
+      [];
+
+    if (!title || !description || !dueDateValue || Number.isNaN(dueDateValue.getTime())) {
+      return res.status(400).json({
+        message: "title, description, and a valid dueDate are required",
+      });
+    }
+
+    const assignment = await Assignment.create({
+      tenantId: getRequestTenantId(req) || course.tenantId || null,
+      title,
+      description,
+      instructions,
+      dueDate: dueDateValue,
+      teacher: req.user._id,
+      workspace: courseId,
+      class: isValidObjectId(classroomId) ? classroomId : null,
+      type: req.body.type || "text_submission",
+      maxScore: Number(req.body.maxScore || 100),
+      allowedFileTypes: Array.isArray(req.body.allowedFileTypes)
+        ? req.body.allowedFileTypes
+        : [],
+      maxFileSize: Number(req.body.maxFileSize || 10),
+      maxFiles: Number(req.body.maxFiles || 5),
+      status:
+        req.body.status && ["draft", "published", "closed"].includes(req.body.status)
+          ? req.body.status
+          : "published",
+      materials: Array.isArray(req.body.materials) ? req.body.materials : [],
     });
 
-    res.json({ success: true, message: "Submission uploaded", submission });
+    const targetRows = buildTargetRows({
+      key: "assignmentId",
+      ownerId: assignment._id,
+      courseId,
+      classroomId,
+      studentIds,
+      dueDate: dueDateValue,
+      tenantId: getRequestTenantId(req) || course.tenantId || null,
+    });
+
+    if (targetRows.length) {
+      await AssignmentAssignment.insertMany(targetRows, { ordered: false });
+    }
+
+    const requestedSectionId = req.body.sectionId;
+    const sectionId =
+      requestedSectionId &&
+      isValidObjectId(requestedSectionId) &&
+      (await CourseSection.exists({
+        _id: requestedSectionId,
+        courseId,
+        deleted: false,
+      }))
+        ? requestedSectionId
+        : null;
+
+    await CourseActivity.create({
+      type: "assignment",
+      userId: req.user._id,
+      assignmentId: assignment._id,
+      courseId,
+      sectionId,
+      visibility: true,
+    });
+
+    const output = await Assignment.findById(assignment._id)
+      .populate("teacher", userFields)
+      .populate("class", "name grade section")
+      .lean();
+
+    return res.status(201).json({
+      success: true,
+      message: "Assignment created",
+      assignment: serializeAssignment(output),
+    });
   } catch (err) {
-    res.status(500).json({ message: "Failed to upload", error: err.message });
+    return res.status(500).json({ message: "Failed to assign", error: err.message });
   }
 };
 
-/* ======================================================
-   4. ADD ACTIVITY TO SECTION (teacher/admin)
-====================================================== */
 export const addActivityToSection = async (req, res) => {
   try {
-    const role = roleOf(req);
-    if (!["teacher", "admin", "superadmin"].includes(role)) {
+    if (!isTeacherLike(req)) {
       return res
         .status(403)
-        .json({ message: "Only teachers/admins can add activities." });
+        .json({ message: "Only teachers, admins, and superadmins can add activities." });
     }
 
     const { courseId, sectionId } = req.params;
-    const activityData = req.body;
-
     if (!isValidObjectId(courseId) || !isValidObjectId(sectionId)) {
       return res.status(400).json({ message: "Invalid courseId/sectionId" });
     }
 
-    const course = await Course.findById(courseId);
-    if (!course || course.deleted)
+    const course = await Course.findById(courseId).select(
+      "_id createdBy deleted tenantId",
+    );
+    if (!course || course.deleted) {
       return res.status(404).json({ message: "Course not found" });
+    }
 
-    const section = await CourseSection.findById(sectionId);
-    if (!section) return res.status(404).json({ message: "Section not found" });
+    const allowed = await canAccessCourse({ course, req });
+    if (!allowed) {
+      return res.status(403).json({ message: "Not allowed" });
+    }
+
+    const section = await CourseSection.findOne({
+      _id: sectionId,
+      courseId,
+      deleted: false,
+    });
+    if (!section) {
+      return res.status(404).json({ message: "Section not found" });
+    }
+
+    const type = String(req.body.type || "").trim();
+    const assignmentId = req.body.assignmentId || req.body.assignment || null;
+    const quizId = req.body.quizId || req.body.quiz || null;
+    const documentId = req.body.documentId || req.body.document || null;
+
+    if (!["assignment", "quiz", "resource"].includes(type)) {
+      return res.status(400).json({ message: "Unsupported activity type" });
+    }
 
     const activity = await CourseActivity.create({
-      type: activityData.type,
-      assignment: activityData.assignment || null,
-      quiz: activityData.quiz || null,
-      document: activityData.document || null,
-      course: courseId,
-      section: sectionId,
-      visibility: activityData.visibility ?? true,
+      type,
+      userId: req.user._id,
+      assignmentId: isValidObjectId(assignmentId) ? assignmentId : null,
+      quizId: isValidObjectId(quizId) ? quizId : null,
+      documentId: isValidObjectId(documentId) ? documentId : null,
+      courseId,
+      sectionId,
+      visibility: req.body.visibility !== false,
+      meta:
+        req.body.meta && typeof req.body.meta === "object" ? req.body.meta : {},
     });
 
-    section.activities.push(activity._id);
-    await section.save();
-
-    res.json({ success: true, message: "Activity added", activity });
+    return res.status(201).json({
+      success: true,
+      message: "Activity added",
+      activity,
+    });
   } catch (err) {
-    res
+    return res
       .status(500)
       .json({ message: "Failed to add activity", error: err.message });
   }
 };
 
-/* ======================================================
-   5. SEARCH COURSES (limit)
-====================================================== */
 export const searchCourses = async (req, res) => {
   try {
-    const q = (req.query.q || "").toString().trim();
+    const q = String(req.query.q || "").trim();
     const limit = Math.min(parseInt(req.query.limit || "20", 10), 50);
+    const tenantId = getRequestTenantId(req);
 
-    const filter = { deleted: false };
-    if (q)
-      filter.title = {
-        $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-        $options: "i",
-      };
+    const filter = {
+      deleted: false,
+      ...buildTenantMatch(tenantId),
+    };
 
-    const results = await Course.find(filter).limit(limit);
-    res.json(results);
+    if (!isAdminLike(req)) {
+      const accessibleIds = await getAccessibleCourseIdsForUser({
+        userId: req.user._id,
+        tenantId,
+      });
+      filter._id = { $in: accessibleIds.length ? accessibleIds : [] };
+    }
+
+    if (q) {
+      filter.$or = [
+        { title: { $regex: escapeRegex(q), $options: "i" } },
+        { description: { $regex: escapeRegex(q), $options: "i" } },
+        { code: { $regex: escapeRegex(q), $options: "i" } },
+      ];
+    }
+
+    const results = await Course.find(filter)
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .limit(limit)
+      .populate("createdBy", userFields)
+      .lean();
+
+    return res.json(results.map((course) => serializeCourse(course)));
   } catch (error) {
-    res.status(500).json({ message: "Failed to search", error: error.message });
+    return res.status(500).json({ message: "Failed to search", error: error.message });
   }
 };
 
-/* ======================================================
-   6. GET COURSE ACTIVITY (correct counting)
-====================================================== */
 export const getCourseActivity = async (req, res) => {
   try {
     const { courseId } = req.params;
-    if (!isValidObjectId(courseId))
+    if (!isValidObjectId(courseId)) {
       return res.status(400).json({ message: "Invalid courseId" });
+    }
 
-    const totalAssignments = await Assignment.countDocuments({
-      workspace: courseId,
-    });
+    const course = await Course.findById(courseId).select(
+      "_id createdBy deleted tenantId",
+    );
+    const allowed = await canAccessCourse({ course, req });
 
-    const totalSubmissions = await Submission.countDocuments({
-      workspaceId: courseId,
-    });
+    if (!allowed) {
+      return res.status(403).json({ message: "Not allowed" });
+    }
 
-    res.json({
+    const tenantId = getRequestTenantId(req);
+    const [totalAssignments, totalQuizzes, totalSubmissions, recentActivity] =
+      await Promise.all([
+        Assignment.countDocuments({
+          workspace: courseId,
+          deleted: false,
+          ...buildTenantMatch(tenantId),
+        }),
+        Quiz.countDocuments({
+          workspace: courseId,
+          deleted: false,
+          ...buildTenantMatch(tenantId),
+        }),
+        Submission.countDocuments({
+          workspaceId: courseId,
+          deleted: false,
+          ...buildTenantMatch(tenantId),
+        }),
+        CourseActivity.find({
+          courseId,
+          deleted: false,
+          visibility: true,
+        })
+          .sort({ createdAt: -1 })
+          .limit(10)
+          .lean(),
+      ]);
+
+    return res.json({
       courseId,
       totalAssignments,
+      totalQuizzes,
       totalSubmissions,
+      recentActivity,
       lastUpdated: new Date(),
     });
   } catch (error) {
-    res
+    return res
       .status(500)
       .json({ message: "Failed to fetch activity", error: error.message });
   }
 };
 
-/* ======================================================
-   7. ARCHIVE COURSE (teacher/admin)
-====================================================== */
 export const setCourseArchived = async (req, res) => {
   try {
-    const role = roleOf(req);
-    if (!["teacher", "admin", "superadmin"].includes(role)) {
-      return res.status(403).json({ message: "Not allowed" });
+    const course = await Course.findById(req.params.courseId);
+    if (!course || course.deleted) {
+      return res.status(404).json({ message: "Course not found" });
     }
 
-    const course = await Course.findById(req.params.courseId);
-    if (!course) return res.status(404).json({ message: "Course not found" });
+    const allowed = await canAccessCourse({ course, req });
+    if (!allowed || !isTeacherLike(req)) {
+      return res.status(403).json({ message: "Not allowed" });
+    }
 
     course.archived = !!req.body.archived;
     await course.save();
 
-    res.json({
+    return res.json({
       message: `Course ${course.archived ? "archived" : "unarchived"} successfully`,
     });
   } catch (error) {
-    res
+    return res
       .status(500)
       .json({ message: "Failed to update archive", error: error.message });
   }
 };
 
-/* ======================================================
-   8. GET COURSES BY USER ID (correct query)
-====================================================== */
 export const getCoursesByUser = async (req, res) => {
   try {
     const userId = req.params.userId;
-    if (!isValidObjectId(userId))
+    if (!isValidObjectId(userId)) {
       return res.status(400).json({ message: "Invalid userId" });
+    }
+
+    if (!isAdminLike(req) && String(req.user._id) !== String(userId)) {
+      return res.status(403).json({ message: "Not allowed" });
+    }
+
+    const tenantId = getRequestTenantId(req);
+    const courseIds = await getAccessibleCourseIdsForUser({ userId, tenantId });
 
     const courses = await Course.find({
+      _id: { $in: courseIds.length ? courseIds : [] },
       deleted: false,
-      $or: [{ createdBy: userId }, { "members.user": userId }],
+      ...buildTenantMatch(tenantId),
     })
-      .populate("members.user", userFields)
-      .populate("assignments", "title dueDate status");
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .populate("createdBy", userFields)
+      .lean();
 
-    res.json(courses);
+    return res.json(courses.map((course) => serializeCourse(course)));
   } catch (error) {
-    res
+    return res
       .status(500)
       .json({ message: "Failed to fetch courses", error: error.message });
   }
 };
 
-/* ======================================================
-   9. SOFT DELETE COURSE (admin/superadmin only)
-====================================================== */
 export const deleteCourse = async (req, res) => {
   try {
     if (!isAdminLike(req)) {
-      return res.status(403).json({ message: "Only admins can delete" });
+      return res.status(403).json({ message: "Only admins can delete courses" });
     }
 
     const course = await Course.findById(req.params.id);
-    if (!course) return res.status(404).json({ message: "Not found" });
+    if (!course) {
+      return res.status(404).json({ message: "Not found" });
+    }
 
     course.deleted = true;
+    course.deletedAt = new Date();
     await course.save();
 
-    res.json({ success: true, message: "Course deleted", course });
+    return res.json({ success: true, message: "Course deleted", course });
   } catch (error) {
-    res.status(500).json({ message: "Failed to delete", error: error.message });
+    return res.status(500).json({ message: "Failed to delete", error: error.message });
   }
 };
 
-/* ======================================================
-   10. GET ALL COURSES (admin/superadmin)
-   GET /api/courses
-====================================================== */
 export const getAllCourses = async (req, res) => {
   try {
-    if (!isAdminLike(req)) {
-      return res.status(403).json({ message: "Admins only" });
-    }
-
-    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit || "20", 10), 1), 100);
-    const q = (req.query.q || "").toString().trim();
-    const includeDeleted = req.query.includeDeleted === "true";
-
-    const filter = {};
-    if (!includeDeleted) filter.deleted = false;
-
-    if (q) {
-      const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      filter.$or = [
-        { title: { $regex: safe, $options: "i" } },
-        { name: { $regex: safe, $options: "i" } },
-        { code: { $regex: safe, $options: "i" } },
-      ];
-    }
-
-    const [total, courses] = await Promise.all([
-      Course.countDocuments(filter),
-      Course.find(filter)
-        .sort({ updatedAt: -1, createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .populate("createdBy", userFields)
-        .populate("members.user", userFields)
-        .lean(),
-    ]);
-
-    return res.json({
-      page,
-      limit,
-      total,
-      pages: Math.ceil(total / limit),
-      courses,
+    const out = await listCoursesForUser({
+      req,
+      userId: req.user._id,
+      page: req.query.page,
+      limit: req.query.limit,
+      query: req.query.q,
     });
+
+    return res.json(out);
   } catch (err) {
     return res.status(500).json({
       message: "Failed to fetch courses",
@@ -418,41 +639,17 @@ export const getAllCourses = async (req, res) => {
   }
 };
 
-/* ======================================================
-   NEW 1) GET MY COURSES LIST
-   GET /api/courses/my-courses/list
-   Auth required
-====================================================== */
 export const getMyCoursesList = async (req, res) => {
   try {
-    const userId = req.user?._id;
-    if (!userId) return res.status(401).json({ message: "Not authenticated" });
-
-    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit || "20", 10), 1), 100);
-
-    const filter = {
-      deleted: false,
-      $or: [{ createdBy: userId }, { "members.user": userId }],
-    };
-
-    const [total, courses] = await Promise.all([
-      Course.countDocuments(filter),
-      Course.find(filter)
-        .sort({ updatedAt: -1, createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .populate("createdBy", userFields)
-        .lean(),
-    ]);
-
-    return res.json({
-      page,
-      limit,
-      total,
-      pages: Math.ceil(total / limit),
-      courses,
+    const out = await listCoursesForUser({
+      req,
+      userId: req.user._id,
+      page: req.query.page,
+      limit: req.query.limit,
+      query: req.query.q,
     });
+
+    return res.json(out);
   } catch (err) {
     return res.status(500).json({
       message: "Failed to fetch my courses",
@@ -461,45 +658,17 @@ export const getMyCoursesList = async (req, res) => {
   }
 };
 
-/* ======================================================
-   NEW 2) SEARCH COURSES LIST
-   GET /api/courses/search/list
-   Auth required (internal search)
-====================================================== */
 export const searchCoursesList = async (req, res) => {
   try {
-    const q = (req.query.q || "").toString().trim();
-    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit || "20", 10), 1), 50);
-
-    const filter = { deleted: false };
-
-    if (q) {
-      const safe = escapeRegex(q);
-      filter.$or = [
-        { title: { $regex: safe, $options: "i" } },
-        { description: { $regex: safe, $options: "i" } },
-      ];
-    }
-
-    const [total, courses] = await Promise.all([
-      Course.countDocuments(filter),
-      Course.find(filter)
-        .sort({ updatedAt: -1, createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .select("title description visibility archived createdBy updatedAt createdAt")
-        .populate("createdBy", userFields)
-        .lean(),
-    ]);
-
-    return res.json({
-      page,
-      limit,
-      total,
-      pages: Math.ceil(total / limit),
-      courses,
+    const out = await listCoursesForUser({
+      req,
+      userId: req.user._id,
+      page: req.query.page,
+      limit: req.query.limit,
+      query: req.query.q,
     });
+
+    return res.json(out);
   } catch (error) {
     return res.status(500).json({
       message: "Failed to search courses",
@@ -508,49 +677,18 @@ export const searchCoursesList = async (req, res) => {
   }
 };
 
-/* ======================================================
-   NEW 3) PUBLIC COURSES LIST
-   GET /api/courses/public/list
-   No auth required
-====================================================== */
 export const getPublicCoursesList = async (req, res) => {
   try {
-    const q = (req.query.q || "").toString().trim();
-    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit || "20", 10), 1), 50);
-
-    const filter = {
-      deleted: false,
-      archived: { $ne: true },
-      visibility: "public",
-    };
-
-    if (q) {
-      const safe = escapeRegex(q);
-      filter.$or = [
-        { title: { $regex: safe, $options: "i" } },
-        { description: { $regex: safe, $options: "i" } },
-      ];
-    }
-
-    const [total, courses] = await Promise.all([
-      Course.countDocuments(filter),
-      Course.find(filter)
-        .sort({ updatedAt: -1, createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .select("title description visibility createdBy updatedAt createdAt")
-        .populate("createdBy", userFields)
-        .lean(),
-    ]);
-
-    return res.json({
-      page,
-      limit,
-      total,
-      pages: Math.ceil(total / limit),
-      courses,
+    const out = await listCoursesForUser({
+      req,
+      userId: req.user?._id || null,
+      page: req.query.page,
+      limit: req.query.limit,
+      query: req.query.q,
+      publicOnly: true,
     });
+
+    return res.json(out);
   } catch (error) {
     return res.status(500).json({
       message: "Failed to fetch public courses",
@@ -559,69 +697,112 @@ export const getPublicCoursesList = async (req, res) => {
   }
 };
 
-/* ======================================================
-   NEW 4) SUBMIT ASSIGNMENT (assignmentId only)
-   POST /api/courses/:assignmentId/submit
-   Student only
-====================================================== */
 export const submitAssignmentById = async (req, res) => {
   try {
-    const role = roleOf(req);
-    if (role !== "student") {
+    if (String(req.user?.role || "").trim().toUpperCase() !== "STUDENT") {
       return res.status(403).json({ message: "Only students can submit." });
     }
 
-    const { assignmentId } = req.params;
+    const assignmentId = req.params.assignmentId;
+    const routeCourseId = req.params.courseId || req.body.courseId || null;
+
     if (!isValidObjectId(assignmentId)) {
       return res.status(400).json({ message: "Invalid assignmentId" });
     }
 
-    const assignment = await Assignment.findById(assignmentId);
-    if (!assignment) {
+    const assignment = await Assignment.findById(assignmentId).select(
+      "_id tenantId teacher workspace class dueDate status deleted",
+    );
+    if (!assignment || assignment.deleted) {
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    const courseId = assignment.workspace; // you use workspace as courseId
-    if (courseId && !isValidObjectId(courseId)) {
-      return res.status(400).json({ message: "Invalid assignment workspace" });
+    if (assignment.status !== "published") {
+      return res.status(400).json({ message: "Assignment is not available" });
     }
 
-    // must be a member of the course unless admin-like (students are not admin-like anyway)
-    const allowed = await isMemberOfCourse(courseId, req.user._id);
-    if (!allowed) {
-      return res.status(403).json({ message: "Not allowed" });
+    if (assignment.dueDate && new Date(assignment.dueDate) < new Date()) {
+      return res.status(400).json({ message: "Assignment due date has passed" });
     }
 
-    const existing = await Submission.findOne({
-      assignmentId: assignment._id,
+    const courseId = toId(assignment.workspace);
+    if (!courseId || !isValidObjectId(courseId)) {
+      return res
+        .status(409)
+        .json({ message: "Assignment is missing a valid course relationship" });
+    }
+
+    if (routeCourseId && String(routeCourseId) !== String(courseId)) {
+      return res.status(400).json({ message: "assignmentId does not belong to the courseId route" });
+    }
+
+    const tenantId = getRequestTenantId(req) || assignment.tenantId || null;
+    const context = await getStudentAcademicContext(req.user._id, tenantId);
+
+    if (!context.courseIds.includes(String(courseId))) {
+      return res.status(403).json({ message: "Not enrolled in this course" });
+    }
+
+    const hasAccess = await hasStudentTargetAccess({
+      TargetModel: AssignmentAssignment,
+      key: "assignmentId",
+      ownerId: assignment._id,
       studentId: req.user._id,
+      courseId,
+      classroomIds: context.classroomIds,
+      tenantId,
     });
 
-    if (existing) {
-      return res.status(400).json({ message: "Already submitted" });
+    if (!hasAccess) {
+      return res.status(403).json({ message: "Assignment is not assigned to this student" });
     }
 
-    const files = (req.files || []).map((f) => ({
-      name: f.originalname,
-      path: f.path,
-      mimetype: f.mimetype,
-      size: f.size,
+    const files = (req.files || []).map((file) => ({
+      name: file.originalname,
+      path: file.path,
+      mimetype: file.mimetype,
+      size: file.size,
     }));
 
-    const submission = await Submission.create({
-      assignmentId: assignment._id,
-      workspaceId: courseId,
-      studentId: req.user._id,
-      files,
-      submittedAt: new Date(),
-      feedback: "",
-      grade: null,
-    });
+    const submission = await Submission.findOneAndUpdate(
+      {
+        assignmentId: assignment._id,
+        studentId: req.user._id,
+        workspaceId: courseId,
+      },
+      {
+        $set: {
+          tenantId,
+          workspaceId: courseId,
+          assignmentId: assignment._id,
+          studentId: req.user._id,
+          teacherId: assignment.teacher || null,
+          classroomId: assignment.class || null,
+          files,
+          answers: req.body.answers ?? null,
+          textSubmission: String(req.body.textSubmission || "").trim(),
+          submittedAt: new Date(),
+          gradingStatus: "submitted",
+          gradedBy: "NONE",
+          deleted: false,
+          deletedAt: null,
+        },
+        $setOnInsert: {
+          grade: null,
+          score: 0,
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+      },
+    );
 
     return res.json({
       success: true,
       message: "Submission uploaded",
-      submission,
+      submission: serializeSubmission(submission),
     });
   } catch (err) {
     return res.status(500).json({
@@ -631,15 +812,9 @@ export const submitAssignmentById = async (req, res) => {
   }
 };
 
-/* ======================================================
-   NEW 5) LIST COURSE ASSIGNMENT SUBMISSIONS
-   GET /api/courses/:courseId/assignments/submissions
-   Teacher/Admin/Superadmin
-====================================================== */
 export const getSubmissionsForCourse = async (req, res) => {
   try {
-    const role = roleOf(req);
-    if (!["teacher", "admin", "superadmin"].includes(role)) {
+    if (!isTeacherLike(req)) {
       return res.status(403).json({ message: "Not allowed" });
     }
 
@@ -648,28 +823,28 @@ export const getSubmissionsForCourse = async (req, res) => {
       return res.status(400).json({ message: "Invalid courseId" });
     }
 
-    const course = await Course.findById(courseId).select("createdBy members deleted");
-    if (!course || course.deleted) {
-      return res.status(404).json({ message: "Course not found" });
+    const course = await Course.findById(courseId).select(
+      "_id createdBy deleted tenantId",
+    );
+    const allowed = await canAccessCourse({ course, req });
+
+    if (!allowed) {
+      return res.status(403).json({ message: "Not allowed" });
     }
 
-    const allowed =
-      isAdminLike(req) ||
-      String(course.createdBy) === String(req.user._id) ||
-      course.members?.some((m) => String(m.user) === String(req.user._id));
-
-    if (!allowed) return res.status(403).json({ message: "Not allowed" });
-
-    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit || "20", 10), 1), 100);
-
-    const filter = { workspaceId: courseId };
+    const { page, limit, skip } = makePagination(req.query.page, req.query.limit);
+    const tenantId = getRequestTenantId(req);
+    const filter = {
+      workspaceId: courseId,
+      deleted: false,
+      ...buildTenantMatch(tenantId),
+    };
 
     const [total, submissions] = await Promise.all([
       Submission.countDocuments(filter),
       Submission.find(filter)
         .sort({ submittedAt: -1, createdAt: -1 })
-        .skip((page - 1) * limit)
+        .skip(skip)
         .limit(limit)
         .populate("studentId", userFields)
         .populate("assignmentId", "title dueDate status")
@@ -681,7 +856,9 @@ export const getSubmissionsForCourse = async (req, res) => {
       limit,
       total,
       pages: Math.ceil(total / limit),
-      submissions,
+      submissions: submissions.map((submission) =>
+        serializeSubmission(submission),
+      ),
     });
   } catch (err) {
     return res.status(500).json({

@@ -16,11 +16,14 @@ import morgan from "morgan";
 import {
   PORT,
   CLIENT_URL,
+  CORS_ALLOWED_ORIGINS,
   NODE_ENV,
   IS_PROD,
   MONGO_URI,
   MONGO_DB_NAME,
   JWT_SECRET,
+  getMongoConfigSummary,
+  normalizeOrigin,
 } from "../src/config/env.js";
 import { connectMongo } from "./config/mongo.js";
 import { connectRedis } from "./config/redis.js";
@@ -29,10 +32,15 @@ import { connectRedis } from "./config/redis.js";
 import userRoutes from "./routes/userroutes.js";
 import teacherRoutes from "./routes/teacherRoutes.js";
 import studentRoutes from "./routes/studentRoutes.js";
+import quizRoutes from "./routes/quizRoutes.js";
 import courseRoutes from "./routes/courseRoutes.js";
 import documentRoutes from "./routes/documentRoutes.js";
+import lessonsRoutes from "./routes/lessonsRoutes.js";
+import announcementsRoutes from "./routes/announcementsRoutes.js";
+import gradebookRoutes from "./routes/gradebookRoutes.js";
 import analyticRoutes from "./routes/analyticRoutes.js";
 import aiUsageRoutes from "./routes/aiUsage.routes.js";
+import aiRoutes from "./routes/ai.routes.js";
 
 // Admin
 import adminRouter from "./routes/admin/index.js"; // /api/admin/*
@@ -47,6 +55,14 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.set("trust proxy", 1);
+
+const mongoConfigSummary = getMongoConfigSummary();
+console.log(
+  `[startup] env=${mongoConfigSummary.envFile} mongoSource=${mongoConfigSummary.source} mongoMode=${mongoConfigSummary.mode} mongoScheme=${mongoConfigSummary.scheme}`,
+);
+console.log(
+  `[startup] mongoTargets=${mongoConfigSummary.targets.join(", ") || "(none)"} mongoDb=${mongoConfigSummary.dbName}`,
+);
 
 /**
  * ---------- Security & logging ----------
@@ -63,12 +79,22 @@ const allowedOrigins = [
   "https://preprod-pregen.netlify.app",
   "https://pregen.netlify.app",
   CLIENT_URL,
-].filter(Boolean);
+  ...CORS_ALLOWED_ORIGINS,
+]
+  .map((origin) => normalizeOrigin(origin))
+  .filter(Boolean);
+
+const allowedOriginSet = new Set(allowedOrigins);
+
+console.log(`[startup] corsAllowedOrigins=${Array.from(allowedOriginSet).join(", ")}`);
 
 const corsOptions = {
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true);
-    if (allowedOrigins.includes(origin)) return cb(null, true);
+    const normalizedOrigin = normalizeOrigin(origin);
+
+    if (!normalizedOrigin) return cb(null, true);
+    if (allowedOriginSet.has(normalizedOrigin)) return cb(null, true);
+
     return cb(new Error(`CORS blocked origin: ${origin}`));
   },
   credentials: true,
@@ -136,10 +162,10 @@ try {
   });
 
   sessionStore.on("error", (err) => {
-    console.error("Session store error:", err?.message || err);
+    console.error("[session] store error:", err?.message || err);
   });
 } catch (e) {
-  console.error("Session store init failed:", e?.message || e);
+  console.error("[session] store init failed:", e?.message || e);
   sessionStore = null;
 }
 
@@ -165,11 +191,16 @@ app.use(
 app.use("/api/users", userRoutes);
 app.use("/api/teachers", teacherRoutes);
 app.use("/api/students", studentRoutes);
+app.use("/api/quizzes", quizRoutes);
 
 app.use("/api/courses", courseRoutes);
 app.use("/api/documents", documentRoutes);
+app.use("/api/lessons", lessonsRoutes);
+app.use("/api/announcements", announcementsRoutes);
+app.use("/api/gradebook", gradebookRoutes);
 app.use("/api/analytics", analyticRoutes);
 app.use("/api/ai-usage", aiUsageRoutes);
+app.use("/api/ai", aiRoutes);
 
 /**
  * Admin routes
@@ -223,7 +254,20 @@ async function start() {
       console.log(`Client: ${CLIENT_URL}`);
     });
   } catch (e) {
-    console.error("❌ Startup failed:", e?.message || e);
+    console.error("[startup] failed:", e?.message || e);
+    if (Array.isArray(e?.mongoHints)) {
+      for (const hint of e.mongoHints) {
+        console.error(`[startup] mongo hint: ${hint}`);
+      }
+    }
+    if (e?.mongoConfig) {
+      console.error(
+        `[startup] mongo summary: env=${e.mongoConfig.envFile} source=${e.mongoConfig.source} mode=${e.mongoConfig.mode} scheme=${e.mongoConfig.scheme}`,
+      );
+      console.error(
+        `[startup] mongo targets: ${e.mongoConfig.targets.join(", ") || "(none)"}`,
+      );
+    }
     process.exit(1);
   }
 }

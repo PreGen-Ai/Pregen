@@ -7,6 +7,7 @@ import classesRoutes from "./classesRoutes.js";
 import aiRoutes from "./aiRoutes.js";
 import analyticsRoutes from "./analyticsRoutes.js";
 import brandingRoutes from "./brandingRoutes.js";
+import subjectsRoutes from "./subjectsRoutes.js";
 
 const router = express.Router();
 
@@ -16,6 +17,7 @@ router.use(requireAdmin);
 router.use("/dashboard", dashboardRoutes);
 router.use("/users", usersRoutes);
 router.use("/classes", classesRoutes);
+router.use("/subjects", subjectsRoutes);
 router.use("/ai", aiRoutes);
 router.use("/analytics", analyticsRoutes);
 router.use("/branding", brandingRoutes);

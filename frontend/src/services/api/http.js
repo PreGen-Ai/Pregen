@@ -9,22 +9,32 @@ import axios from "axios";
  */
 const hostname = typeof window !== "undefined" ? window.location.hostname : "";
 
+function getViteEnv() {
+  try {
+    return Function(
+      'try { return import.meta && import.meta.env ? import.meta.env : {}; } catch { return {}; }',
+    )();
+  } catch {
+    return {};
+  }
+}
+
+const viteEnv = getViteEnv();
+
 const ENV_API =
   (typeof process !== "undefined" &&
     process.env &&
     process.env.REACT_APP_API_BASE_URL) ||
-  (typeof import.meta !== "undefined" &&
-    import.meta.env &&
-    (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL)) ||
+  viteEnv.VITE_API_BASE_URL ||
+  viteEnv.VITE_API_URL ||
   "";
 
 const ENV_AI =
   (typeof process !== "undefined" &&
     process.env &&
     process.env.REACT_APP_AI_BASE_URL) ||
-  (typeof import.meta !== "undefined" &&
-    import.meta.env &&
-    (import.meta.env.VITE_AI_BASE_URL || import.meta.env.VITE_AI_URL)) ||
+  viteEnv.VITE_AI_BASE_URL ||
+  viteEnv.VITE_AI_URL ||
   "";
 
 export const API_BASE_URL =

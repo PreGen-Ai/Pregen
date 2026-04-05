@@ -3,6 +3,11 @@ const { Schema } = mongoose;
 
 const courseSectionSchema = new Schema(
   {
+    tenantId: {
+      type: String,
+      default: null,
+      index: true,
+    },
     courseId: {
       type: Schema.Types.ObjectId,
       ref: "Course",
@@ -22,6 +27,24 @@ const courseSectionSchema = new Schema(
       default: "",
       trim: true,
       maxlength: 5000,
+    },
+    createdBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+    subjectId: {
+      type: Schema.Types.ObjectId,
+      ref: "Subject",
+      default: null,
+      index: true,
+    },
+    classroomId: {
+      type: Schema.Types.ObjectId,
+      ref: "Classroom",
+      default: null,
+      index: true,
     },
 
     // ordering in course outline
@@ -59,9 +82,11 @@ courseSectionSchema.index({ courseId: 1, deleted: 1, position: 1 });
 
 // Optional: quick search within a course
 courseSectionSchema.index({ courseId: 1, title: 1 });
+courseSectionSchema.index({ tenantId: 1, courseId: 1, deleted: 1, position: 1 });
 
 courseSectionSchema.query.notDeleted = function () {
   return this.where({ deleted: false });
 };
 
-export default mongoose.model("CourseSection", courseSectionSchema);
+export default mongoose.models.CourseSection ||
+  mongoose.model("CourseSection", courseSectionSchema);

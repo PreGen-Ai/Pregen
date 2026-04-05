@@ -1,13 +1,14 @@
-// src/pages/tools/UserManagementPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import api from "../../services/api/api.js";
+import { useAuthContext } from "../../context/AuthContext";
 
 import "../../components/styles/admin-tools.css";
 
-const ROLES = ["ADMIN", "TEACHER", "STUDENT", "PARENT"];
+const FILTER_ROLES = ["ADMIN", "TEACHER", "STUDENT", "PARENT"];
+const CREATE_ROLES = ["ADMIN", "TEACHER", "STUDENT"];
 
-// light email check for MVP
 const isEmail = (v) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
     String(v || "")
@@ -18,11 +19,23 @@ const isEmail = (v) =>
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const getEnabled = (u) => {
-  // support both shapes: enabled OR disabled
   if (typeof u?.enabled === "boolean") return u.enabled;
   if (typeof u?.disabled === "boolean") return !u.disabled;
   return true;
 };
+
+function normalizeRole(role) {
+  return String(role || "").trim().toUpperCase();
+}
+
+function nameForUser(user) {
+  return (
+    user?.name ||
+    [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
+    user?.username ||
+    "—"
+  );
+}
 
 async function copyText(text) {
   try {
@@ -34,32 +47,47 @@ async function copyText(text) {
 }
 
 export default function UserManagementPage() {
+  const { user } = useAuthContext();
+  const role = normalizeRole(user?.role);
+  const isSuperAdmin = role === "SUPERADMIN";
+
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
 
-  // filters in UI
   const [q, setQ] = useState("");
-  const [role, setRole] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
   const [status, setStatus] = useState("");
+  const [tenantScope, setTenantScope] = useState("");
+  const [applied, setApplied] = useState({
+    q: "",
+    role: "",
+    status: "",
+    tenantId: "",
+  });
 
-  // applied filters (so typing does not spam backend)
-  const [applied, setApplied] = useState({ q: "", role: "", status: "" });
+  const [createForm, setCreateForm] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+    role: "STUDENT",
+  });
+  const [creating, setCreating] = useState(false);
+  const [lastCreateResult, setLastCreateResult] = useState(null);
 
-  // invite form
   const [invite, setInvite] = useState({
     name: "",
     email: "",
     role: "STUDENT",
+    password: "",
   });
-
   const [inviting, setInviting] = useState(false);
+  const [lastInviteResult, setLastInviteResult] = useState(null);
 
-  // per-user mutation loading map
-  const [busy, setBusy] = useState({}); // { [userId]: true }
+  const [busy, setBusy] = useState({});
   const setBusyFor = (userId, val) => setBusy((p) => ({ ...p, [userId]: val }));
 
-  // debounce apply on typing (MVP quality)
   const debounceRef = useRef(null);
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -72,10 +100,22 @@ export default function UserManagementPage() {
     };
   }, [q]);
 
-  // apply role/status immediately when changed
   useEffect(() => {
-    setApplied((p) => ({ ...p, role, status }));
-  }, [role, status]);
+    setApplied((p) => ({
+      ...p,
+      role: roleFilter,
+      status,
+      tenantId: isSuperAdmin ? tenantScope.trim() : "",
+    }));
+  }, [roleFilter, status, tenantScope, isSuperAdmin]);
+
+  const buildTenantConfig = (tenantId) =>
+    isSuperAdmin && tenantId
+      ? { headers: { "x-tenant-id": tenantId } }
+      : {};
+
+  const buildTenantBody = (body, tenantId) =>
+    isSuperAdmin && tenantId ? { ...body, tenantId } : body;
 
   async function load(filters = applied) {
     setLoading(true);
@@ -85,14 +125,17 @@ export default function UserManagementPage() {
         q: filters.q || "",
         role: filters.role || "",
         status: filters.status || "",
+        ...(isSuperAdmin && filters.tenantId
+          ? { tenantId: filters.tenantId }
+          : {}),
       });
 
-      // accept { items } or array
       const items = Array.isArray(data)
         ? data
         : Array.isArray(data?.items)
           ? data.items
           : [];
+
       setRows(items);
     } catch (e) {
       const msg = e?.message || "Failed to load users";
@@ -114,20 +157,19 @@ export default function UserManagementPage() {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applied.q, applied.role, applied.status]);
+  }, [applied.q, applied.role, applied.status, applied.tenantId, isSuperAdmin]);
 
   const stats = useMemo(() => {
     let enabledCount = 0;
     let disabledCount = 0;
     const roleCounts = {};
-    for (const r of ROLES) roleCounts[r] = 0;
+    for (const r of FILTER_ROLES) roleCounts[r] = 0;
 
     for (const u of rows) {
-      const en = getEnabled(u);
-      if (en) enabledCount += 1;
+      if (getEnabled(u)) enabledCount += 1;
       else disabledCount += 1;
 
-      const rr = String(u?.role || "").toUpperCase();
+      const rr = normalizeRole(u?.role);
       if (roleCounts[rr] !== undefined) roleCounts[rr] += 1;
     }
 
@@ -139,20 +181,18 @@ export default function UserManagementPage() {
     };
   }, [rows]);
 
-  // Optional client-side filter backup (in case backend ignores filters)
   const filtered = useMemo(() => {
     const needle = String(applied.q || "")
       .trim()
       .toLowerCase();
-    const rr = String(applied.role || "")
-      .trim()
-      .toUpperCase();
+    const rr = normalizeRole(applied.role);
     const st = String(applied.status || "")
       .trim()
       .toLowerCase();
+    const tenantId = String(applied.tenantId || "").trim();
 
     return rows.filter((u) => {
-      const name = String(u?.name || "").toLowerCase();
+      const name = nameForUser(u).toLowerCase();
       const email = String(u?.email || "").toLowerCase();
       const id = String(u?._id || "").toLowerCase();
 
@@ -161,39 +201,109 @@ export default function UserManagementPage() {
         name.includes(needle) ||
         email.includes(needle) ||
         id.includes(needle);
-      const okRole = !rr || String(u?.role || "").toUpperCase() === rr;
-
+      const okRole = !rr || normalizeRole(u?.role) === rr;
       const enabled = getEnabled(u);
       const okStatus =
         !st ||
         (st === "enabled" ? enabled : st === "disabled" ? !enabled : true);
+      const okTenant =
+        !tenantId || String(u?.tenantId || "").trim() === tenantId;
 
-      return okQ && okRole && okStatus;
+      return okQ && okRole && okStatus && okTenant;
     });
-  }, [rows, applied.q, applied.role, applied.status]);
+  }, [rows, applied.q, applied.role, applied.status, applied.tenantId]);
+
+  async function onCreateUser() {
+    if (creating) return;
+
+    const email = createForm.email.trim().toLowerCase();
+    const password = createForm.password;
+    const firstName = createForm.firstName.trim();
+    const lastName = createForm.lastName.trim();
+    const selectedRole = normalizeRole(createForm.role || "STUDENT");
+
+    if (isSuperAdmin && !tenantScope.trim()) {
+      return toast.error("Tenant ID is required for superadmin user creation");
+    }
+    if (!email) return toast.error("Email is required");
+    if (!isEmail(email)) return toast.error("Enter a valid email");
+    if (password.length < 6) {
+      return toast.error("Password must be at least 6 characters");
+    }
+    if (!CREATE_ROLES.includes(selectedRole)) {
+      return toast.error("Invalid role for create-user flow");
+    }
+
+    try {
+      setCreating(true);
+      const result = await api.admin.createUser(
+        buildTenantBody(
+          {
+            email,
+            password,
+            role: selectedRole,
+            firstName,
+            lastName,
+            username: email.split("@")[0],
+          },
+          tenantScope.trim(),
+        ),
+      );
+
+      setLastCreateResult(result);
+      toast.success("User created");
+      setCreateForm({
+        firstName: "",
+        lastName: "",
+        email: "",
+        password: "",
+        role: "STUDENT",
+      });
+      await sleep(150);
+      await load(applied);
+    } catch (e) {
+      toast.error(e?.message || "User creation failed");
+    } finally {
+      setCreating(false);
+    }
+  }
 
   async function onInvite() {
     if (inviting) return;
 
     const email = invite.email.trim().toLowerCase();
     const name = invite.name.trim();
-    const roleUpper = String(invite.role || "STUDENT").toUpperCase();
+    const roleUpper = normalizeRole(invite.role || "STUDENT");
+    const password = invite.password.trim();
 
+    if (isSuperAdmin && !tenantScope.trim()) {
+      return toast.error("Tenant ID is required for superadmin invite flow");
+    }
     if (!email) return toast.error("Email is required");
     if (!isEmail(email)) return toast.error("Enter a valid email");
-    if (!ROLES.includes(roleUpper)) return toast.error("Invalid role");
+    if (!CREATE_ROLES.includes(roleUpper)) return toast.error("Invalid role");
+    if (password && password.length < 6) {
+      return toast.error("Password must be at least 6 characters");
+    }
 
     try {
       setInviting(true);
 
-      await api.admin.inviteUser({
-        name: name || undefined,
-        email,
-        role: roleUpper,
-      });
+      const result = await api.admin.inviteUser(
+        buildTenantBody(
+          {
+            name: name || undefined,
+            email,
+            role: roleUpper,
+            ...(password ? { password } : {}),
+          },
+          tenantScope.trim(),
+        ),
+      );
 
-      toast.success("Invite created");
-      setInvite({ name: "", email: "", role: "STUDENT" });
+      setLastInviteResult(result);
+      toast.success("User created");
+      setInvite({ name: "", email: "", role: "STUDENT", password: "" });
 
       await sleep(150);
       await load(applied);
@@ -211,23 +321,20 @@ export default function UserManagementPage() {
     const current = getEnabled(u);
     const next = !current;
 
-    const ok = window.confirm(
-      next ? "Enable this user?" : "Disable this user?",
-    );
+    const ok = window.confirm(next ? "Enable this user?" : "Disable this user?");
     if (!ok) return;
 
     try {
       setBusyFor(id, true);
-
-      // optimistic UI
       setRows((prev) =>
-        prev.map((x) => {
-          if (x._id !== id) return x;
-          return { ...x, enabled: next, disabled: !next };
-        }),
+        prev.map((x) => (x._id === id ? { ...x, enabled: next, disabled: !next } : x)),
       );
 
-      await api.admin.setUserStatus(id, next);
+      await api.admin.setUserStatus(
+        id,
+        next,
+        buildTenantConfig(String(u?.tenantId || tenantScope || "").trim()),
+      );
 
       toast.success("User updated");
       await load(applied);
@@ -243,21 +350,21 @@ export default function UserManagementPage() {
     const id = u?._id;
     if (!id) return;
 
-    const next = String(nextRole || "").toUpperCase();
-    if (!ROLES.includes(next)) return toast.error("Invalid role");
+    const next = normalizeRole(nextRole || "");
+    if (!FILTER_ROLES.includes(next)) return toast.error("Invalid role");
 
     const ok = window.confirm(`Change role to ${next}?`);
     if (!ok) return;
 
     try {
       setBusyFor(id, true);
+      setRows((prev) => prev.map((x) => (x._id === id ? { ...x, role: next } : x)));
 
-      // optimistic UI
-      setRows((prev) =>
-        prev.map((x) => (x._id === id ? { ...x, role: next } : x)),
+      await api.admin.setUserRole(
+        id,
+        next,
+        buildTenantConfig(String(u?.tenantId || tenantScope || "").trim()),
       );
-
-      await api.admin.setUserRole(id, next);
 
       toast.success("Role updated");
       await load(applied);
@@ -278,7 +385,13 @@ export default function UserManagementPage() {
 
     try {
       setBusyFor(id, true);
-      await api.admin.resetUserPassword(id);
+      const result = await api.admin.resetUserPassword(
+        id,
+        buildTenantConfig(String(u?.tenantId || tenantScope || "").trim()),
+      );
+      if (result?.tempPassword) {
+        setLastInviteResult(result);
+      }
       toast.success("Reset password issued");
     } catch (e) {
       toast.error(e?.message || "Reset failed");
@@ -292,7 +405,77 @@ export default function UserManagementPage() {
       <div className="admin-content">
         <div className="admin-title">User Management</div>
 
-        {/* Filters + stats */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+            gap: 10,
+            marginBottom: 14,
+          }}
+        >
+          <div className="card">
+            <div className="card-inner">
+              <div className="text-xs opacity-70">Visible Users</div>
+              <div style={{ fontSize: 28, fontWeight: 900 }}>{stats.total}</div>
+              <div className="text-xs opacity-70">
+                {isSuperAdmin && applied.tenantId
+                  ? `Tenant: ${applied.tenantId}`
+                  : isSuperAdmin
+                    ? "Across current superadmin filters"
+                    : "Scoped to your tenant"}
+              </div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-inner">
+              <div className="text-xs opacity-70">Enabled / Disabled</div>
+              <div style={{ fontSize: 28, fontWeight: 900 }}>
+                {stats.enabledCount} / {stats.disabledCount}
+              </div>
+              <div className="text-xs opacity-70">
+                Live status from canonical admin routes
+              </div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-inner">
+              <div className="text-xs opacity-70">Teachers / Students</div>
+              <div style={{ fontSize: 28, fontWeight: 900 }}>
+                {stats.roleCounts.TEACHER} / {stats.roleCounts.STUDENT}
+              </div>
+              <div className="text-xs opacity-70">
+                Admins: {stats.roleCounts.ADMIN}
+              </div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-inner">
+              <div className="text-xs opacity-70">Quick Links</div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  marginTop: 10,
+                }}
+              >
+                <Link className="btn-ghost" to="/dashboard/admin/workspace">
+                  Classes
+                </Link>
+                <Link className="btn-ghost" to="/dashboard/admin/subjects">
+                  Subjects
+                </Link>
+                <Link className="btn-ghost" to="/dashboard/admin/ai-controls">
+                  AI Controls
+                </Link>
+                <Link className="btn-ghost" to="/dashboard/admin/branding">
+                  Branding
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="card">
           <div className="card-inner">
             <div className="toolbar" style={{ flexWrap: "wrap", gap: 10 }}>
@@ -305,12 +488,12 @@ export default function UserManagementPage() {
 
               <select
                 className="select"
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
                 title="Role filter"
               >
                 <option value="">All roles</option>
-                {ROLES.map((r) => (
+                {FILTER_ROLES.map((r) => (
                   <option key={r} value={r}>
                     {r}
                   </option>
@@ -327,6 +510,16 @@ export default function UserManagementPage() {
                 <option value="enabled">Enabled</option>
                 <option value="disabled">Disabled</option>
               </select>
+
+              {isSuperAdmin ? (
+                <input
+                  className="input"
+                  style={{ minWidth: 220 }}
+                  placeholder="Tenant ID scope"
+                  value={tenantScope}
+                  onChange={(e) => setTenantScope(e.target.value)}
+                />
+              ) : null}
 
               <button
                 className="btn-gold"
@@ -345,9 +538,7 @@ export default function UserManagementPage() {
                 }}
               >
                 <span className="badge ok">{stats.enabledCount} enabled</span>
-                <span className="badge off">
-                  {stats.disabledCount} disabled
-                </span>
+                <span className="badge off">{stats.disabledCount} disabled</span>
                 <span className="badge">{stats.total} total</span>
               </div>
             </div>
@@ -369,73 +560,203 @@ export default function UserManagementPage() {
                 flexWrap: "wrap",
               }}
             >
-              {ROLES.map((r) => (
+              {FILTER_ROLES.map((r) => (
                 <span key={r} className="badge">
                   {r}: {stats.roleCounts[r] || 0}
                 </span>
               ))}
-            </div>
-
-            {/* Invite */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 200px 160px",
-                gap: 10,
-                marginTop: 12,
-              }}
-            >
-              <input
-                className="input"
-                placeholder="Name (optional)"
-                value={invite.name}
-                onChange={(e) =>
-                  setInvite((p) => ({ ...p, name: e.target.value }))
-                }
-                disabled={inviting}
-              />
-              <input
-                className="input"
-                placeholder="Email"
-                value={invite.email}
-                onChange={(e) =>
-                  setInvite((p) => ({ ...p, email: e.target.value }))
-                }
-                disabled={inviting}
-              />
-              <select
-                className="select"
-                value={invite.role}
-                onChange={(e) =>
-                  setInvite((p) => ({ ...p, role: e.target.value }))
-                }
-                disabled={inviting}
-              >
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="btn-gold"
-                onClick={onInvite}
-                disabled={inviting || !isEmail(invite.email)}
-              >
-                {inviting ? "Inviting..." : "Invite"}
-              </button>
-            </div>
-
-            <div className="text-xs opacity-70" style={{ marginTop: 10 }}>
-              Note: Invites should be rate limited and audited. Roles control
-              access to admin tools.
             </div>
           </div>
         </div>
 
         <div style={{ height: 14 }} />
 
-        {/* Table */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: 14,
+          }}
+        >
+          <div className="card">
+            <div className="card-inner">
+              <div style={{ fontWeight: 900, marginBottom: 10 }}>
+                Create user with password
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 10,
+                }}
+              >
+                <input
+                  className="input"
+                  placeholder="First name"
+                  value={createForm.firstName}
+                  onChange={(e) =>
+                    setCreateForm((p) => ({ ...p, firstName: e.target.value }))
+                  }
+                  disabled={creating}
+                />
+                <input
+                  className="input"
+                  placeholder="Last name"
+                  value={createForm.lastName}
+                  onChange={(e) =>
+                    setCreateForm((p) => ({ ...p, lastName: e.target.value }))
+                  }
+                  disabled={creating}
+                />
+                <input
+                  className="input"
+                  placeholder="Email"
+                  value={createForm.email}
+                  onChange={(e) =>
+                    setCreateForm((p) => ({ ...p, email: e.target.value }))
+                  }
+                  disabled={creating}
+                />
+                <input
+                  className="input"
+                  type="password"
+                  placeholder="Password"
+                  value={createForm.password}
+                  onChange={(e) =>
+                    setCreateForm((p) => ({ ...p, password: e.target.value }))
+                  }
+                  disabled={creating}
+                />
+                <select
+                  className="select"
+                  value={createForm.role}
+                  onChange={(e) =>
+                    setCreateForm((p) => ({ ...p, role: e.target.value }))
+                  }
+                  disabled={creating}
+                >
+                  {CREATE_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="btn-gold"
+                  onClick={onCreateUser}
+                  disabled={creating}
+                >
+                  {creating ? "Creating..." : "Create user"}
+                </button>
+              </div>
+
+              <div className="text-xs opacity-70" style={{ marginTop: 10 }}>
+                Accounts are admin-created only. {isSuperAdmin ? "Choose a tenant scope before creating users." : "Tenant scope is enforced from your current admin session."}
+              </div>
+
+              {lastCreateResult?.user ? (
+                <div className="mt-3 p-3 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800">
+                  Created: <b>{lastCreateResult.user.email}</b>{" "}
+                  <span className="badge ok">{lastCreateResult.user.role}</span>
+                  {lastCreateResult.user.tenantId ? (
+                    <span className="badge" style={{ marginLeft: 8 }}>
+                      {lastCreateResult.user.tenantId}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-inner">
+              <div style={{ fontWeight: 900, marginBottom: 10 }}>
+                Quick create / invite
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 10,
+                }}
+              >
+                <input
+                  className="input"
+                  placeholder="Name"
+                  value={invite.name}
+                  onChange={(e) =>
+                    setInvite((p) => ({ ...p, name: e.target.value }))
+                  }
+                  disabled={inviting}
+                />
+                <input
+                  className="input"
+                  placeholder="Email"
+                  value={invite.email}
+                  onChange={(e) =>
+                    setInvite((p) => ({ ...p, email: e.target.value }))
+                  }
+                  disabled={inviting}
+                />
+                <select
+                  className="select"
+                  value={invite.role}
+                  onChange={(e) =>
+                    setInvite((p) => ({ ...p, role: e.target.value }))
+                  }
+                  disabled={inviting}
+                >
+                  {CREATE_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className="input"
+                  type="password"
+                  placeholder="Optional password"
+                  value={invite.password}
+                  onChange={(e) =>
+                    setInvite((p) => ({ ...p, password: e.target.value }))
+                  }
+                  disabled={inviting}
+                />
+                <button
+                  className="btn-gold"
+                  onClick={onInvite}
+                  disabled={inviting || !isEmail(invite.email)}
+                  style={{ gridColumn: "span 2" }}
+                >
+                  {inviting ? "Creating..." : "Create with temp password"}
+                </button>
+              </div>
+
+              <div className="text-xs opacity-70" style={{ marginTop: 10 }}>
+                If you leave password empty, the backend generates a temporary password and returns it once.
+              </div>
+
+              {lastInviteResult ? (
+                <div className="mt-3 p-3 rounded-lg border border-slate-300 bg-slate-50 text-slate-800">
+                  <div>
+                    Latest result:{" "}
+                    <b>{lastInviteResult?.user?.email || lastInviteResult?.message}</b>
+                  </div>
+                  {lastInviteResult?.tempPassword ? (
+                    <div style={{ marginTop: 8 }}>
+                      Temporary password: <code>{lastInviteResult.tempPassword}</code>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ height: 14 }} />
+
         <div className="card">
           <div className="card-inner">
             {loading ? (
@@ -459,12 +780,9 @@ export default function UserManagementPage() {
                       <tr key={u._id}>
                         <td>
                           <div style={{ fontWeight: 900 }}>
-                            {u.name || "—"}
+                            {nameForUser(u)}
                             {u.tenantId ? (
-                              <span
-                                style={{ marginLeft: 10 }}
-                                className="badge"
-                              >
+                              <span style={{ marginLeft: 10 }} className="badge">
                                 {u.tenantId}
                               </span>
                             ) : null}
@@ -489,7 +807,6 @@ export default function UserManagementPage() {
                             >
                               Copy email
                             </button>
-
                             <button
                               type="button"
                               className="btn-ghost"
@@ -506,12 +823,12 @@ export default function UserManagementPage() {
                         <td>
                           <select
                             className="select"
-                            value={String(u.role || "").toUpperCase()}
+                            value={normalizeRole(u.role)}
                             onChange={(e) => changeRole(u, e.target.value)}
                             disabled={isRowBusy}
                             title="Change role"
                           >
-                            {ROLES.map((r) => (
+                            {FILTER_ROLES.map((r) => (
                               <option key={r} value={r}>
                                 {r}
                               </option>
@@ -533,11 +850,7 @@ export default function UserManagementPage() {
                               disabled={isRowBusy}
                               title={enabled ? "Disable user" : "Enable user"}
                             >
-                              {isRowBusy
-                                ? "..."
-                                : enabled
-                                  ? "Disable"
-                                  : "Enable"}
+                              {isRowBusy ? "..." : enabled ? "Disable" : "Enable"}
                             </button>
 
                             <button
@@ -568,9 +881,7 @@ export default function UserManagementPage() {
         </div>
 
         <div className="text-xs opacity-70" style={{ marginTop: 12 }}>
-          Backend mounts reminder: admin module routes are under{" "}
-          <code>/api/admin</code> and system routes are under{" "}
-          <code>/api/admin/system</code>.
+          Backend mounts reminder: admin module routes are under <code>/api/admin</code> and system routes are under <code>/api/admin/system</code>.
         </div>
       </div>
     </div>

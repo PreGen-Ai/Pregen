@@ -51,13 +51,14 @@ export const upload = multer({
  */
 
 const normalizeRole = (role) => {
-  if (!role) return "student";
+  if (!role) return "STUDENT";
   const r = role.toString().toLowerCase().trim();
   if (r === "super_admin" || r === "super-admin" || r === "superadmin")
-    return "superadmin";
-  if (r === "admin") return "admin";
-  if (r === "teacher") return "teacher";
-  return "student";
+    return "SUPERADMIN";
+  if (r === "admin") return "ADMIN";
+  if (r === "teacher") return "TEACHER";
+  if (r === "parent") return "PARENT";
+  return "STUDENT";
 };
 
 const getClientIp = (req) => {
@@ -136,8 +137,16 @@ const clearAuthCookies = (res) => {
  */
 export const registerUser = async (req, res) => {
   try {
-    let { username, email, password, firstName, lastName, gender, role } =
-      req.body;
+    let {
+      username,
+      email,
+      password,
+      firstName,
+      lastName,
+      gender,
+      role,
+      tenantId,
+    } = req.body;
 
     if (!username || !email || !password) {
       return res.status(400).json({
@@ -146,8 +155,8 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    //  Only admins & superadmins can create users
-    if (!req.user || !["admin", "superadmin"].includes(req.user.role)) {
+    const requesterRole = normalizeRole(req.user?.role);
+    if (!["ADMIN", "SUPERADMIN"].includes(requesterRole)) {
       return res.status(403).json({
         success: false,
         message: "Only admins or superadmins can create users",
@@ -158,17 +167,35 @@ export const registerUser = async (req, res) => {
     username = username.trim().toLowerCase();
     role = normalizeRole(role);
 
-    //  Admins/superadmins can ONLY create student or teacher
-    if (!["student", "teacher"].includes(role)) {
+    const allowedRoles =
+      requesterRole === "SUPERADMIN"
+        ? ["STUDENT", "TEACHER", "ADMIN"]
+        : ["STUDENT", "TEACHER"];
+
+    if (!allowedRoles.includes(role)) {
       return res.status(403).json({
         success: false,
-        message: "You can only create users with role student or teacher",
+        message:
+          requesterRole === "SUPERADMIN"
+            ? "Super admins can create student, teacher, or admin accounts"
+            : "Admins can only create student or teacher accounts",
+      });
+    }
+
+    const effectiveTenantId =
+      requesterRole === "SUPERADMIN"
+        ? String(tenantId || req.user?.tenantId || "").trim() || null
+        : String(req.user?.tenantId || "").trim() || null;
+
+    if (!effectiveTenantId) {
+      return res.status(400).json({
+        success: false,
+        message: "tenantId is required for account creation",
       });
     }
 
     const hashed = await bcrypt.hash(password, 10);
 
-    //  Rely on unique indexes (race-safe)
     const user = await User.create({
       username,
       email,
@@ -177,38 +204,20 @@ export const registerUser = async (req, res) => {
       lastName,
       gender,
       role,
+      tenantId: effectiveTenantId,
+      tenantIds: role === "TEACHER" ? [effectiveTenantId] : [],
     });
-
-    const accessToken = createAccessToken(user);
-
-    //  Create refresh token session
-    const refreshToken = createRefreshTokenString();
-    const tokenHash = hashToken(refreshToken);
-    const ip = getClientIp(req);
-    const userAgent = (req.headers["user-agent"] || "").toString();
-
-    await RefreshToken.create({
-      userId: user._id,
-      tokenHash,
-      createdByIp: ip,
-      userAgent,
-      expiresAt: new Date(
-        Date.now() + REFRESH_EXPIRES_DAYS * 24 * 60 * 60 * 1000,
-      ),
-    });
-
-    setAuthCookies(res, accessToken, refreshToken);
 
     return res.status(201).json({
       success: true,
-      message: "User registered successfully",
-      token: accessToken,
+      message: "User created successfully",
       user: {
         id: user._id,
         username: user.username,
         role: user.role,
         email: user.email,
         user_code: user.user_code,
+        tenantId: user.tenantId,
       },
     });
   } catch (e) {
@@ -234,12 +243,6 @@ export const registerUser = async (req, res) => {
  */
 export const loginUser = async (req, res) => {
   try {
-    console.log("LOGIN body:", req.body);
-    console.log("Mongoose:", {
-      readyState: mongoose.connection.readyState, // 0/1/2/3
-      db: mongoose.connection?.name,
-      host: mongoose.connection?.host,
-    });
     const email = req.body.email?.toLowerCase().trim();
     const password = req.body.password;
 
@@ -250,8 +253,6 @@ export const loginUser = async (req, res) => {
     }
 
     const user = await User.findOne({ email }).select("+password");
-    console.log("FOUND user?", !!user, "email:", email);
-    if (user) console.log("HASH prefix:", String(user.password).slice(0, 7)); // e.g. $2a$10
     if (!user)
       return res
         .status(401)
@@ -266,7 +267,6 @@ export const loginUser = async (req, res) => {
         .json({ success: false, message: "This account is blocked." });
 
     const match = await bcrypt.compare(password, user.password);
-    console.log("PASSWORD MATCH?", match);
 
     if (!match)
       return res
@@ -565,7 +565,9 @@ export const updateUserProfile = async (req, res) => {
     const targetUserId = req.params.userId;
 
     const isSelf = req.user?.id?.toString() === targetUserId.toString();
-    const isAdmin = ["admin", "superadmin"].includes(req.user?.role);
+    const isAdmin = ["ADMIN", "SUPERADMIN"].includes(
+      normalizeRole(req.user?.role),
+    );
 
     if (!isSelf && !isAdmin) {
       return res.status(403).json({ success: false, message: "Forbidden" });
@@ -611,7 +613,7 @@ export const updateUserRoleOrPassword = async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
 
     if (newRole) {
-      if (req.user.role !== "superadmin") {
+      if (normalizeRole(req.user?.role) !== "SUPERADMIN") {
         return res
           .status(403)
           .json({ message: "Only superadmin can assign roles" });

@@ -7,6 +7,19 @@ const courseSchema = new Schema(
     title: { type: String, required: true, trim: true, maxlength: 200 },
     shortName: { type: String, trim: true, maxlength: 50, default: "" },
     description: { type: String, default: "", trim: true, maxlength: 10000 },
+    tenantId: { type: String, default: null, index: true },
+    subjectId: {
+      type: Schema.Types.ObjectId,
+      ref: "Subject",
+      default: null,
+      index: true,
+    },
+    classroomId: {
+      type: Schema.Types.ObjectId,
+      ref: "Classroom",
+      default: null,
+      index: true,
+    },
 
     // Join code (generated)
     code: {
@@ -55,6 +68,9 @@ const courseSchema = new Schema(
 
 // Indexes (query-driven)
 courseSchema.index({ createdBy: 1, createdAt: -1 });
+courseSchema.index({ tenantId: 1, deleted: 1, createdAt: -1 });
+courseSchema.index({ tenantId: 1, subjectId: 1, deleted: 1, createdAt: -1 });
+courseSchema.index({ tenantId: 1, classroomId: 1, deleted: 1, createdAt: -1 });
 courseSchema.index({ visibility: 1, archived: 1, createdAt: -1 });
 courseSchema.index({ deleted: 1, createdAt: -1 });
 
@@ -64,21 +80,15 @@ courseSchema.pre("save", function (next) {
   next();
 });
 
-/**
- * Create/reuse model FIRST so hooks can use it safely.
- * This prevents OverwriteModelError and also avoids calling mongoose.model("Course")
- * before the model exists.
- */
-const Course = mongoose.models.Course || mongoose.model("Course", courseSchema);
-
 // Safer unique code generation (still simple)
 courseSchema.pre("validate", async function (next) {
   if (this.code) return next();
 
-  // Use the already-created Course model safely
+  const CourseModel = mongoose.models.Course || mongoose.model("Course", courseSchema);
+
   for (let i = 0; i < 10; i++) {
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const exists = await Course.exists({ code });
+    const exists = await CourseModel.exists({ code });
     if (!exists) {
       this.code = code;
       return next();
@@ -92,5 +102,7 @@ courseSchema.pre("validate", async function (next) {
 
   next();
 });
+
+const Course = mongoose.models.Course || mongoose.model("Course", courseSchema);
 
 export default Course;

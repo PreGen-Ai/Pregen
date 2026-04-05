@@ -3,6 +3,11 @@ const { Schema } = mongoose;
 
 const quizAssignmentSchema = new Schema(
   {
+    tenantId: {
+      type: String,
+      default: null,
+      index: true,
+    },
     quizId: {
       type: Schema.Types.ObjectId,
       ref: "Quiz",
@@ -13,13 +18,13 @@ const quizAssignmentSchema = new Schema(
     // Assign scope (pick one or both depending on your system)
     workspaceId: {
       type: Schema.Types.ObjectId,
-      ref: "Workspace",
+      ref: "Course",
       default: null,
       index: true,
     },
     classId: {
       type: Schema.Types.ObjectId,
-      ref: "Class",
+      ref: "Classroom",
       default: null,
       index: true,
     },
@@ -43,6 +48,9 @@ const quizAssignmentSchema = new Schema(
   { timestamps: true },
 );
 
+quizAssignmentSchema.set("toJSON", { virtuals: true });
+quizAssignmentSchema.set("toObject", { virtuals: true });
+
 // Prevent duplicate assignments for same target
 quizAssignmentSchema.index(
   { quizId: 1, workspaceId: 1, classId: 1, studentId: 1 },
@@ -52,5 +60,22 @@ quizAssignmentSchema.index(
 // Fast dashboards
 quizAssignmentSchema.index({ studentId: 1, dueDate: 1 });
 quizAssignmentSchema.index({ workspaceId: 1, dueDate: 1 });
+quizAssignmentSchema.index({ tenantId: 1, workspaceId: 1, dueDate: 1 });
+
+quizAssignmentSchema.virtual("courseId")
+  .get(function () {
+    return this.workspaceId || null;
+  })
+  .set(function (value) {
+    this.workspaceId = value;
+  });
+
+quizAssignmentSchema.virtual("classroomId")
+  .get(function () {
+    return this.classId || null;
+  })
+  .set(function (value) {
+    this.classId = value;
+  });
 
 export default mongoose.model("QuizAssignment", quizAssignmentSchema);

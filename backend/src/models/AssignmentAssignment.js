@@ -4,6 +4,11 @@ const { Schema } = mongoose;
 
 const assignmentAssignmentSchema = new Schema(
   {
+    tenantId: {
+      type: String,
+      default: null,
+      index: true,
+    },
     assignmentId: {
       type: Schema.Types.ObjectId,
       ref: "Assignment",
@@ -13,13 +18,13 @@ const assignmentAssignmentSchema = new Schema(
 
     workspaceId: {
       type: Schema.Types.ObjectId,
-      ref: "Workspace",
+      ref: "Course",
       default: null,
       index: true,
     },
     classId: {
       type: Schema.Types.ObjectId,
-      ref: "Class",
+      ref: "Classroom",
       default: null,
       index: true,
     },
@@ -43,6 +48,9 @@ const assignmentAssignmentSchema = new Schema(
   { timestamps: true },
 );
 
+assignmentAssignmentSchema.set("toJSON", { virtuals: true });
+assignmentAssignmentSchema.set("toObject", { virtuals: true });
+
 // Prevent duplicates
 assignmentAssignmentSchema.index(
   { assignmentId: 1, workspaceId: 1, classId: 1, studentId: 1 },
@@ -51,6 +59,23 @@ assignmentAssignmentSchema.index(
 
 // Student dashboard
 assignmentAssignmentSchema.index({ studentId: 1, dueDate: 1 });
+assignmentAssignmentSchema.index({ tenantId: 1, workspaceId: 1, dueDate: 1 });
+
+assignmentAssignmentSchema.virtual("courseId")
+  .get(function () {
+    return this.workspaceId || null;
+  })
+  .set(function (value) {
+    this.workspaceId = value;
+  });
+
+assignmentAssignmentSchema.virtual("classroomId")
+  .get(function () {
+    return this.classId || null;
+  })
+  .set(function (value) {
+    this.classId = value;
+  });
 
 export default mongoose.model(
   "AssignmentAssignment",

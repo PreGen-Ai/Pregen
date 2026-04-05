@@ -65,6 +65,11 @@ const quizSchema = new Schema(
   {
     title: { type: String, required: true, trim: true, maxlength: 200 },
     description: { type: String, default: "", trim: true, maxlength: 5000 },
+    tenantId: {
+      type: String,
+      default: null,
+      index: true,
+    },
 
     teacher: {
       type: Schema.Types.ObjectId,
@@ -103,13 +108,13 @@ const quizSchema = new Schema(
 
     workspace: {
       type: Schema.Types.ObjectId,
-      ref: "Workspace",
+      ref: "Course",
       default: null,
       index: true,
     },
     class: {
       type: Schema.Types.ObjectId,
-      ref: "Class",
+      ref: "Classroom",
       default: null,
       index: true,
     },
@@ -140,8 +145,12 @@ const quizSchema = new Schema(
   { timestamps: true },
 );
 
+quizSchema.set("toJSON", { virtuals: true });
+quizSchema.set("toObject", { virtuals: true });
+
 // Auto-calc total points
 quizSchema.pre("save", function (next) {
+  if (!this.createdBy) this.createdBy = this.teacher || null;
   this.totalPoints = (this.questions || []).reduce(
     (sum, q) => sum + (q.points || 0),
     0,
@@ -152,6 +161,7 @@ quizSchema.pre("save", function (next) {
 // Indexes (query-driven)
 quizSchema.index({ workspace: 1, status: 1, createdAt: -1 });
 quizSchema.index({ teacher: 1, status: 1, createdAt: -1 });
+quizSchema.index({ tenantId: 1, workspace: 1, deleted: 1, createdAt: -1 });
 
 // Basic text search (optional). Atlas Search is better if you have it.
 quizSchema.index({ title: "text", description: "text", subject: "text" });
@@ -159,5 +169,29 @@ quizSchema.index({ title: "text", description: "text", subject: "text" });
 quizSchema.query.notDeleted = function () {
   return this.where({ deleted: false });
 };
+
+quizSchema.virtual("teacherId")
+  .get(function () {
+    return this.teacher || null;
+  })
+  .set(function (value) {
+    this.teacher = value;
+  });
+
+quizSchema.virtual("courseId")
+  .get(function () {
+    return this.workspace || null;
+  })
+  .set(function (value) {
+    this.workspace = value;
+  });
+
+quizSchema.virtual("classroomId")
+  .get(function () {
+    return this.class || null;
+  })
+  .set(function (value) {
+    this.class = value;
+  });
 
 export default mongoose.model("Quiz", quizSchema);

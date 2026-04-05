@@ -93,6 +93,8 @@ STORAGE_PATH.mkdir(parents=True, exist_ok=True)
 # ------------------------------------------------------------------------------
 # MongoDB Configuration
 # ------------------------------------------------------------------------------
+DISABLE_MONGO = os.getenv("DISABLE_MONGO", "false").strip().lower() == "true"
+
 # Accept both names (many projects use MONGODB_URI)
 MONGODB_URI = (os.getenv("MONGO_URL") or os.getenv("MONGODB_URI") or "").strip()
 
@@ -121,6 +123,13 @@ MONGO_ENABLED = False
 
 def _init_mongo():
     global mongo_client, mongo_db, MONGO_ENABLED
+
+    if DISABLE_MONGO:
+        logger.warning("MongoDB disabled by DISABLE_MONGO=true.")
+        mongo_client = None
+        mongo_db = None
+        MONGO_ENABLED = False
+        return
 
     if not MONGODB_URI:
         logger.warning("MONGO_URL/MONGODB_URI not found. MongoDB disabled.")
@@ -220,6 +229,7 @@ logger.info(f"Allowed origins: {', '.join(CORS_ORIGINS)}")
 if mongo_db is not None:
     logger.info(f"MongoDB enabled: True | DB={MONGODB_DB_NAME} | collection={TUTOR_MEMORY_COLLECTION}")
 else:
-    logger.warning("MongoDB enabled: False (mongo_db is None). Persistence disabled.")
+    reason = "disabled by env" if DISABLE_MONGO else "mongo_db is None"
+    logger.warning(f"MongoDB enabled: False ({reason}). Persistence disabled.")
 
 logger.info("===================================================")

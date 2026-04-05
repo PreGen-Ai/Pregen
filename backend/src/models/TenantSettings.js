@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const TenantSettingsSchema = new mongoose.Schema(
   {
     tenantId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: String,
       index: true,
       required: false,
       unique: true,

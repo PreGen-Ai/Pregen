@@ -9,9 +9,9 @@ import Course from "../models/CourseModel.js";
 import CourseMember from "../models/CourseMember.js";
 import DocumentACL from "../models/DocumentACL.js";
 import DocumentVersion from "../models/DocumentVersion.js";
+import { createCourseDocument } from "../services/documents/createCourseDocument.js";
 
 import cloudinary from "../config/cloudinary.js";
-import { uploadToCloudinary } from "../middleware/documentMiddleware.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,7 +60,7 @@ const getDocPermission = async (userId, doc) => {
   if (!doc) return null;
   if (doc.ownerId.toString() === userId.toString()) return "admin";
   const acl = await DocumentACL.findOne({ documentId: doc._id, userId }).lean();
-  return acl?.permissions || null; // "read" | "write" | "admin"
+  return acl?.permission || null; // "read" | "write" | "admin"
 };
 
 const canRead = (p) => ["read", "write", "admin"].includes(p);
@@ -105,58 +105,12 @@ export const uploadDocument = async (req, res) => {
         .json({ success: false, message: "Not enrolled in this course." });
     }
 
-    let url = req.file.path; // local fallback
-    let cloudinary_id = null;
-
-    const useCloud = process.env.USE_CLOUDINARY === "true";
-    if (useCloud) {
-      const uploaded = await uploadToCloudinary(req.file);
-      url = uploaded.secure_url;
-      cloudinary_id = uploaded.public_id;
-    }
-
-    const safeTags = Array.isArray(tags)
-      ? tags
-          .map((t) => String(t).trim())
-          .filter(Boolean)
-          .slice(0, 30)
-      : String(tags || "")
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean)
-          .slice(0, 30);
-
-    const doc = await Document.create({
-      name: req.file.originalname,
-      type: req.file.mimetype,
-      url,
-      size: req.file.size || 0,
-      cloudinary_id,
-      description: String(description || "").slice(0, 5000),
-      ownerId: userId,
+    const doc = await createCourseDocument({
+      file: req.file,
       courseId,
-      tags: safeTags,
-      deleted: false,
-      deletedAt: null,
-      restoredAt: null,
-      version: 1,
-    });
-
-    // initial version row
-    await DocumentVersion.create({
-      documentId: doc._id,
-      versionNumber: 1,
-      url: doc.url,
-      modifiedBy: userId,
-      metadata: doc.metadata || {},
-      timestamp: new Date(),
-    });
-
-    // ACL: owner admin
-    await DocumentACL.create({
-      documentId: doc._id,
       userId,
-      permissions: "admin",
+      description,
+      tags,
     });
 
     return res.status(201).json({

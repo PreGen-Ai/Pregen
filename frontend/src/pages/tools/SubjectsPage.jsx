@@ -1,0 +1,445 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { toast } from "react-toastify";
+import api from "../../services/api/api";
+import "../../components/styles/admin-tools.css";
+
+const emptyForm = {
+  name: "",
+  code: "",
+  description: "",
+  teacherIds: [],
+  classroomIds: [],
+  courseIds: [],
+  status: "active",
+};
+
+const asItems = (value, keys = ["items", "courses"]) => {
+  if (Array.isArray(value)) return value;
+  for (const key of keys) {
+    if (Array.isArray(value?.[key])) return value[key];
+  }
+  return [];
+};
+
+const normalizeIdArray = (values) =>
+  Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
+
+const normalizeRole = (value) => String(value || "").trim().toUpperCase();
+
+const teacherLabel = (teacher) =>
+  teacher.firstName || teacher.lastName
+    ? `${teacher.firstName || ""} ${teacher.lastName || ""}`.trim()
+    : teacher.email || teacher.username || teacher._id;
+
+const classroomLabel = (item) =>
+  [
+    item?.name || "Class",
+    item?.grade ? `Grade ${item.grade}` : "",
+    item?.section || "",
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
+const courseLabel = (course) =>
+  course.title || course.shortName || course.code || course._id;
+
+const sortByLabel = (items, getLabel) =>
+  [...items].sort((a, b) => getLabel(a).localeCompare(getLabel(b)));
+
+const mergeOptionsById = (items, fallbackItems = []) => {
+  const merged = new Map();
+
+  [...items, ...fallbackItems].forEach((item) => {
+    if (!item?._id) return;
+    merged.set(String(item._id), item);
+  });
+
+  return Array.from(merged.values());
+};
+
+export default function SubjectsPage() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [subjects, setSubjects] = useState([]);
+  const [teachers, setTeachers] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [courses, setCourses] = useState([]);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(emptyForm);
+
+  const selectedSubject = useMemo(
+    () => subjects.find((subject) => subject._id === editingId) || null,
+    [subjects, editingId],
+  );
+
+  const teacherOptions = useMemo(
+    () =>
+      sortByLabel(
+        mergeOptionsById(teachers, selectedSubject?.teachers || []),
+        teacherLabel,
+      ),
+    [teachers, selectedSubject],
+  );
+
+  const classroomOptions = useMemo(
+    () =>
+      sortByLabel(
+        mergeOptionsById(classes, selectedSubject?.classrooms || []),
+        classroomLabel,
+      ),
+    [classes, selectedSubject],
+  );
+
+  const courseOptions = useMemo(
+    () =>
+      sortByLabel(
+        mergeOptionsById(courses, selectedSubject?.courses || []),
+        courseLabel,
+      ),
+    [courses, selectedSubject],
+  );
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [subjectsRes, usersRes, classesRes, coursesRes] = await Promise.all([
+        api.admin.listSubjects(),
+        api.admin.listUsers({ role: "TEACHER", limit: 200 }),
+        api.admin.listClasses(),
+        api.courses.getAllCourses({ limit: 200 }),
+      ]);
+
+      setSubjects(asItems(subjectsRes));
+      setTeachers(
+        sortByLabel(
+          asItems(usersRes)
+            .filter((user) => normalizeRole(user.role) === "TEACHER")
+            .map((user) => ({
+              ...user,
+              _id: String(user._id || "").trim(),
+            })),
+          teacherLabel,
+        ),
+      );
+      setClasses(
+        sortByLabel(
+          asItems(classesRes).map((item) => ({
+            ...item,
+            _id: String(item._id || "").trim(),
+          })),
+          classroomLabel,
+        ),
+      );
+      setCourses(
+        sortByLabel(
+          asItems(coursesRes, ["courses", "items"]).map((course) => ({
+            ...course,
+            _id: String(course._id || "").trim(),
+          })),
+          courseLabel,
+        ),
+      );
+    } catch (error) {
+      toast.error(error?.message || "Failed to load subjects");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const resetForm = () => {
+    setEditingId(null);
+    setForm({
+      ...emptyForm,
+      teacherIds: [],
+      classroomIds: [],
+      courseIds: [],
+    });
+  };
+
+  const onEdit = (subject) => {
+    setEditingId(subject._id);
+    setForm({
+      name: subject.name || "",
+      code: subject.code || "",
+      description: subject.description || "",
+      teacherIds: normalizeIdArray(subject.teacherIds),
+      classroomIds: normalizeIdArray(subject.classroomIds),
+      courseIds: normalizeIdArray(subject.courseIds),
+      status: subject.status || "active",
+    });
+  };
+
+  const onSubmit = async () => {
+    if (!form.name.trim()) {
+      toast.error("Subject name is required");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      if (editingId) {
+        await api.admin.updateSubject(editingId, form);
+        toast.success("Subject updated");
+      } else {
+        await api.admin.createSubject(form);
+        toast.success("Subject created");
+      }
+      resetForm();
+      await load();
+    } catch (error) {
+      toast.error(error?.message || "Failed to save subject");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onDelete = async (subjectId) => {
+    if (!window.confirm("Delete this subject?")) return;
+
+    try {
+      setSaving(true);
+      await api.admin.deleteSubject(subjectId);
+      toast.success("Subject deleted");
+      if (editingId === subjectId) resetForm();
+      await load();
+    } catch (error) {
+      toast.error(error?.message || "Failed to delete subject");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderMultiSelect = (label, options, selectedValues, onChange, getLabel) => (
+    <label style={{ display: "grid", gap: 6 }}>
+      <span style={{ fontWeight: 700 }}>{label}</span>
+      <select
+        className="input"
+        multiple
+        value={selectedValues}
+        onChange={(event) =>
+          onChange(
+            Array.from(event.target.selectedOptions).map((option) => option.value),
+          )
+        }
+        style={{ minHeight: 140 }}
+      >
+        {options.map((option) => (
+          <option key={option._id} value={option._id}>
+            {getLabel(option)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
+  return (
+    <div className="admin-shell">
+      <div className="admin-content">
+        <div className="admin-title">Subjects</div>
+
+        <div className="card" style={{ marginBottom: 18 }}>
+          <div className="card-inner" style={{ display: "grid", gap: 14 }}>
+            <div style={{ fontWeight: 900 }}>
+              {editingId ? "Edit subject" : "Create subject"}
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.4fr 0.8fr 0.8fr",
+                gap: 12,
+              }}
+            >
+              <input
+                className="input"
+                placeholder="Subject name"
+                value={form.name}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, name: event.target.value }))
+                }
+              />
+              <input
+                className="input"
+                placeholder="Code"
+                value={form.code}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, code: event.target.value }))
+                }
+              />
+              <select
+                className="input"
+                value={form.status}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, status: event.target.value }))
+                }
+              >
+                <option value="active">Active</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+
+            <textarea
+              className="input"
+              rows={4}
+              placeholder="Description"
+              value={form.description}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  description: event.target.value,
+                }))
+              }
+            />
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 12,
+              }}
+            >
+              {renderMultiSelect(
+                "Teachers",
+                teacherOptions,
+                form.teacherIds,
+                (teacherIds) =>
+                  setForm((current) => ({
+                    ...current,
+                    teacherIds: normalizeIdArray(teacherIds),
+                  })),
+                teacherLabel,
+              )}
+              {renderMultiSelect(
+                "Classes",
+                classroomOptions,
+                form.classroomIds,
+                (classroomIds) =>
+                  setForm((current) => ({
+                    ...current,
+                    classroomIds: normalizeIdArray(classroomIds),
+                  })),
+                classroomLabel,
+              )}
+              {renderMultiSelect(
+                "Courses",
+                courseOptions,
+                form.courseIds,
+                (courseIds) =>
+                  setForm((current) => ({
+                    ...current,
+                    courseIds: normalizeIdArray(courseIds),
+                  })),
+                courseLabel,
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button className="btn-gold" onClick={onSubmit} disabled={saving}>
+                {saving ? "Saving..." : editingId ? "Update subject" : "Create subject"}
+              </button>
+              {editingId ? (
+                <button className="btn-ghost" onClick={resetForm} disabled={saving}>
+                  Cancel edit
+                </button>
+              ) : null}
+            </div>
+
+            {selectedSubject ? (
+              <div style={{ color: "#D1D5DB", fontSize: 13 }}>
+                Editing <strong>{selectedSubject.name}</strong>. Saving will also sync
+                the selected courses to this subject.
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-inner">
+            <div style={{ fontWeight: 900, marginBottom: 12 }}>Subject directory</div>
+
+            {loading ? (
+              <div style={{ color: "#D1D5DB" }}>Loading subjects...</div>
+            ) : subjects.length === 0 ? (
+              <div style={{ color: "#D1D5DB" }}>No subjects created yet.</div>
+            ) : (
+              <div style={{ display: "grid", gap: 12 }}>
+                {subjects.map((subject) => (
+                  <div
+                    key={subject._id}
+                    className="card"
+                    style={{ border: "1px solid rgba(255,255,255,0.08)" }}
+                  >
+                    <div className="card-inner">
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 800 }}>{subject.name}</div>
+                          <div style={{ color: "#D1D5DB", fontSize: 13 }}>
+                            {subject.code || "No code"} | {subject.status}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            className="btn-ghost"
+                            onClick={() => onEdit(subject)}
+                            disabled={saving}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="btn-ghost"
+                            onClick={() => onDelete(subject._id)}
+                            disabled={saving}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+
+                      {subject.description ? (
+                        <p style={{ margin: "12px 0 0", color: "#E5E7EB" }}>
+                          {subject.description}
+                        </p>
+                      ) : null}
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 16,
+                          flexWrap: "wrap",
+                          marginTop: 12,
+                          color: "#D1D5DB",
+                          fontSize: 13,
+                        }}
+                      >
+                        <span>Teachers: {subject.counts?.teachers || 0}</span>
+                        <span>Classes: {subject.counts?.classrooms || 0}</span>
+                        <span>Courses: {subject.counts?.courses || 0}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
