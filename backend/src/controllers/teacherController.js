@@ -1278,6 +1278,7 @@ export const getTeacherDashboard = async (req, res) => {
     return res.json({
       success: true,
       summary: {
+        courses: accessibleCourseIds.length,
         assignments: assignments.length,
         quizzes: quizzes.length,
         accessibleCourses: accessibleCourseIds.length,

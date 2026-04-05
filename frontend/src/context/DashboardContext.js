@@ -21,7 +21,7 @@ const API_CONFIG = {
     window.location.hostname === "localhost"
       ? "http://localhost:4000"
       : window.location.hostname.includes("preprod")
-      ? "https://preprod-pregen.onrender.com"
+      ? "https://pregen.onrender.com"
       : "https://pregen.onrender.com",
   withCredentials: true,
 };

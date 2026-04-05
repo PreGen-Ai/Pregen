@@ -14,8 +14,8 @@ const roleValue = (user) => String(user?.role || "").trim().toUpperCase();
 
 const formatScore = (item) =>
   item.score === null || item.score === undefined || item.score === ""
-    ? "Not graded"
-    : `${item.score}${item.maxScore ? ` / ${item.maxScore}` : ""}`;
+    ? "Awaiting grade"
+    : `${Number(item.score).toFixed(0)}%`;
 
 const formatStudent = (item) =>
   item.student
@@ -24,6 +24,26 @@ const formatStudent = (item) =>
       item.student.username ||
       "Student"
     : "Student";
+
+const kindLabel = (kind) => (kind === "quiz" ? "Quiz" : "Assignment");
+
+const statusBadgeClass = (status) => {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "graded") return "bg-success";
+  if (normalized === "submitted") return "bg-warning text-dark";
+  if (normalized === "grading") return "bg-info text-dark";
+  return "bg-secondary";
+};
+
+function SummaryCard({ title, value, subtitle }) {
+  return (
+    <div className="dash-card h-100">
+      <div className="dash-card-title">{title}</div>
+      <div style={{ fontSize: 28, fontWeight: 900 }}>{value}</div>
+      {subtitle ? <p className="dash-card-muted mb-0">{subtitle}</p> : null}
+    </div>
+  );
+}
 
 export default function GradebookPage() {
   const { user } = useAuthContext();
@@ -42,6 +62,14 @@ export default function GradebookPage() {
   const editingItem = useMemo(
     () => items.find((item) => item._id === editingId) || null,
     [items, editingId],
+  );
+
+  const pendingCount = useMemo(
+    () =>
+      items.filter(
+        (item) => !["graded"].includes(String(item.status || "").trim().toLowerCase()),
+      ).length,
+    [items],
   );
 
   const load = useCallback(async (courseId = "") => {
@@ -147,24 +175,40 @@ export default function GradebookPage() {
       </div>
 
       {summary ? (
-        <div className="d-flex gap-3 flex-wrap mb-4">
-          <span className="badge bg-secondary">Total: {summary.total || 0}</span>
-          <span className="badge bg-secondary">
-            Assignments: {summary.assignments || 0}
-          </span>
-          <span className="badge bg-secondary">Quizzes: {summary.quizzes || 0}</span>
-          <span className="badge bg-secondary">Graded: {summary.graded || 0}</span>
-          <span className="badge bg-info text-dark">
-            Average: {summary.averageScore ?? "N/A"}
-          </span>
+        <div className="row g-3 mb-4">
+          <div className="col-md-6 col-xl-3">
+            <SummaryCard title="Rows" value={summary.total || 0} />
+          </div>
+          <div className="col-md-6 col-xl-3">
+            <SummaryCard title="Graded" value={summary.graded || 0} />
+          </div>
+          <div className="col-md-6 col-xl-3">
+            <SummaryCard title="Pending" value={pendingCount} />
+          </div>
+          <div className="col-md-6 col-xl-3">
+            <SummaryCard
+              title="Average"
+              value={
+                summary.averageScore === null || summary.averageScore === undefined
+                  ? "N/A"
+                  : `${summary.averageScore}%`
+              }
+              subtitle={`${summary.assignments || 0} assignments, ${summary.quizzes || 0} quizzes`}
+            />
+          </div>
         </div>
       ) : null}
 
       {editingItem ? (
         <div className="dash-card mb-4">
           <h3 className="mb-3">Update {editingItem.title}</h3>
+          <p className="text-muted mb-3">
+            {kindLabel(editingItem.kind)} for {editingItem.courseTitle || "Course"}.
+            Use a 0-100 score and keep feedback concise and actionable.
+          </p>
           <div className="row g-3">
             <div className="col-md-3">
+              <label className="form-label">Score (%)</label>
               <input
                 className="form-control"
                 type="number"
@@ -180,6 +224,7 @@ export default function GradebookPage() {
               />
             </div>
             <div className="col-md-9">
+              <label className="form-label">Feedback</label>
               <textarea
                 className="form-control"
                 rows={3}
@@ -223,10 +268,10 @@ export default function GradebookPage() {
             <thead>
               <tr>
                 <th>Type</th>
-                <th>Title</th>
+                <th>Assessment</th>
                 {canEdit ? <th>Student</th> : null}
                 <th>Course</th>
-                <th>Score</th>
+                <th>Result</th>
                 <th>Status</th>
                 <th>Feedback</th>
                 {canEdit ? <th>Actions</th> : null}
@@ -235,12 +280,23 @@ export default function GradebookPage() {
             <tbody>
               {items.map((item) => (
                 <tr key={item._id}>
-                  <td className="text-uppercase">{item.kind}</td>
-                  <td>{item.title}</td>
+                  <td>
+                    <span className="badge bg-secondary">{kindLabel(item.kind)}</span>
+                  </td>
+                  <td>
+                    <div className="fw-semibold">{item.title}</div>
+                    <div className="small text-muted">
+                      {item.maxScore ? `Max ${item.maxScore} pts` : "No max score"}
+                    </div>
+                  </td>
                   {canEdit ? <td>{formatStudent(item)}</td> : null}
                   <td>{item.courseTitle || "Course"}</td>
                   <td>{formatScore(item)}</td>
-                  <td className="text-capitalize">{item.status || "pending"}</td>
+                  <td>
+                    <span className={`badge ${statusBadgeClass(item.status)}`}>
+                      {item.status || "pending"}
+                    </span>
+                  </td>
                   <td>{item.feedback || "No feedback yet"}</td>
                   {canEdit ? (
                     <td>

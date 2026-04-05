@@ -42,7 +42,7 @@ export const API_BASE_URL =
   (hostname === "localhost" || hostname === "127.0.0.1"
     ? "http://localhost:4000"
     : hostname.includes("preprod")
-      ? "https://preprod-pregen.onrender.com"
+      ? "https://pregen.onrender.com"
       : "https://pregen.onrender.com");
 
 export const AI_BASE_URL =
@@ -50,7 +50,7 @@ export const AI_BASE_URL =
   (hostname === "localhost" || hostname === "127.0.0.1"
     ? "http://localhost:8000"
     : hostname.includes("preprod")
-      ? "https://preprod-pregen.onrender.com"
+      ? "https://pregen.onrender.com"
       : "https://pregen.onrender.com");
 
 /**

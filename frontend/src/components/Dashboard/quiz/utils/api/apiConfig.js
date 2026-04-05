@@ -4,7 +4,7 @@ const isLocal = window.location.hostname === "localhost";
 
 export const NODE_API_BASE = isLocal
   ? "http://localhost:4000"
-  : "https://preprod-pregen.onrender.com";
+  : "https://pregen.onrender.com";
 
 const generateRequestId = () =>
   `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;

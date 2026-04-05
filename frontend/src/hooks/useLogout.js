@@ -8,7 +8,7 @@ const API_BASE_URL =
   window.location.hostname === "localhost"
     ? "http://localhost:4000"
     : window.location.hostname.includes("preprod")
-    ? "https://preprod-pregen.onrender.com"
+    ? "https://pregen.onrender.com"
     : "https://pregen.onrender.com";
 
 // 🧩 Local Axios instance (in case AuthContext.api fails)

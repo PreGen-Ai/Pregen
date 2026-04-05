@@ -83,7 +83,9 @@ export default function TeacherPortal() {
 
   const summary = useMemo(
     () => ({
-      courses: Number(dashboard.summary?.courses || 0),
+      courses: Number(
+        dashboard.summary?.courses ?? dashboard.summary?.accessibleCourses ?? 0,
+      ),
       assignments: Number(dashboard.summary?.assignments || 0),
       quizzes: Number(dashboard.summary?.quizzes || 0),
       pendingGrading: Number(dashboard.summary?.pendingGrading || 0),

@@ -71,6 +71,56 @@ function SummaryCard({ title, value, subtitle }) {
   );
 }
 
+function formatPercent(value, fallback = "Not graded") {
+  if (value === null || value === undefined || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? `${parsed.toFixed(0)}%` : fallback;
+}
+
+function hasPastDue(value) {
+  if (!value) return false;
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime()) && date.getTime() < Date.now();
+}
+
+function countPendingReview(counts) {
+  const submitted = Number(counts?.submitted || 0);
+  const graded = Number(counts?.graded || 0);
+  return Math.max(submitted - graded, 0);
+}
+
+function targetScopeLabel(item) {
+  const selectedCount = Array.isArray(item?.selectedStudentIds)
+    ? item.selectedStudentIds.length
+    : 0;
+
+  if (selectedCount) {
+    return `${selectedCount} selected student${selectedCount === 1 ? "" : "s"}`;
+  }
+
+  if (item?.class?.name) {
+    return `Classroom: ${item.class.name}`;
+  }
+
+  return "Course-wide";
+}
+
+function assignmentStudentState({ assignment, submission, gradeRow }) {
+  if (gradeRow?.score !== null && gradeRow?.score !== undefined) {
+    return { label: "Graded", badge: "bg-info text-dark" };
+  }
+
+  if (submission) {
+    return { label: "Awaiting grade", badge: "bg-warning text-dark" };
+  }
+
+  if (hasPastDue(assignment?.dueDate)) {
+    return { label: "Overdue", badge: "bg-danger" };
+  }
+
+  return { label: "Upcoming", badge: "bg-primary" };
+}
+
 function StudentAssignmentsView() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
@@ -163,7 +213,20 @@ function StudentAssignmentsView() {
 
   const summary = useMemo(() => {
     const submitted = items.filter((item) => item?.submission).length;
-    const upcoming = items.filter((item) => !item?.submission).length;
+    const overdue = items.filter(
+      (item) => !item?.submission && hasPastDue(item?.dueDate),
+    ).length;
+    const awaitingGrade = items.filter((item) => {
+      if (!item?.submission) return false;
+      return !gradebook.items.find(
+        (gradeItem) =>
+          gradeItem?.kind === "assignment" &&
+          (gradeItem?.assignmentId === item._id ||
+            gradeItem?.sourceId === item._id) &&
+          gradeItem?.score !== null &&
+          gradeItem?.score !== undefined,
+      );
+    }).length;
     const gradedItems = gradebook.items.filter(
       (item) => item?.score !== null && item?.score !== undefined,
     );
@@ -177,12 +240,12 @@ function StudentAssignmentsView() {
     return {
       assignments: items.length,
       submitted,
-      upcoming,
+      overdue,
+      awaitingGrade,
       quizzes: quizzes.length,
-      announcements: announcements.length,
       avgGrade,
     };
-  }, [announcements.length, gradebook.items, items, quizzes.length]);
+  }, [gradebook.items, items, quizzes.length]);
 
   const updateSubmissionField = (assignmentId, key, value) => {
     setSubmissionState((prev) => ({
@@ -229,6 +292,40 @@ function StudentAssignmentsView() {
 
   const gradeItems = gradebook.items.slice(0, 4);
   const recentAnnouncements = announcements.slice(0, 4);
+  const upcomingWork = useMemo(() => {
+    const assignmentRows = items
+      .filter((item) => !item?.submission)
+      .map((item) => ({
+        _id: `assignment-${item._id}`,
+        kind: "Assignment",
+        title: item.title || "Untitled assignment",
+        dueDate: item.dueDate || null,
+        status: hasPastDue(item?.dueDate) ? "Overdue" : "Upcoming",
+      }));
+
+    const quizRows = quizzes
+      .filter((item) => {
+        const attemptStatus = String(item?.attempt?.status || "").toLowerCase();
+        return !["submitted", "graded"].includes(attemptStatus);
+      })
+      .map((item) => ({
+        _id: `quiz-${item._id}`,
+        kind: "Quiz",
+        title: item.title || "Untitled quiz",
+        dueDate: item.dueDate || item.availableUntil || null,
+        status: String(item?.attempt?.status || "").toLowerCase() === "inprogress"
+          ? "In progress"
+          : "Upcoming",
+      }));
+
+    return [...assignmentRows, ...quizRows]
+      .sort((a, b) => {
+        const aTime = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        const bTime = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+        return aTime - bTime;
+      })
+      .slice(0, 5);
+  }, [items, quizzes]);
 
   return (
     <div className="quizzes-page">
@@ -260,13 +357,13 @@ function StudentAssignmentsView() {
           <SummaryCard title="Submitted" value={summary.submitted} />
         </div>
         <div className="col-md-4 col-xl-2">
-          <SummaryCard title="Pending" value={summary.upcoming} />
+          <SummaryCard title="Awaiting grade" value={summary.awaitingGrade} />
+        </div>
+        <div className="col-md-4 col-xl-2">
+          <SummaryCard title="Overdue" value={summary.overdue} />
         </div>
         <div className="col-md-4 col-xl-2">
           <SummaryCard title="Quizzes" value={summary.quizzes} />
-        </div>
-        <div className="col-md-4 col-xl-2">
-          <SummaryCard title="Announcements" value={summary.announcements} />
         </div>
         <div className="col-md-4 col-xl-2">
           <SummaryCard title="Avg grade" value={`${summary.avgGrade}%`} />
@@ -294,6 +391,11 @@ function StudentAssignmentsView() {
                       item?.sourceId === assignment._id),
                 );
                 const showForm = activeId === assignment._id && !submission;
+                const studentState = assignmentStudentState({
+                  assignment,
+                  submission,
+                  gradeRow,
+                });
 
                 return (
                   <div key={assignment._id} className="dash-card">
@@ -318,9 +420,12 @@ function StudentAssignmentsView() {
                           <span className="badge bg-secondary">
                             {assignment.type || "text_submission"}
                           </span>
+                          <span className={`badge ${studentState.badge}`}>
+                            {studentState.label}
+                          </span>
                           {gradeRow?.score !== null && gradeRow?.score !== undefined ? (
                             <span className="badge bg-info text-dark">
-                              Score {Number(gradeRow.score).toFixed(0)}%
+                              Score {formatPercent(gradeRow.score, "Not graded")}
                             </span>
                           ) : null}
                         </div>
@@ -357,13 +462,28 @@ function StudentAssignmentsView() {
 
                     {submission ? (
                       <div className="border rounded p-3 bg-light-subtle">
-                        <div className="small text-muted">
-                          <b>Submitted:</b> {formatDate(submission.submittedAt, "")}
+                        <div className="d-flex gap-2 flex-wrap small text-muted">
+                          <span>
+                            <b>Submitted:</b> {formatDate(submission.submittedAt, "")}
+                          </span>
+                          <span>
+                            <b>Status:</b> {studentState.label}
+                          </span>
+                          {Array.isArray(submission.files) && submission.files.length ? (
+                            <span>
+                              <b>Files:</b> {submission.files.length}
+                            </span>
+                          ) : null}
                         </div>
                         {submission.textSubmission ? (
                           <div className="mt-2">
                             <b>Your response:</b>
                             <p className="mb-0 mt-1">{submission.textSubmission}</p>
+                          </div>
+                        ) : null}
+                        {gradeRow?.score !== null && gradeRow?.score !== undefined ? (
+                          <div className="mt-3">
+                            <b>Score:</b> {formatPercent(gradeRow.score, "Not graded")}
                           </div>
                         ) : null}
                         {gradeRow?.feedback ? (
@@ -439,20 +559,25 @@ function StudentAssignmentsView() {
 
           <div className="col-lg-4 d-flex flex-column gap-3">
             <div className="dash-card">
-              <h3 className="dash-card-title mb-3">Upcoming quizzes</h3>
-              {quizzes.length ? (
+              <h3 className="dash-card-title mb-3">Upcoming work</h3>
+              {upcomingWork.length ? (
                 <div className="d-flex flex-column gap-3">
-                  {quizzes.slice(0, 4).map((quiz) => (
-                    <div key={quiz._id} className="border rounded p-3 bg-light-subtle">
-                      <div className="fw-semibold">{quiz.title}</div>
+                  {upcomingWork.map((item) => (
+                    <div key={item._id} className="border rounded p-3 bg-light-subtle">
+                      <div className="fw-semibold">
+                        {item.title}
+                        <span className="badge bg-secondary ms-2">{item.kind}</span>
+                      </div>
                       <div className="small text-muted">
-                        Due {formatDate(quiz.dueDate || quiz.availableUntil)}
+                        {item.status} • Due {formatDate(item.dueDate)}
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="dash-card-muted mb-0">No quizzes assigned right now.</p>
+                <p className="dash-card-muted mb-0">
+                  You are caught up on current assignments and quizzes.
+                </p>
               )}
             </div>
 
@@ -622,12 +747,22 @@ function TeacherAssignmentsView() {
       (sum, item) => sum + Number(item?.counts?.submitted || 0),
       0,
     );
+    const missing = assignments.reduce(
+      (sum, item) => sum + Number(item?.counts?.missing || 0),
+      0,
+    );
+    const pendingReview = assignments.reduce(
+      (sum, item) => sum + countPendingReview(item?.counts),
+      0,
+    );
 
     return {
       total: assignments.length,
       published,
       draft,
       submitted,
+      missing,
+      pendingReview,
     };
   }, [assignments]);
 
@@ -703,6 +838,7 @@ function TeacherAssignmentsView() {
 
   const loadReview = async (assignmentId) => {
     try {
+      setFeedbackDrafts({});
       const data = await api.teachers.getAssignmentSubmissions(assignmentId);
       setReview(data);
     } catch (error) {
@@ -798,17 +934,23 @@ function TeacherAssignmentsView() {
       </div>
 
       <div className="row g-3 mb-4">
-        <div className="col-md-3">
+        <div className="col-md-6 col-xl">
           <SummaryCard title="Total" value={summary.total} />
         </div>
-        <div className="col-md-3">
+        <div className="col-md-6 col-xl">
           <SummaryCard title="Published" value={summary.published} />
         </div>
-        <div className="col-md-3">
+        <div className="col-md-6 col-xl">
           <SummaryCard title="Drafts" value={summary.draft} />
         </div>
-        <div className="col-md-3">
+        <div className="col-md-6 col-xl">
           <SummaryCard title="Submitted work" value={summary.submitted} />
+        </div>
+        <div className="col-md-6 col-xl">
+          <SummaryCard title="Needs grading" value={summary.pendingReview} />
+        </div>
+        <div className="col-md-6 col-xl">
+          <SummaryCard title="Missing" value={summary.missing} />
         </div>
       </div>
 
@@ -1013,15 +1155,24 @@ function TeacherAssignmentsView() {
                       <div>
                         <div className="fw-semibold">{assignment.title}</div>
                         <div className="text-muted small">
+                          Target: {targetScopeLabel(assignment)}
+                        </div>
+                        <div className="text-muted small">
                           Due {formatDate(assignment.dueDate)} • {assignment.status}
                         </div>
                       </div>
                       <div className="d-flex gap-2 flex-wrap">
+                        <span className={`badge ${badgeClass(assignment?.status)}`}>
+                          {assignment?.status || "draft"}
+                        </span>
                         <span className="badge bg-secondary">
                           targeted {assignment?.counts?.targetedStudents || 0}
                         </span>
                         <span className="badge bg-secondary">
                           submitted {assignment?.counts?.submitted || 0}
+                        </span>
+                        <span className="badge bg-warning text-dark">
+                          needs grading {countPendingReview(assignment?.counts)}
                         </span>
                         <span className="badge bg-secondary">
                           missing {assignment?.counts?.missing || 0}
@@ -1066,7 +1217,13 @@ function TeacherAssignmentsView() {
 
               <div className="d-flex gap-2 flex-wrap mb-3">
                 <span className="badge bg-secondary">
+                  Target {targetScopeLabel(review?.assignment)}
+                </span>
+                <span className="badge bg-secondary">
                   Submitted {review?.summary?.submitted || 0}
+                </span>
+                <span className="badge bg-warning text-dark">
+                  Needs grading {countPendingReview(review?.summary)}
                 </span>
                 <span className="badge bg-secondary">
                   Missing {review?.summary?.missing || 0}
@@ -1087,6 +1244,14 @@ function TeacherAssignmentsView() {
                         <div className="small text-muted">
                           Submitted {formatDate(submission.submittedAt, "")}
                         </div>
+                        <div className="small text-muted">
+                          {submission.score !== null && submission.score !== undefined
+                            ? `Current score ${formatPercent(submission.score)}`
+                            : "Awaiting grade"}
+                          {Array.isArray(submission.files) && submission.files.length
+                            ? ` - ${submission.files.length} file(s)`
+                            : ""}
+                        </div>
                       </div>
                       <span className={`badge ${badgeClass(submission.gradingStatus)}`}>
                         {submission.gradingStatus || "submitted"}
@@ -1101,6 +1266,12 @@ function TeacherAssignmentsView() {
                     ) : null}
 
                     <div className="d-flex gap-2 flex-wrap mt-3">
+                      <Link
+                        className="btn btn-primary btn-sm"
+                        to="/dashboard/grades"
+                      >
+                        Open in gradebook
+                      </Link>
                       <button
                         className="btn btn-outline-light btn-sm"
                         type="button"
@@ -1115,6 +1286,13 @@ function TeacherAssignmentsView() {
                       <div className="mt-3 p-3 border rounded bg-white">
                         <b>AI draft</b>
                         <p className="mb-0 mt-2">{feedbackDrafts[submission._id]}</p>
+                      </div>
+                    ) : null}
+
+                    {submission.feedback ? (
+                      <div className="mt-3 p-3 border rounded bg-white">
+                        <b>Saved feedback</b>
+                        <p className="mb-0 mt-2">{submission.feedback}</p>
                       </div>
                     ) : null}
                   </div>

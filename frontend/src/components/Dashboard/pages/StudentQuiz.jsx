@@ -16,6 +16,23 @@ function formatDate(value, fallback = "Not scheduled") {
   return date.toLocaleString();
 }
 
+function formatPercent(value, fallback = "Awaiting score") {
+  if (value === null || value === undefined || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? `${parsed.toFixed(0)}%` : fallback;
+}
+
+function normalizeAttemptStatus(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "in_progress" || normalized === "inprogress") {
+    return "in_progress";
+  }
+  if (normalized === "submitted") return "submitted";
+  if (normalized === "graded") return "graded";
+  if (normalized === "grading") return "grading";
+  return normalized;
+}
+
 function normalizeQuestion(question, index) {
   const type = String(
     question?.questionType || question?.type || "multiple_choice",
@@ -51,8 +68,10 @@ function normalizeQuestion(question, index) {
 }
 
 function statusForItem(item) {
-  const attemptStatus = String(item?.attempt?.status || "").toLowerCase();
-  if (attemptStatus === "submitted" || attemptStatus === "graded") return "Submitted";
+  const attemptStatus = normalizeAttemptStatus(item?.attempt?.status);
+  if (attemptStatus === "graded") return "Graded";
+  if (attemptStatus === "submitted") return "Submitted";
+  if (attemptStatus === "grading") return "Grading";
   if (attemptStatus === "in_progress") return "In Progress";
 
   const now = Date.now();
@@ -69,25 +88,36 @@ function scoreQuestions(questions, answers) {
     const userAnswer = answers[question.id];
     const normalizedUser = String(userAnswer || "").trim();
     const normalizedCorrect = String(question.correctAnswer || "").trim();
+    const requiresManualReview =
+      question.type === "essay" || question.type === "short_answer";
     const isCorrect =
       question.type === "multiple_choice" || question.type === "true_false"
         ? normalizedUser.toUpperCase() === normalizedCorrect.toUpperCase()
-        : Boolean(normalizedUser);
+        : null;
 
     return {
       ...question,
       userAnswer: normalizedUser || "Not answered",
       isCorrect,
+      requiresManualReview,
       earnedScore:
-        question.type === "essay" || question.type === "short_answer"
-          ? normalizedUser
-            ? question.maxScore
-            : 0
+        requiresManualReview
+          ? null
           : isCorrect
             ? question.maxScore
             : 0,
     };
   });
+}
+
+function SummaryCard({ title, value, subtitle }) {
+  return (
+    <div className="dash-card h-100">
+      <div className="dash-card-title">{title}</div>
+      <div style={{ fontSize: 28, fontWeight: 900 }}>{value}</div>
+      {subtitle ? <p className="dash-card-muted mb-0">{subtitle}</p> : null}
+    </div>
+  );
 }
 
 export default function StudentQuiz() {
@@ -133,7 +163,7 @@ export default function StudentQuiz() {
   );
 
   useEffect(() => {
-    if (!attempt?._id || String(attempt?.status || "").toLowerCase() !== "in_progress") {
+    if (!attempt?._id || normalizeAttemptStatus(attempt?.status) !== "in_progress") {
       return;
     }
 
@@ -225,6 +255,26 @@ export default function StudentQuiz() {
       ? Number(attempt.score)
       : 0;
 
+  const summary = useMemo(() => {
+    const counts = {
+      total: items.length,
+      available: 0,
+      inProgress: 0,
+      submitted: 0,
+      graded: 0,
+    };
+
+    for (const item of items) {
+      const status = statusForItem(item);
+      if (status === "Available") counts.available += 1;
+      if (status === "In Progress") counts.inProgress += 1;
+      if (status === "Submitted") counts.submitted += 1;
+      if (status === "Graded") counts.graded += 1;
+    }
+
+    return counts;
+  }, [items]);
+
   return (
     <div className="quizzes-page">
       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
@@ -261,6 +311,25 @@ export default function StudentQuiz() {
         </div>
       </div>
 
+      <div className="row g-3 mb-4">
+        <div className="col-md-6 col-xl-3">
+          <SummaryCard title="Assigned" value={summary.total} />
+        </div>
+        <div className="col-md-6 col-xl-3">
+          <SummaryCard title="Available" value={summary.available} />
+        </div>
+        <div className="col-md-6 col-xl-3">
+          <SummaryCard title="In progress" value={summary.inProgress} />
+        </div>
+        <div className="col-md-6 col-xl-3">
+          <SummaryCard
+            title="Reviewed"
+            value={summary.graded}
+            subtitle={`${summary.submitted} submitted`}
+          />
+        </div>
+      </div>
+
       {step === "assigned" ? (
         <div className="dash-card">
           <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -277,6 +346,17 @@ export default function StudentQuiz() {
             <div className="d-flex flex-column gap-3">
               {items.map((item) => (
                 <div key={item._id} className="border rounded p-3 bg-light-subtle">
+                  {(() => {
+                    const itemStatus = statusForItem(item);
+                    const normalizedAttemptStatus = normalizeAttemptStatus(
+                      item?.attempt?.status,
+                    );
+                    const canStart = !["Closed", "Scheduled", "Submitted", "Graded"].includes(
+                      itemStatus,
+                    );
+
+                    return (
+                  <>
                   <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
                     <div>
                       <div className="fw-semibold">
@@ -287,11 +367,16 @@ export default function StudentQuiz() {
                       </div>
                     </div>
                     <div className="d-flex gap-2 flex-wrap">
-                      <span className="badge bg-secondary">{statusForItem(item)}</span>
+                      <span className="badge bg-secondary">{itemStatus}</span>
                       <span className="badge bg-secondary">
                         <FaClock className="me-1" />
                         {Number(item.durationMinutes || 0)} min
                       </span>
+                      {item?.attempt?.score !== null && item?.attempt?.score !== undefined ? (
+                        <span className="badge bg-info text-dark">
+                          {formatPercent(item.attempt.score)}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
 
@@ -300,14 +385,14 @@ export default function StudentQuiz() {
                       className="btn btn-primary btn-sm"
                       type="button"
                       onClick={() => openAssignedQuiz(item)}
-                      disabled={statusForItem(item) === "Closed"}
+                      disabled={!canStart}
                     >
                       <FaPlay className="me-2" />
-                      {String(item?.attempt?.status || "").toLowerCase() === "in_progress"
+                      {normalizedAttemptStatus === "in_progress"
                         ? "Continue"
                         : "Start"}
                     </button>
-                    {String(item?.attempt?.status || "").toLowerCase() === "submitted" ? (
+                    {["submitted", "graded"].includes(normalizedAttemptStatus) ? (
                       <button
                         className="btn btn-outline-light btn-sm"
                         type="button"
@@ -318,6 +403,9 @@ export default function StudentQuiz() {
                       </button>
                     ) : null}
                   </div>
+                  </>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
@@ -328,7 +416,7 @@ export default function StudentQuiz() {
       ) : null}
 
       {step === "take" ? (
-        questions.length && String(attempt?.status || "").toLowerCase() === "in_progress" ? (
+        questions.length && normalizeAttemptStatus(attempt?.status) === "in_progress" ? (
           <div className="dash-card">
             <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
               <div>
@@ -464,16 +552,28 @@ export default function StudentQuiz() {
                       <p className="mb-2">{question.questionText}</p>
                     </div>
                     <span className="badge bg-secondary">
-                      {question.earnedScore}/{question.maxScore}
+                      {question.requiresManualReview
+                        ? "Manual review"
+                        : `${question.earnedScore}/${question.maxScore}`}
                     </span>
                   </div>
 
                   <div className="small text-muted">
                     <b>Your answer:</b> {question.userAnswer}
                   </div>
-                  {question.correctAnswer ? (
+                  {question.correctAnswer && !question.requiresManualReview ? (
                     <div className="small text-muted mt-1">
                       <b>Correct answer:</b> {question.correctAnswer}
+                    </div>
+                  ) : null}
+                  {question.requiresManualReview ? (
+                    <div className="small text-muted mt-1">
+                      <b>Teacher review:</b> Written responses are reviewed manually before a final score is confirmed.
+                    </div>
+                  ) : null}
+                  {attempt?.feedback ? (
+                    <div className="small text-muted mt-2">
+                      <b>Teacher feedback:</b> {attempt.feedback}
                     </div>
                   ) : null}
                   {question.explanation ? (

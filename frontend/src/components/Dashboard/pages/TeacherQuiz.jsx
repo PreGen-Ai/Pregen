@@ -30,6 +30,43 @@ function SummaryCard({ title, value, subtitle }) {
   );
 }
 
+function formatPercent(value, fallback = "Awaiting score") {
+  if (value === null || value === undefined || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? `${parsed.toFixed(0)}%` : fallback;
+}
+
+function countPendingReview(counts) {
+  const submitted = Number(counts?.submitted || 0);
+  const graded = Number(counts?.graded || 0);
+  return Math.max(submitted - graded, 0);
+}
+
+function targetScopeLabel(item) {
+  const selectedCount = Array.isArray(item?.selectedStudentIds)
+    ? item.selectedStudentIds.length
+    : 0;
+
+  if (selectedCount) {
+    return `${selectedCount} selected student${selectedCount === 1 ? "" : "s"}`;
+  }
+
+  if (item?.class?.name) {
+    return `Classroom: ${item.class.name}`;
+  }
+
+  return "Course-wide";
+}
+
+function statusBadgeClass(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "published") return "bg-primary";
+  if (normalized === "graded" || normalized === "submitted") return "bg-success";
+  if (normalized === "draft") return "bg-warning text-dark";
+  if (normalized === "closed" || normalized === "missing") return "bg-secondary";
+  return "bg-secondary";
+}
+
 function nameForUser(user) {
   return (
     user?.name ||
@@ -220,12 +257,22 @@ export default function TeacherQuiz() {
       (sum, item) => sum + Number(item?.counts?.submitted || 0),
       0,
     );
+    const missing = quizzes.reduce(
+      (sum, item) => sum + Number(item?.counts?.missing || 0),
+      0,
+    );
+    const pendingReview = quizzes.reduce(
+      (sum, item) => sum + countPendingReview(item?.counts),
+      0,
+    );
 
     return {
       total: quizzes.length,
       published,
       draft,
       attempts,
+      missing,
+      pendingReview,
     };
   }, [quizzes]);
 
@@ -458,17 +505,23 @@ export default function TeacherQuiz() {
       </div>
 
       <div className="row g-3 mb-4">
-        <div className="col-md-3">
+        <div className="col-md-6 col-xl">
           <SummaryCard title="Total" value={summary.total} />
         </div>
-        <div className="col-md-3">
+        <div className="col-md-6 col-xl">
           <SummaryCard title="Published" value={summary.published} />
         </div>
-        <div className="col-md-3">
+        <div className="col-md-6 col-xl">
           <SummaryCard title="Drafts" value={summary.draft} />
         </div>
-        <div className="col-md-3">
+        <div className="col-md-6 col-xl">
           <SummaryCard title="Attempts" value={summary.attempts} />
+        </div>
+        <div className="col-md-6 col-xl">
+          <SummaryCard title="Needs review" value={summary.pendingReview} />
+        </div>
+        <div className="col-md-6 col-xl">
+          <SummaryCard title="Missing" value={summary.missing} />
         </div>
       </div>
 
@@ -825,15 +878,24 @@ export default function TeacherQuiz() {
                       <div>
                         <div className="fw-semibold">{quiz.title}</div>
                         <div className="small text-muted">
+                          Target: {targetScopeLabel(quiz)}
+                        </div>
+                        <div className="small text-muted">
                           Due {formatDate(quiz.dueDate)} • {quiz.status}
                         </div>
                       </div>
                       <div className="d-flex gap-2 flex-wrap">
+                        <span className={`badge ${statusBadgeClass(quiz?.status)}`}>
+                          {quiz?.status || "draft"}
+                        </span>
                         <span className="badge bg-secondary">
                           targeted {quiz?.counts?.targetedStudents || 0}
                         </span>
                         <span className="badge bg-secondary">
                           attempts {quiz?.counts?.submitted || 0}
+                        </span>
+                        <span className="badge bg-warning text-dark">
+                          needs review {countPendingReview(quiz?.counts)}
                         </span>
                         <span className="badge bg-secondary">
                           missing {quiz?.counts?.missing || 0}
@@ -878,7 +940,13 @@ export default function TeacherQuiz() {
 
               <div className="d-flex gap-2 flex-wrap mb-3">
                 <span className="badge bg-secondary">
+                  Target {targetScopeLabel(results?.quiz)}
+                </span>
+                <span className="badge bg-secondary">
                   Attempts {results?.summary?.submitted || 0}
+                </span>
+                <span className="badge bg-warning text-dark">
+                  Needs review {countPendingReview(results?.summary)}
                 </span>
                 <span className="badge bg-secondary">
                   Graded {results?.summary?.graded || 0}
@@ -893,20 +961,31 @@ export default function TeacherQuiz() {
                   {results.attempts.map((attempt) => (
                     <div key={attempt._id} className="border rounded p-3 bg-light-subtle">
                       <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap">
-                        <div>
-                          <div className="fw-semibold">{nameForUser(attempt.student)}</div>
-                          <div className="small text-muted">
-                            Submitted {formatDate(attempt.submittedAt || attempt.updatedAt, "")}
-                          </div>
+                      <div>
+                        <div className="fw-semibold">{nameForUser(attempt.student)}</div>
+                        <div className="small text-muted">
+                          Submitted {formatDate(attempt.submittedAt || attempt.updatedAt, "")}
                         </div>
-                        <span className="badge bg-info text-dark">
-                          {attempt.score !== null && attempt.score !== undefined
-                            ? `${Number(attempt.score).toFixed(0)}%`
-                            : attempt.status || "submitted"}
-                        </span>
+                        <div className="small text-muted">
+                          {attempt.feedback
+                            ? `Feedback saved - ${attempt.feedback}`
+                            : "No feedback saved yet"}
+                        </div>
                       </div>
+                      <span
+                        className={`badge ${
+                          attempt.score !== null && attempt.score !== undefined
+                            ? "bg-info text-dark"
+                            : statusBadgeClass(attempt.status)
+                        }`}
+                      >
+                        {attempt.score !== null && attempt.score !== undefined
+                          ? formatPercent(attempt.score)
+                          : attempt.status || "submitted"}
+                      </span>
                     </div>
-                  ))}
+                  </div>
+                ))}
                 </div>
               ) : (
                 <p className="dash-card-muted mb-0">No quiz attempts yet.</p>
