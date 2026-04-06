@@ -24,11 +24,24 @@ export async function updateBranding(req, res) {
   try {
     const tenantId = getTenantId(req);
     const filter = tenantId ? { tenantId } : {};
-    const branding = req.body;
+    const { institutionName, primaryColor, logoUrl } = req.body || {};
+
+    // Use dot-notation so a save of name/color never wipes an existing logoUrl.
+    const update = {};
+    if (institutionName !== undefined)
+      update["branding.institutionName"] = String(institutionName || "").trim();
+    if (primaryColor !== undefined)
+      update["branding.primaryColor"] = primaryColor;
+    if (logoUrl !== undefined)
+      update["branding.logoUrl"] = String(logoUrl || "");
+
+    if (!Object.keys(update).length) {
+      return res.status(400).json({ message: "No branding fields provided" });
+    }
 
     const doc = await TenantSettings.findOneAndUpdate(
       filter,
-      { $set: { branding } },
+      { $set: update },
       { upsert: true, new: true },
     ).lean();
 
