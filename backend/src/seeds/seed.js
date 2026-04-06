@@ -13,6 +13,10 @@ import bcrypt from "bcryptjs";
 import Tenant from "../models/Tenant.js";
 import User from "../models/userModel.js";
 import TenantSettings from "../models/TenantSettings.js";
+import Subject from "../models/Subject.js";
+import Classroom from "../models/Classroom.js";
+import Course from "../models/CourseModel.js";
+import CourseMember from "../models/CourseMember.js";
 
 const TENANT_ID = "tnt_test_001";
 const TENANT_NAME = "Test School";
@@ -63,7 +67,7 @@ const SEED_USERS = [
 async function upsertTenant() {
   const existing = await Tenant.findOne({ tenantId: TENANT_ID }).lean();
   if (existing) {
-    console.log(`[seed] tenant exists:   ${TENANT_ID}`);
+    console.log(`[seed] tenant exists:      ${TENANT_ID}`);
     return existing;
   }
   const doc = await Tenant.create({
@@ -72,7 +76,7 @@ async function upsertTenant() {
     status: "active",
     plan: "basic",
   });
-  console.log(`[seed] tenant created:  ${TENANT_ID} — "${TENANT_NAME}"`);
+  console.log(`[seed] tenant created:     ${TENANT_ID} — "${TENANT_NAME}"`);
   return doc.toObject();
 }
 
@@ -80,7 +84,7 @@ async function upsertTenantSettings() {
   const filter = { tenantId: TENANT_ID };
   const existing = await TenantSettings.findOne(filter).lean();
   if (existing) {
-    console.log(`[seed] settings exist:  tenantId=${TENANT_ID}`);
+    console.log(`[seed] settings exist:     tenantId=${TENANT_ID}`);
     return existing;
   }
   const doc = await TenantSettings.create({
@@ -103,14 +107,14 @@ async function upsertTenantSettings() {
       },
     },
   });
-  console.log(`[seed] settings created: tenantId=${TENANT_ID}`);
+  console.log(`[seed] settings created:   tenantId=${TENANT_ID}`);
   return doc.toObject();
 }
 
 async function upsertUser(spec) {
   const existing = await User.findOne({ email: spec.email }).lean();
   if (existing) {
-    console.log(`[seed] user exists:     ${spec.email} (${spec.role})`);
+    console.log(`[seed] user exists:        ${spec.email} (${spec.role})`);
     return existing;
   }
   const hashed = await bcrypt.hash(spec.password, 10);
@@ -125,8 +129,99 @@ async function upsertUser(spec) {
     password: hashed,
     gender: "other",
   });
-  console.log(`[seed] user created:    ${spec.email} (${spec.role})`);
+  console.log(`[seed] user created:       ${spec.email} (${spec.role})`);
   return user.toObject();
+}
+
+async function upsertSubject(teacherDoc) {
+  const nameKey = "mathematics";
+  const existing = await Subject.findOne({
+    tenantId: TENANT_ID,
+    nameKey,
+    deleted: false,
+  }).lean();
+  if (existing) {
+    console.log(`[seed] subject exists:     Mathematics (${TENANT_ID})`);
+    return existing;
+  }
+  const doc = await Subject.create({
+    tenantId: TENANT_ID,
+    name: "Mathematics",
+    code: "MATH",
+    description: "Core mathematics curriculum",
+    teacherIds: teacherDoc ? [teacherDoc._id] : [],
+  });
+  console.log(`[seed] subject created:    Mathematics (${TENANT_ID})`);
+  return doc.toObject();
+}
+
+async function upsertClassroom(teacherDoc, studentDoc) {
+  const existing = await Classroom.findOne({
+    tenantId: TENANT_ID,
+    name: "Class 10A",
+    deletedAt: null,
+  }).lean();
+  if (existing) {
+    console.log(`[seed] classroom exists:   Class 10A (${TENANT_ID})`);
+    return existing;
+  }
+  const doc = await Classroom.create({
+    tenantId: TENANT_ID,
+    name: "Class 10A",
+    grade: "10",
+    section: "A",
+    teacherId: teacherDoc?._id || null,
+    studentIds: studentDoc ? [studentDoc._id] : [],
+  });
+  console.log(`[seed] classroom created:  Class 10A (${TENANT_ID})`);
+  return doc.toObject();
+}
+
+async function upsertCourse(teacherDoc, subjectDoc, classroomDoc) {
+  const existing = await Course.findOne({
+    tenantId: TENANT_ID,
+    title: "Introduction to Algebra",
+    deleted: false,
+  }).lean();
+  if (existing) {
+    console.log(`[seed] course exists:      Introduction to Algebra (${TENANT_ID})`);
+    return existing;
+  }
+  const doc = await Course.create({
+    title: "Introduction to Algebra",
+    description: "Foundational algebra concepts for secondary school students.",
+    tenantId: TENANT_ID,
+    type: "course",
+    createdBy: teacherDoc._id,
+    subjectId: subjectDoc?._id || null,
+    classroomId: classroomDoc?._id || null,
+    visibility: "private",
+  });
+  console.log(`[seed] course created:     Introduction to Algebra (code: ${doc.code})`);
+  return doc.toObject();
+}
+
+async function upsertCourseMember(courseDoc, userDoc, role) {
+  const existing = await CourseMember.findOne({
+    courseId: courseDoc._id,
+    userId: userDoc._id,
+  }).lean();
+  if (existing) {
+    console.log(
+      `[seed] member exists:      ${userDoc.email} as ${role} in course`,
+    );
+    return existing;
+  }
+  const doc = await CourseMember.create({
+    courseId: courseDoc._id,
+    userId: userDoc._id,
+    role,
+    status: "active",
+  });
+  console.log(
+    `[seed] member created:     ${userDoc.email} as ${role} in course`,
+  );
+  return doc.toObject();
 }
 
 async function main() {
@@ -136,18 +231,32 @@ async function main() {
 
   await upsertTenant();
   await upsertTenantSettings();
+
   console.log();
+  const userDocs = {};
   for (const u of SEED_USERS) {
-    await upsertUser(u);
+    userDocs[u.role] = await upsertUser(u);
   }
 
-  console.log("\n[seed] complete. Test credentials:");
+  console.log();
+  const subjectDoc = await upsertSubject(userDocs.TEACHER);
+  const classroomDoc = await upsertClassroom(userDocs.TEACHER, userDocs.STUDENT);
+  const courseDoc = await upsertCourse(userDocs.TEACHER, subjectDoc, classroomDoc);
+  await upsertCourseMember(courseDoc, userDocs.TEACHER, "teacher");
+  await upsertCourseMember(courseDoc, userDocs.STUDENT, "student");
+
+  console.log("\n[seed] complete.\n");
+  console.log("  Test credentials:");
   for (const u of SEED_USERS) {
     console.log(
-      `  ${u.role.padEnd(12)}  ${u.email.padEnd(32)} pw: ${u.password}`,
+      `    ${u.role.padEnd(12)}  ${u.email.padEnd(32)}  pw: ${u.password}`,
     );
   }
-  console.log(`  tenantId (admin/teacher/student): ${TENANT_ID}`);
+  console.log();
+  console.log(`  Tenant:    ${TENANT_ID}  ("${TENANT_NAME}")`);
+  console.log(`  Subject:   Mathematics  (MATH)`);
+  console.log(`  Classroom: Class 10A  (grade 10, section A)`);
+  console.log(`  Course:    Introduction to Algebra  (code: ${courseDoc.code})`);
   console.log();
 
   await disconnectMongo();
