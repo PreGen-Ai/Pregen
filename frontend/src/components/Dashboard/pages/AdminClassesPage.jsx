@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import api from "../../../services/api/api.js";
+import { useAuthContext } from "../../../context/AuthContext.js";
 import LoadingSpinner from "../components/ui/LoadingSpinner.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
 import StatusBadge from "../components/ui/StatusBadge.jsx";
@@ -18,6 +19,9 @@ function nameOf(u) {
 }
 
 export default function AdminClassesPage() {
+  const { user } = useAuthContext();
+  const tenantId = user?.tenantId;
+  const tenantName = user?.tenantName || user?.institutionName || null;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [classes, setClasses] = useState([]);
@@ -149,6 +153,25 @@ export default function AdminClassesPage() {
           <p className="text-muted mb-0">
             Create classes, assign teachers, and manage student enrollment.
           </p>
+          {(tenantName || tenantId) && (
+            <div className="mt-2">
+              <span
+                className="badge"
+                style={{
+                  background: "rgba(59,130,246,0.15)",
+                  border: "1px solid rgba(59,130,246,0.3)",
+                  color: "#93c5fd",
+                  fontWeight: 500,
+                  fontSize: "0.78rem",
+                  padding: "3px 10px",
+                  borderRadius: 6,
+                }}
+              >
+                {tenantName ? `${tenantName} · ` : ""}
+                {tenantId}
+              </span>
+            </div>
+          )}
         </div>
         <button
           className="btn btn-primary"

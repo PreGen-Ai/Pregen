@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import api from "../../../services/api/api.js";
+import { API_BASE_URL } from "../../../services/api/http.js";
 import LoadingSpinner from "../components/ui/LoadingSpinner.jsx";
 
 export default function AdminBrandingPage() {
@@ -130,7 +131,11 @@ export default function AdminBrandingPage() {
         {form.logoUrl && (
           <div className="mb-3">
             <img
-              src={form.logoUrl}
+              src={
+                form.logoUrl.startsWith("/")
+                  ? `${API_BASE_URL}${form.logoUrl}`
+                  : form.logoUrl
+              }
               alt="Institution logo"
               style={{
                 maxHeight: 80,

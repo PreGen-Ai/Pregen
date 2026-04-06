@@ -161,10 +161,6 @@ export default function AnalyticsReportsPage() {
               </div>
             )}
 
-            <div className="text-xs opacity-70" style={{ marginTop: 12 }}>
-              Exports use <code>/api/admin/analytics/export/:type</code> with
-              query params like <code>range</code>.
-            </div>
           </div>
         </div>
       </div>

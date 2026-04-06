@@ -2,19 +2,46 @@
   display:flex;
   min-height:100vh;
   background:#0b0f14;
+  /* Enforce dark theme values for all dashboard pages */
+  --card-bg: #1e293b;
+  --border-color: #374151;
+  --text-heading: #e5e7eb;
+  --text-body: #d1d5db;
+  --text-secondary: rgba(229,231,235,0.75);
+  --text-muted-val: rgba(156,163,175,0.85);
+  --stat-icon-bg: #374151;
+  color: #d1d5db;
 }
 .dashboard-main {
   flex: 1;
   min-width: 0;
 }
+/* Offset fixed navbar (75px) so content is never hidden behind it */
 .dash-main{
   flex:1;
   padding:16px;
+  padding-top:91px; /* 75px navbar + 16px */
   overflow-x:hidden;
 }
 
 @media (min-width: 992px){
-  .dash-main{ padding:24px; }
+  .dash-main{
+    padding:24px;
+    padding-top:99px; /* 75px navbar + 24px */
+  }
+}
+
+/* Bootstrap text-muted override for dark shell */
+.dash-shell .text-muted {
+  color: var(--text-muted-val) !important;
+}
+/* Headings within the main content area */
+.dash-main h1,
+.dash-main h2,
+.dash-main h3,
+.dash-main h4,
+.dash-main h5 {
+  color: var(--text-heading, #e5e7eb);
 }
 
 /* ── Shared page scaffold ────────────────────────────────── */
