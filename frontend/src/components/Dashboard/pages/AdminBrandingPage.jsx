@@ -43,6 +43,8 @@ export default function AdminBrandingPage() {
       await api.admin.updateBranding({
         institutionName: form.institutionName,
         primaryColor: form.primaryColor,
+        // preserve existing logo so a settings save doesn't wipe the uploaded logo
+        ...(form.logoUrl ? { logoUrl: form.logoUrl } : {}),
       });
       toast.success("Branding saved");
     } catch (e) {

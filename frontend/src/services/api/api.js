@@ -3,7 +3,6 @@
 // Uses ONE axios source of truth: ./http
 
 import { apiClient, pdfClient, normalizeApiError } from "./http";
-import axios from "axios";
 
 /**
  * Admin base paths
@@ -392,21 +391,20 @@ export const api = {
         apiClient.post(`/api/quizzes/attempts/${attemptId}/submit`, payload, config),
       ),
   },
+  // These were using unauthenticated raw axios and some pointed at non-existent
+  // routes (/super/ai-usage). All four now use apiClient (auth included) and
+  // point at the canonical /api/admin/system/super/ai-requests paths.
   getSuperAiUsage: (params) =>
-    axios.get("/api/admin/super/ai-usage", { params }).then((r) => r.data),
+    safe(apiClient.get(`${ADMIN_SYSTEM_BASE}/super/ai-requests`, { params: cleanParams(params) })),
 
   getSuperAiUsageSummary: (params) =>
-    axios
-      .get("/api/admin/super/ai-usage/summary", { params })
-      .then((r) => r.data),
+    safe(apiClient.get(`${ADMIN_SYSTEM_BASE}/super/ai-requests/summary`, { params: cleanParams(params) })),
 
   getSuperAiRequests: (params) =>
-    axios.get("/api/admin/super/ai-requests", { params }).then((r) => r.data),
+    safe(apiClient.get(`${ADMIN_SYSTEM_BASE}/super/ai-requests`, { params: cleanParams(params) })),
 
   getSuperAiRequestsSummary: (params) =>
-    axios
-      .get("/api/admin/super/ai-requests/summary", { params })
-      .then((r) => r.data),
+    safe(apiClient.get(`${ADMIN_SYSTEM_BASE}/super/ai-requests/summary`, { params: cleanParams(params) })),
   // =======================================================
   // DOCUMENTS
   // =======================================================

@@ -304,11 +304,12 @@ const api = {
       }),
   },
 
-  // Legacy axios-style helpers you pasted (now fetch-based + auto-fixed)
+  // Canonical super AI request helpers — all go through /api/admin/system/super/ai-requests
+  // (/api/admin/super/* is auto-rewritten by fixLegacyPath → /api/admin/system/super/*)
   getSuperAiUsage: (params) =>
-    apiGet("/api/admin/super/ai-usage", { params: cleanParams(params) }),
+    apiGet("/api/admin/super/ai-requests", { params: cleanParams(params) }),
   getSuperAiUsageSummary: (params) =>
-    apiGet("/api/admin/super/ai-usage/summary", { params: cleanParams(params) }),
+    apiGet("/api/admin/super/ai-requests/summary", { params: cleanParams(params) }),
   getSuperAiRequests: (params) =>
     apiGet("/api/admin/super/ai-requests", { params: cleanParams(params) }),
   getSuperAiRequestsSummary: (params) =>
