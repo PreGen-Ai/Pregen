@@ -182,8 +182,8 @@ export default function AdminUsersPage() {
                 >
                   <option value="">— Select tenant * —</option>
                   {tenants.map((t) => (
-                    <option key={t._id} value={t._id}>
-                      {t.name || t.slug || t._id}
+                    <option key={t._id} value={t.tenantId}>
+                      {t.name || t.tenantId}
                     </option>
                   ))}
                 </select>

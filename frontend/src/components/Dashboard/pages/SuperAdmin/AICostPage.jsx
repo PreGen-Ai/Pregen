@@ -92,10 +92,11 @@ export default function AICostPage() {
   }, []);
 
   const reqTotals = useMemo(() => {
-    const t = reqSummary?.totals || {};
+    // backend returns { summary: {...} } or { totals: {...} }
+    const t = reqSummary?.totals || reqSummary?.summary || {};
     return {
       requests: n(t.requests),
-      totalTokens: n(t.totalTokens),
+      totalTokens: n(t.totalTokens ?? t.tokens),
       avgLatencyMs: n(t.avgLatencyMs),
       cacheHitRate: n(t.cacheHitRate),
     };
@@ -206,7 +207,7 @@ export default function AICostPage() {
             <label className="text-muted mb-0" style={{ fontSize: "0.85em" }}>Tenant</label>
             <select className="form-select" style={{ width: "auto", minWidth: 180 }} value={tenantFilter} onChange={(e) => setTenantFilter(e.target.value)}>
               <option value="">All tenants</option>
-              {tenants.map((t) => <option key={t._id} value={t._id}>{t.name || t.slug || t._id}</option>)}
+              {tenants.map((t) => <option key={t._id} value={t.tenantId}>{t.name || t.tenantId}</option>)}
             </select>
           </div>
           <div className="ms-auto d-flex gap-2">

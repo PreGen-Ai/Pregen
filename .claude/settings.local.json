@@ -15,7 +15,8 @@
       "Bash(gh pr:*)",
       "Bash(git checkout:*)",
       "Bash(git merge:*)",
-      "Bash(npx react-scripts:*)"
+      "Bash(npx react-scripts:*)",
+      "Bash(grep -v \"^$\")"
     ]
   }
 }

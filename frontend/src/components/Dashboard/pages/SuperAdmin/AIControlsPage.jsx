@@ -41,7 +41,7 @@ export default function AIControlsPage() {
   const [tenants, setTenants] = useState([]);
   const [selectedTenantId, setSelectedTenantId] = useState(""); // "" = global
 
-  const selectedTenant = tenants.find((t) => t._id === selectedTenantId);
+  const selectedTenant = tenants.find((t) => t.tenantId === selectedTenantId);
   const scopeLabel = selectedTenantId
     ? `Tenant override: ${selectedTenant?.name || selectedTenant?.slug || selectedTenantId}`
     : "Global defaults";
@@ -126,8 +126,8 @@ export default function AIControlsPage() {
           >
             <option value="">Global defaults (all tenants)</option>
             {tenants.map((t) => (
-              <option key={t._id} value={t._id}>
-                {t.name || t.slug || t._id}
+              <option key={t._id} value={t.tenantId}>
+                {t.name || t.tenantId}
               </option>
             ))}
           </select>
