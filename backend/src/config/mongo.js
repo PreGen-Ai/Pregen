@@ -45,17 +45,24 @@ function bindConnectionListeners() {
 function getMongoFailureHints(error) {
   const message = String(error?.message || error || "");
   const hints = [];
+  const isSrvLookupError = /querySrv/i.test(message);
 
-  if (/querySrv/i.test(message)) {
+  if (isSrvLookupError) {
     hints.push(
       "SRV DNS resolution failed. Verify the URI scheme and make sure the selected env file is the one you expect.",
     );
     hints.push(
       "If Atlas SRV lookup fails locally but the resolved shard hosts are reachable, temporarily use a direct-host replica-set URI in MONGO_URL for local verification.",
     );
+    hints.push(
+      "This usually points to local DNS or network policy around Atlas SRV lookups, not an application schema or route problem.",
+    );
   }
 
-  if (/ETIMEDOUT|ECONNREFUSED|Could not connect to any servers/i.test(message)) {
+  if (
+    !isSrvLookupError &&
+    /ETIMEDOUT|ECONNREFUSED|Could not connect to any servers/i.test(message)
+  ) {
     hints.push(
       MONGO_USE_LOCAL_FALLBACK
         ? "Local Mongo fallback is enabled, but the local Mongo server is not reachable on the configured host/port."

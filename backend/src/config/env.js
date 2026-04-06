@@ -117,10 +117,7 @@ export const ENV_FILE_FOUND = fs.existsSync(configuredEnvFile);
 export const NODE_ENV = cleanEnvValue(process.env.NODE_ENV) || "development";
 export const IS_PROD = NODE_ENV === "production";
 export const IS_DEV = NODE_ENV === "development";
-export const PORT = Number.parseInt(
-  cleanEnvValue(process.env.PORT) || "5000",
-  10,
-);
+export const PORT = readIntEnv("PORT", 5000);
 
 export const APP_NAME =
   cleanEnvValue(process.env.APP_NAME) || "PreGen Backend";
@@ -140,6 +137,12 @@ export const CORS_ALLOWED_ORIGINS = [
 ];
 
 export const JWT_SECRET = requireEnv("JWT_SECRET");
+const sessionSecretEntry = findEnvEntry(["SESSION_SECRET", "JWT_SECRET"]);
+export const SESSION_SECRET_SOURCE = sessionSecretEntry?.name || null;
+export const SESSION_SECRET = requireEnv(
+  ["SESSION_SECRET", "JWT_SECRET"],
+  sessionSecretEntry?.value,
+);
 export const REFRESH_TOKEN_EXPIRES_IN =
   cleanEnvValue(process.env.REFRESH_TOKEN_EXPIRES_IN) || "30d";
 
@@ -180,11 +183,48 @@ export const MONGO_RETRY_DELAY_MS = readIntEnv("MONGO_RETRY_DELAY_MS", 1500);
 export const REDIS_URL = cleanEnvValue(process.env.REDIS_URL) || null;
 
 export const GEMINI_API_KEY = requireEnv("GEMINI_API_KEY");
+const aiServiceEntry = findEnvEntry([
+  "AI_SERVICE_URL",
+  "FASTAPI_SERVICE_URL",
+  "FASTAPI_BASE_URL",
+]);
+export const AI_SERVICE_URL_SOURCE =
+  aiServiceEntry?.name || (IS_PROD ? "default-production" : "default-development");
 export const AI_SERVICE_URL =
-  cleanEnvValue(process.env.AI_SERVICE_URL) ||
-  cleanEnvValue(process.env.FASTAPI_SERVICE_URL) ||
-  cleanEnvValue(process.env.FASTAPI_BASE_URL) ||
+  aiServiceEntry?.value ||
   (IS_PROD ? "https://pregen.onrender.com" : "http://localhost:8000");
+
+export function getRuntimeConfigWarnings() {
+  const warnings = [];
+  const normalizedClientOrigin = normalizeOrigin(CLIENT_URL);
+  const normalizedAiServiceOrigin = normalizeOrigin(AI_SERVICE_URL);
+
+  if (SESSION_SECRET_SOURCE !== "SESSION_SECRET") {
+    warnings.push(
+      "SESSION_SECRET is not set. Express sessions will fall back to JWT_SECRET; set a dedicated SESSION_SECRET for deployed environments.",
+    );
+  }
+
+  if (IS_PROD && normalizedClientOrigin?.includes("localhost")) {
+    warnings.push(
+      "CLIENT_URL points to localhost in production. Set it to the deployed frontend origin.",
+    );
+  }
+
+  if (IS_PROD && normalizedAiServiceOrigin?.includes("localhost")) {
+    warnings.push(
+      "AI_SERVICE_URL points to localhost in production. Set it to the deployed AI service origin.",
+    );
+  }
+
+  if (!CORS_ALLOWED_ORIGINS.length) {
+    warnings.push(
+      "No CORS origins are configured. At minimum, set CLIENT_URL to the deployed frontend origin.",
+    );
+  }
+
+  return warnings;
+}
 
 export function getMongoConfigSummary() {
   const uri = MONGO_URI || "";
@@ -203,5 +243,22 @@ export function getMongoConfigSummary() {
       socketMs: MONGO_SOCKET_TIMEOUT_MS,
     },
     retryAttempts: MONGO_RETRY_ATTEMPTS,
+  };
+}
+
+export function getRuntimeConfigSummary() {
+  return {
+    envFile: ENV_FILE_FOUND
+      ? path.relative(BACKEND_ROOT, ENV_FILE_PATH) || ".env"
+      : path.relative(BACKEND_ROOT, ENV_FILE_PATH) || configuredEnvFile,
+    nodeEnv: NODE_ENV,
+    port: PORT,
+    clientOrigin: normalizeOrigin(CLIENT_URL),
+    corsOrigins: CORS_ALLOWED_ORIGINS,
+    sessionSecretSource: SESSION_SECRET_SOURCE || "(not configured)",
+    aiServiceUrl: AI_SERVICE_URL,
+    aiServiceSource: AI_SERVICE_URL_SOURCE,
+    redisEnabled: Boolean(REDIS_URL),
+    warnings: getRuntimeConfigWarnings(),
   };
 }

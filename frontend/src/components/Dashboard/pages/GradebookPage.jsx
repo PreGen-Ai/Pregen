@@ -58,6 +58,11 @@ export default function GradebookPage() {
   const [summary, setSummary] = useState(null);
   const [editingId, setEditingId] = useState("");
   const [gradeForm, setGradeForm] = useState({ score: "", feedback: "" });
+  const [feedbackIsAiDraft, setFeedbackIsAiDraft] = useState(false);
+  const [aiDrafting, setAiDrafting] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState([]);
+  const [bulkForm, setBulkForm] = useState({ score: "", feedback: "" });
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const editingItem = useMemo(
     () => items.find((item) => item._id === editingId) || null,
@@ -101,11 +106,105 @@ export default function GradebookPage() {
 
   const startEdit = (item) => {
     setEditingId(item._id);
+    setFeedbackIsAiDraft(false);
     setGradeForm({
       score: item.score ?? "",
       feedback: item.feedback || "",
     });
   };
+
+  const draftFeedbackWithAi = async () => {
+    if (!editingItem) return;
+    const score = Number(String(gradeForm.score).trim());
+    setAiDrafting(true);
+    try {
+      const response = await api.ai.generateExplanation({
+        question_data: {
+          topic: editingItem.title || "Assessment",
+          question: `Draft concise teacher feedback for a ${editingItem.kind} scored ${Number.isFinite(score) ? score + "%" : "(not yet scored)"}. Keep it 1-2 sentences, actionable, and teacher-appropriate. Do not refer to yourself as AI.`,
+          context: `Assessment: ${editingItem.title}. Course: ${editingItem.courseTitle || "Unknown"}. Type: ${editingItem.kind}.`,
+          type: "feedback_draft",
+        },
+        subject: editingItem.courseTitle || "General",
+        style: "teacher-ready",
+      });
+      const text =
+        response?.explanation ||
+        response?.reply ||
+        response?.message ||
+        response?.text ||
+        "";
+      if (text) {
+        setGradeForm((prev) => ({ ...prev, feedback: text }));
+        setFeedbackIsAiDraft(true);
+      } else {
+        toast.error("AI returned no feedback draft");
+      }
+    } catch (e) {
+      toast.error(e?.message || "Failed to draft feedback with AI");
+    } finally {
+      setAiDrafting(false);
+    }
+  };
+
+  const saveBulkGrades = async () => {
+    if (!bulkSelected.length) return;
+    const rawScore = String(bulkForm.score ?? "").trim();
+    if (!rawScore) {
+      toast.error("Enter a score for bulk update");
+      return;
+    }
+    const parsedScore = Number(rawScore);
+    if (Number.isNaN(parsedScore) || parsedScore < 0 || parsedScore > 100) {
+      toast.error("Score must be between 0 and 100");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Apply score ${parsedScore}% to ${bulkSelected.length} selected item(s)?`,
+      )
+    )
+      return;
+
+    setBulkSaving(true);
+    try {
+      await Promise.all(
+        bulkSelected.map((id) => {
+          const item = items.find((i) => i._id === id);
+          if (!item) return Promise.resolve();
+          return item.kind === "assignment"
+            ? api.gradebook.updateSubmission(item.sourceId, {
+                grade: parsedScore,
+                feedback: bulkForm.feedback || undefined,
+              })
+            : api.gradebook.updateQuizAttempt(item.sourceId, {
+                score: parsedScore,
+                feedback: bulkForm.feedback || undefined,
+              });
+        }),
+      );
+      toast.success(`${bulkSelected.length} item(s) updated`);
+      setBulkSelected([]);
+      setBulkForm({ score: "", feedback: "" });
+      await load(selectedCourseId);
+    } catch (e) {
+      toast.error(e?.message || "Bulk update failed");
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const toggleBulkSelect = (id) =>
+    setBulkSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+
+  const allPendingIds = items
+    .filter(
+      (item) =>
+        !["graded"].includes(String(item.status || "").trim().toLowerCase()),
+    )
+    .map((item) => item._id);
 
   const saveGrade = async () => {
     if (!editingItem) return;
@@ -201,10 +300,17 @@ export default function GradebookPage() {
 
       {editingItem ? (
         <div className="dash-card mb-4">
-          <h3 className="mb-3">Update {editingItem.title}</h3>
+          <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h3 className="mb-0">
+              Grade: {editingItem.title}
+            </h3>
+            <span className="badge bg-warning text-dark">
+              Draft — not saved yet
+            </span>
+          </div>
           <p className="text-muted mb-3">
             {kindLabel(editingItem.kind)} for {editingItem.courseTitle || "Course"}.
-            Use a 0-100 score and keep feedback concise and actionable.
+            Enter a score and optional feedback, then click Save.
           </p>
           <div className="row g-3">
             <div className="col-md-3">
@@ -215,37 +321,66 @@ export default function GradebookPage() {
                 min="0"
                 max="100"
                 value={gradeForm.score}
-                onChange={(event) =>
+                onChange={(event) => {
                   setGradeForm((current) => ({
                     ...current,
                     score: event.target.value,
-                  }))
-                }
+                  }));
+                  setFeedbackIsAiDraft(false);
+                }}
               />
             </div>
             <div className="col-md-9">
-              <label className="form-label">Feedback</label>
+              <div className="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-2">
+                <label className="form-label mb-0">
+                  Feedback
+                  {feedbackIsAiDraft && (
+                    <span
+                      className="badge bg-warning text-dark ms-2"
+                      style={{ fontSize: "0.72em" }}
+                    >
+                      AI Suggested — edit before saving
+                    </span>
+                  )}
+                </label>
+                <button
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={draftFeedbackWithAi}
+                  disabled={aiDrafting || saving}
+                  title="Get an AI-suggested feedback draft — review and edit before saving"
+                >
+                  {aiDrafting ? "Drafting…" : "AI suggest"}
+                </button>
+              </div>
               <textarea
                 className="form-control"
                 rows={3}
-                placeholder="Feedback"
+                placeholder="Write feedback or use AI suggest above"
                 value={gradeForm.feedback}
-                onChange={(event) =>
+                onChange={(event) => {
                   setGradeForm((current) => ({
                     ...current,
                     feedback: event.target.value,
-                  }))
-                }
+                  }));
+                  setFeedbackIsAiDraft(false);
+                }}
               />
             </div>
           </div>
           <div className="mt-3 d-flex gap-2">
-            <button className="btn btn-primary" onClick={saveGrade} disabled={saving}>
-              {saving ? "Saving..." : "Save grade"}
+            <button
+              className="btn btn-primary"
+              onClick={saveGrade}
+              disabled={saving}
+            >
+              {saving ? "Saving…" : "Save grade"}
             </button>
             <button
               className="btn btn-outline-light"
-              onClick={() => setEditingId("")}
+              onClick={() => {
+                setEditingId("");
+                setFeedbackIsAiDraft(false);
+              }}
               disabled={saving}
             >
               Cancel
@@ -253,6 +388,61 @@ export default function GradebookPage() {
           </div>
         </div>
       ) : null}
+
+      {canEdit && !editingItem && bulkSelected.length > 0 && (
+        <div className="dash-card mb-4">
+          <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h3 className="mb-0">
+              Bulk grade — {bulkSelected.length} selected
+            </h3>
+            <button
+              className="btn btn-outline-secondary btn-sm"
+              onClick={() => setBulkSelected([])}
+            >
+              Clear selection
+            </button>
+          </div>
+          <div className="row g-3">
+            <div className="col-md-3">
+              <label className="form-label">Score (%) *</label>
+              <input
+                className="form-control"
+                type="number"
+                min="0"
+                max="100"
+                placeholder="0–100"
+                value={bulkForm.score}
+                onChange={(e) =>
+                  setBulkForm((p) => ({ ...p, score: e.target.value }))
+                }
+              />
+            </div>
+            <div className="col-md-9">
+              <label className="form-label">Feedback (optional)</label>
+              <textarea
+                className="form-control"
+                rows={2}
+                placeholder="Shared feedback for all selected items"
+                value={bulkForm.feedback}
+                onChange={(e) =>
+                  setBulkForm((p) => ({ ...p, feedback: e.target.value }))
+                }
+              />
+            </div>
+          </div>
+          <div className="mt-3">
+            <button
+              className="btn btn-primary"
+              onClick={saveBulkGrades}
+              disabled={bulkSaving}
+            >
+              {bulkSaving
+                ? "Saving…"
+                : `Apply to ${bulkSelected.length} item(s)`}
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="dash-card">
@@ -264,9 +454,36 @@ export default function GradebookPage() {
         </div>
       ) : (
         <div className="table-responsive dash-card">
+          {canEdit && (
+            <div className="d-flex gap-3 align-items-center mb-2 flex-wrap">
+              <div className="form-check mb-0">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  id="selectAllPending"
+                  checked={
+                    allPendingIds.length > 0 &&
+                    allPendingIds.every((id) => bulkSelected.includes(id))
+                  }
+                  onChange={(e) =>
+                    setBulkSelected(e.target.checked ? allPendingIds : [])
+                  }
+                />
+                <label className="form-check-label" htmlFor="selectAllPending">
+                  Select all ungraded ({allPendingIds.length})
+                </label>
+              </div>
+              {bulkSelected.length > 0 && (
+                <span className="text-muted" style={{ fontSize: "0.85em" }}>
+                  {bulkSelected.length} selected — bulk grade panel above
+                </span>
+              )}
+            </div>
+          )}
           <table className="table table-dark table-hover align-middle mb-0">
             <thead>
               <tr>
+                {canEdit && <th style={{ width: 32 }}></th>}
                 <th>Type</th>
                 <th>Assessment</th>
                 {canEdit ? <th>Student</th> : null}
@@ -280,6 +497,16 @@ export default function GradebookPage() {
             <tbody>
               {items.map((item) => (
                 <tr key={item._id}>
+                  {canEdit && (
+                    <td>
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        checked={bulkSelected.includes(item._id)}
+                        onChange={() => toggleBulkSelect(item._id)}
+                      />
+                    </td>
+                  )}
                   <td>
                     <span className="badge bg-secondary">{kindLabel(item.kind)}</span>
                   </td>
@@ -297,14 +524,18 @@ export default function GradebookPage() {
                       {item.status || "pending"}
                     </span>
                   </td>
-                  <td>{item.feedback || "No feedback yet"}</td>
+                  <td>
+                    <span style={{ maxWidth: 240, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.feedback || "No feedback yet"}
+                    </span>
+                  </td>
                   {canEdit ? (
                     <td>
                       <button
                         className="btn btn-outline-light btn-sm"
                         onClick={() => startEdit(item)}
                       >
-                        Edit
+                        Grade
                       </button>
                     </td>
                   ) : null}

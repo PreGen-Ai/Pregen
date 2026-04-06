@@ -517,7 +517,11 @@ export default function TenantsPage() {
   const deleteTenant = async (tenant) => {
     const tenantId = tenant?.tenantId;
     if (!tenantId) return;
-    if (!window.confirm(`Delete tenant "${tenant.name || tenantId}"?`)) return;
+    const tenantName = tenant.name || tenantId;
+    const confirmed = window.confirm(
+      `⚠️ Delete tenant "${tenantName}"?\n\nThis will permanently remove all users, courses, classes, and data for this tenant. This cannot be undone.\n\nClick OK to confirm deletion.`,
+    );
+    if (!confirmed) return;
 
     try {
       setTenantSaving(true);

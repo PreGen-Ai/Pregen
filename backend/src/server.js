@@ -21,8 +21,9 @@ import {
   IS_PROD,
   MONGO_URI,
   MONGO_DB_NAME,
-  JWT_SECRET,
+  SESSION_SECRET,
   getMongoConfigSummary,
+  getRuntimeConfigSummary,
   normalizeOrigin,
 } from "../src/config/env.js";
 import { connectMongo } from "./config/mongo.js";
@@ -57,12 +58,19 @@ const app = express();
 app.set("trust proxy", 1);
 
 const mongoConfigSummary = getMongoConfigSummary();
+const runtimeConfigSummary = getRuntimeConfigSummary();
 console.log(
   `[startup] env=${mongoConfigSummary.envFile} mongoSource=${mongoConfigSummary.source} mongoMode=${mongoConfigSummary.mode} mongoScheme=${mongoConfigSummary.scheme}`,
 );
 console.log(
   `[startup] mongoTargets=${mongoConfigSummary.targets.join(", ") || "(none)"} mongoDb=${mongoConfigSummary.dbName}`,
 );
+console.log(
+  `[startup] runtime client=${runtimeConfigSummary.clientOrigin} aiService=${runtimeConfigSummary.aiServiceUrl} redis=${runtimeConfigSummary.redisEnabled ? "enabled" : "disabled"} sessionSecret=${runtimeConfigSummary.sessionSecretSource}`,
+);
+for (const warning of runtimeConfigSummary.warnings) {
+  console.warn(`[startup] warning: ${warning}`);
+}
 
 /**
  * ---------- Security & logging ----------
@@ -171,7 +179,7 @@ try {
 
 app.use(
   session({
-    secret: JWT_SECRET,
+    secret: SESSION_SECRET,
     name: "pregen.sid",
     resave: false,
     saveUninitialized: false,

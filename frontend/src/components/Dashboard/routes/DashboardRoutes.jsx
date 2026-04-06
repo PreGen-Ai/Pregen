@@ -5,40 +5,54 @@ import DashboardLayout from "../layout/DashboardLayout";
 import RequireRole from "../guards/RequireRole";
 import { ROLES } from "../nav/roles";
 
-// Pages are intentionally left as placeholders here.
-const Placeholder = ({ title }) => (
-  <div style={{ padding: 16, color: "#fff" }}>
-    <h2 style={{ margin: 0, fontSize: 18 }}>{title}</h2>
-    <p style={{ opacity: 0.8, marginTop: 8 }}>
-      Hook this route to your real page component.
-    </p>
-  </div>
-);
+// ── Shared / Learning ──
+import LessonsPage from "../pages/LessonsPage";
+import AnnouncementsPage from "../pages/AnnouncementsPage";
+import GradebookPage from "../pages/GradebookPage";
+import AITutor from "../pages/AITutor";
+import PracticeLab from "../pages/PracticeLab";
+import Assignments from "../pages/Assignments";
+import QuizGenerator from "../pages/QuizGenerator";
+import Settings from "../pages/Settings";
+
+// ── Super Admin ──
+import SuperDashboardPage from "../pages/SuperAdmin/SuperDashboardPage";
+import TenantsPage from "../pages/SuperAdmin/TenantsPage";
+import AICostPage from "../pages/SuperAdmin/AICostPage";
+import AuditLogsPage from "../pages/SuperAdmin/AuditLogsPage";
+import FeatureFlagsPage from "../pages/SuperAdmin/FeatureFlagsPage";
+import SuperAdminAIControlsPage from "../pages/SuperAdmin/AIControlsPage";
+
+// ── Admin (Tenant Admin) ──
+import AdminUsersPage from "../pages/AdminUsersPage";
+import AdminClassesPage from "../pages/AdminClassesPage";
+import AdminSubjectsPage from "../pages/AdminSubjectsPage";
+import AdminBrandingPage from "../pages/AdminBrandingPage";
+import AdminAIControlsPage from "../pages/AdminAIControlsPage";
 
 export default function DashboardRoutes() {
   return (
     <Routes>
       <Route path="/dashboard" element={<DashboardLayout />}>
-        <Route index element={<Placeholder title="Dashboard Home" />} />
+        {/* Default: redirect to appropriate home */}
+        <Route index element={<Navigate to="/dashboard/grades" replace />} />
 
-        {/* =========================
+        {/* =====================
          * STUDENT
-         * ========================= */}
+         * ===================== */}
         <Route
-          path="practicelab"
+          path="practice-lab"
           element={
             <RequireRole allowedRoles={[ROLES.STUDENT]}>
-              <Placeholder title="Practice Lab" />
+              <PracticeLab />
             </RequireRole>
           }
         />
-
-        {/* Student assignments/quizzes */}
         <Route
           path="assignments"
           element={
             <RequireRole allowedRoles={[ROLES.STUDENT]}>
-              <Placeholder title="Assignments (Take/Submit)" />
+              <Assignments />
             </RequireRole>
           }
         />
@@ -46,29 +60,27 @@ export default function DashboardRoutes() {
           path="quizzes"
           element={
             <RequireRole allowedRoles={[ROLES.STUDENT]}>
-              <Placeholder title="Quizzes (Take/Submit)" />
+              <QuizGenerator />
             </RequireRole>
           }
         />
-
         <Route
           path="calendar"
           element={
             <RequireRole allowedRoles={[ROLES.STUDENT]}>
-              <Placeholder title="Calendar & Dues" />
+              <GradebookPage />
             </RequireRole>
           }
         />
 
-        {/* =========================
+        {/* =====================
          * TEACHER
-         * (Separate routes so they don't conflict with student paths)
-         * ========================= */}
+         * ===================== */}
         <Route
           path="teacher/assignments"
           element={
             <RequireRole allowedRoles={[ROLES.TEACHER]}>
-              <Placeholder title="Teacher Assignments (Generate/Grade/Assign)" />
+              <Assignments />
             </RequireRole>
           }
         />
@@ -76,7 +88,7 @@ export default function DashboardRoutes() {
           path="teacher/quizzes"
           element={
             <RequireRole allowedRoles={[ROLES.TEACHER]}>
-              <Placeholder title="Teacher Quizzes (Generate/Grade/Assign)" />
+              <QuizGenerator />
             </RequireRole>
           }
         />
@@ -84,29 +96,45 @@ export default function DashboardRoutes() {
           path="teacher/content"
           element={
             <RequireRole allowedRoles={[ROLES.TEACHER]}>
-              <Placeholder title="Teacher Content" />
+              <LessonsPage />
             </RequireRole>
           }
         />
 
-        {/* =========================
-         * SHARED (Student + Teacher + Parent)
-         * ========================= */}
+        {/* =====================
+         * SHARED (Student + Teacher)
+         * ===================== */}
         <Route
-          path="ai-tutor"
+          path="materials"
           element={
             <RequireRole allowedRoles={[ROLES.STUDENT, ROLES.TEACHER]}>
-              <Placeholder title="AI Tutor" />
+              <LessonsPage />
             </RequireRole>
           }
         />
         <Route
-          path="leaderboard"
+          path="announcements"
           element={
             <RequireRole
-              allowedRoles={[ROLES.STUDENT, ROLES.TEACHER, ROLES.PARENT]}
+              allowedRoles={[ROLES.STUDENT, ROLES.TEACHER, ROLES.ADMIN, ROLES.SUPERADMIN]}
             >
-              <Placeholder title="Leaderboard" />
+              <AnnouncementsPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="grades"
+          element={
+            <RequireRole allowedRoles={[ROLES.STUDENT, ROLES.TEACHER]}>
+              <GradebookPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="ai-tutor"
+          element={
+            <RequireRole allowedRoles={[ROLES.STUDENT, ROLES.TEACHER]}>
+              <AITutor />
             </RequireRole>
           }
         />
@@ -114,35 +142,48 @@ export default function DashboardRoutes() {
           path="my-classes"
           element={
             <RequireRole allowedRoles={[ROLES.STUDENT, ROLES.TEACHER]}>
-              <Placeholder title="My Classes & Subjects" />
+              <LessonsPage />
             </RequireRole>
           }
         />
 
-        {/* =========================
-         * ADMIN (Admin + Superadmin)
-         * ========================= */}
+        {/* =====================
+         * ADMIN (Tenant Admin)
+         * ===================== */}
         <Route
           path="admin/users"
           element={
             <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-              <Placeholder title="Admin: Users (CRUD)" />
+              <AdminUsersPage />
             </RequireRole>
           }
+        />
+        <Route
+          path="admin/workspace"
+          element={
+            <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
+              <AdminClassesPage />
+            </RequireRole>
+          }
+        />
+        {/* legacy path alias */}
+        <Route
+          path="workspace"
+          element={<Navigate to="/dashboard/admin/workspace" replace />}
         />
         <Route
           path="admin/classes"
           element={
             <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-              <Placeholder title="Admin: Classes" />
+              <AdminClassesPage />
             </RequireRole>
           }
         />
         <Route
-          path="workspace"
+          path="admin/subjects"
           element={
             <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-              <Placeholder title="Workspace (Classes/Subjects CRUD)" />
+              <AdminSubjectsPage />
             </RequireRole>
           }
         />
@@ -150,19 +191,27 @@ export default function DashboardRoutes() {
           path="admin/branding"
           element={
             <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-              <Placeholder title="Admin: Branding" />
+              <AdminBrandingPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="admin/ai-controls"
+          element={
+            <RequireRole allowedRoles={[ROLES.ADMIN]}>
+              <AdminAIControlsPage />
             </RequireRole>
           }
         />
 
-        {/* =========================
+        {/* =====================
          * SUPERADMIN
-         * ========================= */}
+         * ===================== */}
         <Route
           path="super/system"
           element={
             <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
-              <Placeholder title="Super Admin: System" />
+              <SuperDashboardPage />
             </RequireRole>
           }
         />
@@ -170,7 +219,7 @@ export default function DashboardRoutes() {
           path="superadmin/tenants"
           element={
             <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
-              <Placeholder title="Tenants (Schools/Universities)" />
+              <TenantsPage />
             </RequireRole>
           }
         />
@@ -178,7 +227,15 @@ export default function DashboardRoutes() {
           path="superadmin/ai-controls"
           element={
             <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
-              <Placeholder title="AI Controls" />
+              <SuperAdminAIControlsPage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="superadmin/ai-cost"
+          element={
+            <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
+              <AICostPage />
             </RequireRole>
           }
         />
@@ -186,10 +243,21 @@ export default function DashboardRoutes() {
           path="superadmin/analytics"
           element={
             <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
-              <Placeholder title="Analytics" />
+              <AuditLogsPage />
             </RequireRole>
           }
         />
+        <Route
+          path="superadmin/flags"
+          element={
+            <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
+              <FeatureFlagsPage />
+            </RequireRole>
+          }
+        />
+
+        {/* Settings (all authenticated) */}
+        <Route path="settings" element={<Settings />} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

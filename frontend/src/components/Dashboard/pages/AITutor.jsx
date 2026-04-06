@@ -327,6 +327,8 @@ export default function AITutor() {
     }
   };
 
+  const isStudent = String(user?.role || "").toUpperCase() === "STUDENT";
+
   return (
     <div className="ai-tutor-page">
       {/* Header with title, subtitle and actions */}
@@ -347,6 +349,23 @@ export default function AITutor() {
           </button>
         )}
       </div>
+
+      {/* Student scope notice */}
+      {isStudent && (
+        <div
+          className="mb-3 p-3 rounded"
+          style={{
+            background: "rgba(245,158,11,0.10)",
+            border: "1px solid rgba(245,158,11,0.35)",
+            fontSize: "0.88em",
+          }}
+        >
+          <strong>Study help only.</strong> The AI Tutor can explain concepts,
+          help you understand material, and answer study questions. It will not
+          complete assignments, quizzes, or exams for you. Select a subject
+          below to keep answers on-topic.
+        </div>
+      )}
 
       {/* Toolbar (version 1) */}
       <div className="tutor-toolbar">

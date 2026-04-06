@@ -388,6 +388,41 @@ export default function LessonsPage() {
     }
   };
 
+  const moveModule = async (moduleId, direction) => {
+    const index = modules.findIndex((m) => m._id === moduleId);
+    if (index < 0) return;
+    const swapIndex = direction === "up" ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= modules.length) return;
+
+    const current = modules[index];
+    const other = modules[swapIndex];
+    const currentPos = current.position ?? index + 1;
+    const otherPos = other.position ?? swapIndex + 1;
+
+    try {
+      setSaving(true);
+      await Promise.all([
+        api.lessons.updateModule(current._id, {
+          title: current.title,
+          summary: current.summary,
+          status: current.status,
+          position: otherPos,
+        }),
+        api.lessons.updateModule(other._id, {
+          title: other.title,
+          summary: other.summary,
+          status: other.status,
+          position: currentPos,
+        }),
+      ]);
+      await refreshLessons();
+    } catch (error) {
+      toast.error(error?.message || "Failed to reorder modules");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="quizzes-page">
       <div className="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-3">
@@ -478,8 +513,29 @@ export default function LessonsPage() {
 
           {aiResponse ? (
             <div className="border rounded p-3 mt-3">
-              <div className="fw-semibold mb-2">
-                {aiResponseTitle || "AI response"}
+              <div className="d-flex justify-content-between align-items-start gap-2 mb-2 flex-wrap">
+                <div>
+                  <span
+                    className="badge bg-warning text-dark me-2"
+                    style={{ fontSize: "0.73em" }}
+                  >
+                    AI Generated
+                  </span>
+                  <span className="fw-semibold">
+                    {aiResponseTitle || "AI response"}
+                  </span>
+                </div>
+                <button
+                  className="btn btn-outline-secondary btn-sm"
+                  onClick={() =>
+                    navigator.clipboard
+                      .writeText(aiResponse)
+                      .then(() => toast.success("Copied to clipboard"))
+                      .catch(() => toast.error("Copy failed"))
+                  }
+                >
+                  Copy
+                </button>
               </div>
               <div style={{ whiteSpace: "pre-wrap" }}>{aiResponse}</div>
             </div>
@@ -702,7 +758,23 @@ export default function LessonsPage() {
                   </span>
                 </div>
                 {canEdit ? (
-                  <div className="d-flex gap-2">
+                  <div className="d-flex gap-2 flex-wrap">
+                    <button
+                      className="btn btn-outline-secondary btn-sm"
+                      title="Move up"
+                      onClick={() => moveModule(module._id, "up")}
+                      disabled={saving || modules.indexOf(module) === 0}
+                    >
+                      ▲
+                    </button>
+                    <button
+                      className="btn btn-outline-secondary btn-sm"
+                      title="Move down"
+                      onClick={() => moveModule(module._id, "down")}
+                      disabled={saving || modules.indexOf(module) === modules.length - 1}
+                    >
+                      ▼
+                    </button>
                     <button
                       className="btn btn-outline-light btn-sm"
                       onClick={() => setActiveModuleId(module._id)}

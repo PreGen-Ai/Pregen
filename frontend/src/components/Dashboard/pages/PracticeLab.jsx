@@ -1177,10 +1177,29 @@ export default function PracticeLab() {
 
                     <div className="control-row">
                       <div className="control-group">
-                        <label>Course context</label>
+                        <label>
+                          Course context
+                          {!selectedCourseId && (
+                            <span
+                              style={{
+                                marginLeft: 6,
+                                fontSize: "0.75em",
+                                color: "var(--warm-amber,#F59E0B)",
+                                fontWeight: 600,
+                              }}
+                            >
+                              — recommended for scoped practice
+                            </span>
+                          )}
+                        </label>
                         <select
                           value={selectedCourseId}
                           onChange={(e) => setSelectedCourseId(e.target.value)}
+                          style={
+                            !selectedCourseId
+                              ? { borderColor: "var(--warm-amber,#F59E0B)" }
+                              : {}
+                          }
                         >
                           <option value="">No specific course</option>
                           {courses.map((course) => (
@@ -1207,21 +1226,26 @@ export default function PracticeLab() {
                       </div>
                     </div>
 
-                    {(selectedCourse || selectedMaterial) && (
-                      <div className="card-inner" style={{ marginTop: 12 }}>
-                        <h5 className="mb-2">Study scope</h5>
-                        <p className="mb-1">
-                          {selectedMaterial
-                            ? `Practice will stay anchored to ${selectedMaterial.title}${selectedCourse?.title ? ` in ${selectedCourse.title}` : ""}.`
-                            : `Practice will stay aligned to ${selectedCourse?.title || "the selected course"}.`}
+                    <div className="card-inner" style={{ marginTop: 12 }}>
+                      <h5 className="mb-1">Study scope</h5>
+                      {selectedMaterial ? (
+                        <p className="mb-0">
+                          Practice anchored to{" "}
+                          <strong>{selectedMaterial.title}</strong>
+                          {selectedCourse?.title ? ` in ${selectedCourse.title}` : ""}.
                         </p>
-                        {selectedMaterial?.description ? (
-                          <p className="mb-0 text-muted">
-                            {selectedMaterial.description}
-                          </p>
-                        ) : null}
-                      </div>
-                    )}
+                      ) : selectedCourse ? (
+                        <p className="mb-0">
+                          Practice aligned to{" "}
+                          <strong>{selectedCourse.title}</strong>.
+                        </p>
+                      ) : (
+                        <p className="mb-0" style={{ color: "var(--warm-amber,#F59E0B)" }}>
+                          No course selected — practice will be general and not scoped to your curriculum.
+                          Select a course above for focused practice.
+                        </p>
+                      )}
+                    </div>
 
                     <div className="control-row">
                       <div className="control-group">
@@ -1360,7 +1384,22 @@ export default function PracticeLab() {
                     className="feature-section"
                     aria-label="Current Practice"
                   >
-                    <h3>Current Practice</h3>
+                    <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                      <h3 className="mb-0">Current Practice</h3>
+                      <span
+                        style={{
+                          background: "var(--warm-amber,#F59E0B)",
+                          color: "#1a1a1a",
+                          fontSize: "0.75em",
+                          padding: "0.3em 0.7em",
+                          borderRadius: 99,
+                          fontWeight: 600,
+                          display: "inline-block",
+                        }}
+                      >
+                        AI Generated
+                      </span>
+                    </div>
                     <div className="assignment-header">
                       <h4>{currentPractice.title}</h4>
                       <div className="assignment-meta">

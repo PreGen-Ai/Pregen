@@ -170,6 +170,7 @@ export default function TeacherQuiz() {
   const [roster, setRoster] = useState({ students: [], classrooms: [] });
   const [selectedQuizId, setSelectedQuizId] = useState(null);
   const [results, setResults] = useState(null);
+  const [aiPreview, setAiPreview] = useState(null); // questions staged for review before insert
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -468,17 +469,26 @@ export default function TeacherQuiz() {
         return;
       }
 
-      setForm((prev) => ({
-        ...prev,
-        description:
-          prev.description ||
-          `AI-generated quiz draft for ${prev.title || prev.subject || "this topic"}`,
-        questions,
-      }));
-      toast.success("AI draft applied to quiz form");
+      setAiPreview(questions);
+      toast.success(
+        `${questions.length} questions ready — review and insert below`,
+      );
     } catch (error) {
       toast.error(error?.message || "Failed to generate quiz draft");
     }
+  };
+
+  const insertAiPreview = () => {
+    if (!aiPreview?.length) return;
+    setForm((prev) => ({
+      ...prev,
+      description:
+        prev.description ||
+        `AI-generated quiz draft for ${prev.title || prev.subject || "this topic"}`,
+      questions: aiPreview,
+    }));
+    setAiPreview(null);
+    toast.success("Questions inserted into form");
   };
 
   const loadResults = async (quizId) => {
@@ -857,11 +867,87 @@ export default function TeacherQuiz() {
               <button className="btn btn-primary" type="button" onClick={saveQuiz} disabled={saving}>
                 {saving ? "Saving..." : selectedQuizId ? "Update quiz" : "Create quiz"}
               </button>
-              <button className="btn btn-outline-light" type="button" onClick={generateQuizDraft}>
+              <button
+                className="btn btn-outline-light"
+                type="button"
+                onClick={generateQuizDraft}
+                title="Generate draft questions with AI — review before inserting"
+              >
                 <FaMagic className="me-2" />
                 Draft with AI
               </button>
             </div>
+
+            {(form.subject || selectedCourseId) && (
+              <div className="form-text mt-2">
+                AI context:{" "}
+                {[
+                  courses.find((c) => c._id === selectedCourseId)?.title,
+                  form.subject,
+                  form.gradeLevel !== "All" ? form.gradeLevel : null,
+                ]
+                  .filter(Boolean)
+                  .join(" › ") || "no context yet — enter a subject first"}
+              </div>
+            )}
+
+            {aiPreview && aiPreview.length > 0 && (
+              <div
+                className="border rounded p-3 mt-3"
+                style={{
+                  borderColor: "var(--purple, #6F79E6)",
+                  background: "rgba(111,121,230,0.06)",
+                }}
+              >
+                <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                  <div>
+                    <span className="badge bg-warning text-dark me-2">
+                      AI Draft
+                    </span>
+                    <span className="fw-semibold">
+                      {aiPreview.length} questions — review before inserting
+                    </span>
+                  </div>
+                  <div className="d-flex gap-2">
+                    <button
+                      className="btn btn-primary btn-sm"
+                      type="button"
+                      onClick={insertAiPreview}
+                    >
+                      Insert into form
+                    </button>
+                    <button
+                      className="btn btn-outline-secondary btn-sm"
+                      type="button"
+                      onClick={() => setAiPreview(null)}
+                    >
+                      Discard
+                    </button>
+                  </div>
+                </div>
+                <div className="d-flex flex-column gap-2">
+                  {aiPreview.map((q, i) => (
+                    <div
+                      key={`preview-${i}`}
+                      className="border rounded p-2"
+                      style={{ background: "var(--card-bg)" }}
+                    >
+                      <div className="fw-semibold mb-1">
+                        Q{i + 1}: {q.questionText}
+                      </div>
+                      <div className="text-muted" style={{ fontSize: "0.82em" }}>
+                        {q.questionType} · {q.points} pt
+                        {q.questionType === "multiple_choice" && q.options.length > 0
+                          ? ` · Options: ${q.options.join(", ")} · Answer: ${q.correctAnswer}`
+                          : q.questionType === "true_false"
+                          ? ` · Answer: ${q.correctAnswer}`
+                          : ""}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
