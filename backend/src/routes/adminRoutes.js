@@ -967,20 +967,37 @@ adminSystemRouter.get("/logs/recent", ...requireAdmin, async (req, res) => {
 
 /**
  * GET /api/admin/system/super/overview (SUPERADMIN)
+ * Returns flat fields matching the SuperDashboardPage KPI cards.
  */
 adminSystemRouter.get(
   "/super/overview",
   ...requireSuperAdmin,
   async (req, res) => {
     try {
-      const [tenants, users, ai] = await Promise.all([
-        col("tenants").countDocuments({}),
-        col("users").countDocuments({}),
-        col("ai_usages").countDocuments({}),
-      ]);
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const [activeTenants, totalTenants, totalStudents, aiCalls24h, aiRequestsAllTime] =
+        await Promise.all([
+          col("tenants").countDocuments({ status: { $ne: "suspended" } }),
+          col("tenants").countDocuments({}),
+          col("users").countDocuments({ role: { $in: ["STUDENT", "student"] } }),
+          col("ai_usages").countDocuments({ createdAt: { $gte: since24h } }),
+          col("ai_usages").countDocuments({}),
+        ]);
+
       return res.json({
         success: true,
-        overview: { tenants, users, aiRequestsAllTime: ai },
+        activeTenants,
+        totalTenants,
+        totalStudents,
+        aiCalls24h,
+        aiRequestsAllTime,
+        // Fields that require external cost/latency tracking — default to 0 until wired
+        costToday: 0,
+        costMTD: 0,
+        p95LatencyMs: 0,
+        errorsToday: 0,
+        healthStatus: "healthy",
+        spikes: [],
       });
     } catch (e) {
       console.error("super overview error:", e);

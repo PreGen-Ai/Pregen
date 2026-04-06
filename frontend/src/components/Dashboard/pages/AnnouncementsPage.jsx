@@ -122,7 +122,8 @@ export default function AnnouncementsPage() {
       ];
 
       if (canCreateTenantScope) {
-        requests.push(api.admin.listClasses({ limit: 200 }));
+        // Pass tenant cfg so superadmin listClasses uses the selected tenant header
+        requests.push(api.admin.listClasses({ limit: 200 }, cfg || {}));
       }
 
       const [announcementsRes, coursesRes, classesRes] = await Promise.all(requests);
