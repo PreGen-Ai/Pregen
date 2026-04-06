@@ -112,7 +112,11 @@ export default function AdminUsersPage() {
       <div className="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
         <div>
           <h2>Users</h2>
-          <p className="text-muted mb-0">Manage user accounts, roles, and access.</p>
+          <p className="text-muted mb-0">
+            {isSuperAdmin
+              ? "Create and manage user accounts across tenants."
+              : "Manage user accounts, roles, and access."}
+          </p>
         </div>
         <button
           className="btn btn-primary"
@@ -124,81 +128,122 @@ export default function AdminUsersPage() {
 
       {showCreate && (
         <div className="dash-card mb-4">
-          <h3 className="dash-card-title mb-3">Create user</h3>
-          <div className="row g-3">
-            <div className="col-md-4">
-              <input
-                className="form-control"
-                placeholder="Email *"
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
-              />
-            </div>
-            <div className="col-md-3">
-              <input
-                className="form-control"
-                placeholder="Password *"
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
-              />
-            </div>
-            <div className="col-md-3">
-              <input
-                className="form-control"
-                placeholder="First name"
-                value={form.firstName}
-                onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))}
-              />
-            </div>
-            <div className="col-md-2">
-              <input
-                className="form-control"
-                placeholder="Last name"
-                value={form.lastName}
-                onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))}
-              />
-            </div>
-            <div className="col-md-3">
+          <h3 className="dash-card-title mb-1">
+            {isSuperAdmin ? "Create user — select a tenant first" : "Create user"}
+          </h3>
+          <p className="text-muted mb-3" style={{ fontSize: "0.85em" }}>
+            {isSuperAdmin
+              ? "As superadmin, you must select which tenant this user belongs to before filling in other fields."
+              : "Fill in the user details below. The user can be enabled or disabled after creation."}
+          </p>
+
+          {/* Superadmin: tenant picker first, gated section */}
+          {isSuperAdmin && (
+            <div className="mb-4">
+              <label className="form-label fw-semibold">
+                Tenant <span className="text-danger">*</span>
+              </label>
               <select
-                className="form-select"
-                value={form.role}
-                onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
+                className={`form-select ${!form.tenantId ? "border-warning" : "border-success"}`}
+                style={{ maxWidth: 360 }}
+                value={form.tenantId}
+                onChange={(e) => setForm((p) => ({ ...p, tenantId: e.target.value }))}
               >
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
+                <option value="">— Select tenant —</option>
+                {tenants.map((t) => (
+                  <option key={t._id} value={t.tenantId}>
+                    {t.name || t.tenantId}
                   </option>
                 ))}
               </select>
+              {!form.tenantId && (
+                <div className="form-text text-warning">
+                  Select a tenant to unlock the user creation form.
+                </div>
+              )}
+              {form.tenantId && (
+                <div className="form-text text-success">
+                  Creating user under: <strong>{tenants.find(t => t.tenantId === form.tenantId)?.name || form.tenantId}</strong>
+                </div>
+              )}
             </div>
-            {isSuperAdmin && (
-              <div className="col-md-4">
+          )}
+
+          {/* User fields — only shown when tenant selected (superadmin) or always (admin) */}
+          {(!isSuperAdmin || form.tenantId) && (
+            <div className="row g-3">
+              <div className="col-12 col-md-4">
+                <label className="form-label">Email <span className="text-danger">*</span></label>
+                <input
+                  className="form-control"
+                  placeholder="user@example.com"
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+                />
+              </div>
+              <div className="col-12 col-md-3">
+                <label className="form-label">Password <span className="text-danger">*</span></label>
+                <input
+                  className="form-control"
+                  placeholder="Temporary password"
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+                />
+              </div>
+              <div className="col-6 col-md-3">
+                <label className="form-label">First name</label>
+                <input
+                  className="form-control"
+                  placeholder="First name"
+                  value={form.firstName}
+                  onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))}
+                />
+              </div>
+              <div className="col-6 col-md-2">
+                <label className="form-label">Last name</label>
+                <input
+                  className="form-control"
+                  placeholder="Last name"
+                  value={form.lastName}
+                  onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))}
+                />
+              </div>
+              <div className="col-12 col-md-3">
+                <label className="form-label">Role</label>
                 <select
-                  className={`form-select ${!form.tenantId ? "border-warning" : ""}`}
-                  value={form.tenantId}
-                  onChange={(e) => setForm((p) => ({ ...p, tenantId: e.target.value }))}
+                  className="form-select"
+                  value={form.role}
+                  onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
                 >
-                  <option value="">— Select tenant * —</option>
-                  {tenants.map((t) => (
-                    <option key={t._id} value={t.tenantId}>
-                      {t.name || t.tenantId}
-                    </option>
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>{r}</option>
                   ))}
                 </select>
               </div>
-            )}
-            <div className="col-md-3">
-              <button
-                className="btn btn-primary w-100"
-                onClick={createUser}
-                disabled={saving}
-              >
-                {saving ? "Creating…" : "Create"}
-              </button>
+              <div className="col-12 col-md-3">
+                <label className="form-label">&nbsp;</label>
+                <button
+                  className="btn btn-primary d-block w-100"
+                  onClick={createUser}
+                  disabled={saving}
+                >
+                  {saving ? "Creating…" : "Create user"}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Superadmin: blocked state when no tenant selected */}
+          {isSuperAdmin && !form.tenantId && (
+            <div
+              className="rounded p-3 text-muted text-center"
+              style={{ border: "1px dashed var(--border-color)", fontSize: "0.85em" }}
+            >
+              Select a tenant above to continue
+            </div>
+          )}
         </div>
       )}
 

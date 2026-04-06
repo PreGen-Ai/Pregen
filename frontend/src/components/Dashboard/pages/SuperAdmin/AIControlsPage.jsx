@@ -1,6 +1,7 @@
 // SuperAdmin AI Controls — manages global defaults + per-tenant AI settings
 import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "react-toastify";
+import { FaGlobe, FaBuilding } from "react-icons/fa";
 import api from "../../../../services/api/api.js";
 import LoadingSpinner from "../../components/ui/LoadingSpinner.jsx";
 
@@ -26,10 +27,10 @@ function mergeSettings(raw) {
 }
 
 const FEATURES = [
-  { key: "aiGrading",   label: "AI Grading",          desc: "Auto-grade quiz and assignment submissions using AI" },
-  { key: "aiQuizGen",   label: "AI Quiz Generation",   desc: "Let teachers generate quiz questions with AI" },
-  { key: "aiTutor",     label: "AI Tutor",             desc: "Enable the AI study helper for students and teachers" },
-  { key: "aiSummaries", label: "AI Summaries",         desc: "Allow AI to summarize lesson materials per request" },
+  { key: "aiGrading",   label: "AI Grading",         desc: "Auto-grade quiz and assignment submissions using AI" },
+  { key: "aiQuizGen",   label: "AI Quiz Generation",  desc: "Let teachers generate quiz questions with AI" },
+  { key: "aiTutor",     label: "AI Tutor",            desc: "Enable the AI study helper for students and teachers" },
+  { key: "aiSummaries", label: "AI Summaries",        desc: "Allow AI to summarize lesson materials per request" },
 ];
 
 export default function AIControlsPage() {
@@ -37,17 +38,13 @@ export default function AIControlsPage() {
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState(DEFAULTS);
 
-  // Tenant selector
   const [tenants, setTenants] = useState([]);
-  const [selectedTenantId, setSelectedTenantId] = useState(""); // "" = global
+  const [selectedTenantId, setSelectedTenantId] = useState("");
 
   const selectedTenant = tenants.find((t) => t.tenantId === selectedTenantId);
-  const scopeLabel = selectedTenantId
-    ? `Tenant override: ${selectedTenant?.name || selectedTenant?.slug || selectedTenantId}`
-    : "Global defaults";
   const isGlobal = !selectedTenantId;
+  const tenantLabel = selectedTenant?.name || selectedTenantId;
 
-  // Load tenant list on mount
   useEffect(() => {
     api.admin.listTenants().then((res) => {
       setTenants(Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : []);
@@ -59,8 +56,7 @@ export default function AIControlsPage() {
     try {
       const cfg = selectedTenantId ? { headers: { "x-tenant-id": selectedTenantId } } : undefined;
       const res = await api.admin.getAiSettings(cfg);
-      if (res?.settings) setSettings(mergeSettings(res.settings));
-      else setSettings(DEFAULTS);
+      setSettings(res?.settings ? mergeSettings(res.settings) : DEFAULTS);
     } catch (e) {
       toast.error(e?.message || "Failed to load AI settings");
     } finally {
@@ -75,7 +71,11 @@ export default function AIControlsPage() {
     try {
       const cfg = selectedTenantId ? { headers: { "x-tenant-id": selectedTenantId } } : undefined;
       await api.admin.updateAiSettings(settings, cfg);
-      toast.success(selectedTenantId ? `AI settings saved for ${selectedTenant?.name || selectedTenantId}` : "Global AI settings saved");
+      toast.success(
+        isGlobal
+          ? "Global AI settings saved"
+          : `AI settings saved for ${tenantLabel}`
+      );
     } catch (e) {
       toast.error(e?.message || "Failed to save AI settings");
     } finally {
@@ -85,13 +85,14 @@ export default function AIControlsPage() {
 
   const resetToGlobal = async () => {
     if (!selectedTenantId) return;
-    if (!window.confirm(`Reset AI settings for ${selectedTenant?.name || selectedTenantId} to global defaults? This will overwrite any tenant-specific overrides.`)) return;
+    if (!window.confirm(
+      `Reset AI settings for "${tenantLabel}" to global defaults?\n\nThis will overwrite any tenant-specific overrides.`
+    )) return;
     setSaving(true);
     try {
       const globalRes = await api.admin.getAiSettings();
       const globalSettings = globalRes?.settings ? mergeSettings(globalRes.settings) : DEFAULTS;
-      const cfg = { headers: { "x-tenant-id": selectedTenantId } };
-      await api.admin.updateAiSettings(globalSettings, cfg);
+      await api.admin.updateAiSettings(globalSettings, { headers: { "x-tenant-id": selectedTenantId } });
       setSettings(globalSettings);
       toast.success("Tenant settings reset to global defaults");
     } catch (e) {
@@ -107,66 +108,70 @@ export default function AIControlsPage() {
 
   return (
     <div className="quizzes-page">
+      {/* Page header */}
       <div className="mb-4">
         <h2>AI Controls</h2>
         <p className="text-muted mb-0">
-          Configure global AI defaults or override settings per tenant.
+          Configure platform-wide AI defaults, or apply overrides for a specific tenant.
         </p>
       </div>
 
-      {/* Scope selector */}
+      {/* Tenant selector card */}
       <div className="dash-card mb-4">
-        <div className="d-flex flex-wrap align-items-center gap-3">
-          <label className="fw-semibold mb-0">Editing scope</label>
-          <select
-            className="form-select"
-            style={{ maxWidth: 300 }}
-            value={selectedTenantId}
-            onChange={(e) => setSelectedTenantId(e.target.value)}
-          >
-            <option value="">Global defaults (all tenants)</option>
-            {tenants.map((t) => (
-              <option key={t._id} value={t.tenantId}>
-                {t.name || t.tenantId}
-              </option>
-            ))}
-          </select>
-          <span
-            className={`badge ${isGlobal ? "bg-primary" : "bg-warning text-dark"}`}
-            style={{ fontSize: "0.8em" }}
-          >
-            {scopeLabel}
-          </span>
-          {!isGlobal && (
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-secondary ms-auto"
-              onClick={resetToGlobal}
-              disabled={saving}
+        <div className="row g-3 align-items-end">
+          <div className="col-12 col-md-auto">
+            <label className="form-label fw-semibold mb-1">Scope</label>
+            <select
+              className="form-select"
+              style={{ minWidth: 260 }}
+              value={selectedTenantId}
+              onChange={(e) => setSelectedTenantId(e.target.value)}
             >
-              Reset to global defaults
-            </button>
+              <option value="">Global defaults — all tenants</option>
+              {tenants.map((t) => (
+                <option key={t._id} value={t.tenantId}>
+                  {t.name || t.tenantId}
+                </option>
+              ))}
+            </select>
+          </div>
+          {!isGlobal && (
+            <div className="col-12 col-md-auto">
+              <button
+                type="button"
+                className="btn btn-outline-secondary"
+                onClick={resetToGlobal}
+                disabled={saving}
+              >
+                Reset to global defaults
+              </button>
+            </div>
           )}
         </div>
-        {!isGlobal && (
-          <p className="text-muted mb-0 mt-2" style={{ fontSize: "0.84em" }}>
-            Changes here apply only to <strong>{selectedTenant?.name || selectedTenantId}</strong> and override global defaults for that tenant.
-          </p>
-        )}
-        {isGlobal && (
-          <p className="text-muted mb-0 mt-2" style={{ fontSize: "0.84em" }}>
-            These are the platform-wide defaults. Individual tenants can have their own overrides.
-          </p>
-        )}
+
+        {/* Scope context banner */}
+        <div className={`tenant-scope-banner mt-3 ${isGlobal ? "scope-global" : "scope-tenant"}`}>
+          {isGlobal ? <FaGlobe /> : <FaBuilding />}
+          {isGlobal ? (
+            <span>
+              <strong>Global defaults</strong> — changes apply platform-wide. Individual tenants can override these settings.
+            </span>
+          ) : (
+            <span>
+              <strong>Tenant override: {tenantLabel}</strong> — changes apply only to this tenant and override the global defaults.
+            </span>
+          )}
+        </div>
       </div>
 
       {loading ? (
         <LoadingSpinner message="Loading AI settings…" />
       ) : (
         <>
+          {/* General settings */}
           <div className="dash-card mb-4">
             <h3 className="dash-card-title mb-4">
-              {isGlobal ? "Global Settings" : `Settings — ${selectedTenant?.name || selectedTenantId}`}
+              {isGlobal ? "Global Settings" : `Settings — ${tenantLabel}`}
             </h3>
             <div className="row g-4">
               <div className="col-md-6">
@@ -184,7 +189,7 @@ export default function AIControlsPage() {
                   <div className="form-text">
                     {isGlobal
                       ? "Disabling this turns off all AI features across every tenant."
-                      : "Disabling this turns off AI features for this tenant only."}
+                      : `Disabling this turns off AI features for ${tenantLabel} only.`}
                   </div>
                 </div>
 
@@ -217,7 +222,7 @@ export default function AIControlsPage() {
                     onChange={(e) => setField("softCapDaily", Number(e.target.value))}
                   />
                   <div className="form-text">
-                    AI usage warning threshold per day (tokens). Not a hard block.
+                    Warning threshold per day (tokens). Not a hard block.
                   </div>
                 </div>
                 <div className="mb-3">
@@ -231,20 +236,29 @@ export default function AIControlsPage() {
                     onChange={(e) => setField("softCapWeekly", Number(e.target.value))}
                   />
                   <div className="form-text">
-                    AI usage warning threshold per week (tokens). Not a hard block.
+                    Warning threshold per week (tokens). Not a hard block.
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
+          {/* Feature toggles */}
           <div className="dash-card mb-4">
-            <h3 className="dash-card-title mb-4">Feature Toggles</h3>
+            <h3 className="dash-card-title mb-3">Feature Toggles</h3>
+            <p className="text-muted mb-3" style={{ fontSize: "0.85em" }}>
+              {isGlobal
+                ? "Enable or disable specific AI features platform-wide."
+                : `Enable or disable specific AI features for ${tenantLabel}.`}
+            </p>
             <div className="row g-3">
               {FEATURES.map(({ key, label, desc }) => (
                 <div key={key} className="col-md-6">
-                  <div className="border rounded p-3" style={{ background: "var(--card-bg)" }}>
-                    <div className="form-check form-switch">
+                  <div
+                    className="p-3 rounded"
+                    style={{ border: "1px solid var(--border-color)", background: "rgba(255,255,255,0.02)" }}
+                  >
+                    <div className="form-check form-switch mb-0">
                       <input
                         className="form-check-input"
                         type="checkbox"
@@ -256,7 +270,7 @@ export default function AIControlsPage() {
                         {label}
                       </label>
                     </div>
-                    <p className="text-muted mb-0 mt-1" style={{ fontSize: "0.84em" }}>
+                    <p className="text-muted mb-0 mt-1" style={{ fontSize: "0.82em" }}>
                       {desc}
                     </p>
                   </div>
@@ -265,9 +279,14 @@ export default function AIControlsPage() {
             </div>
           </div>
 
-          <div className="d-flex gap-3 align-items-center">
+          {/* Save bar */}
+          <div className="d-flex flex-wrap gap-3 align-items-center">
             <button className="btn btn-primary" onClick={save} disabled={saving}>
-              {saving ? "Saving…" : isGlobal ? "Save global settings" : `Save for ${selectedTenant?.name || "tenant"}`}
+              {saving
+                ? "Saving…"
+                : isGlobal
+                  ? "Save global settings"
+                  : `Save for ${tenantLabel}`}
             </button>
             {!isGlobal && (
               <button
@@ -279,6 +298,14 @@ export default function AIControlsPage() {
                 Reset to global defaults
               </button>
             )}
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              onClick={load}
+              disabled={loading || saving}
+            >
+              Reload
+            </button>
           </div>
         </>
       )}

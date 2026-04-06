@@ -294,44 +294,21 @@ function DetailModal({ open, onClose, tenant }) {
           </button>
         </div>
 
-        <div
-          style={{
-            padding: 16,
-            display: "grid",
-            gridTemplateColumns: "repeat(12, 1fr)",
-            gap: 12,
-          }}
-        >
-          <div style={{ gridColumn: "span 3" }}>
-            <MiniCard
-              title="Students"
-              value={fmtInt(tenant.students)}
-              sub="Current"
-            />
-          </div>
-          <div style={{ gridColumn: "span 3" }}>
-            <MiniCard
-              title="Teachers"
-              value={fmtInt(tenant.teachers)}
-              sub="Current"
-            />
-          </div>
-          <div style={{ gridColumn: "span 3" }}>
-            <MiniCard
-              title="AI Calls (7d)"
-              value={fmtInt(tenant.aiCalls7d)}
-              sub="Usage"
-            />
-          </div>
-          <div style={{ gridColumn: "span 3" }}>
-            <MiniCard
-              title="Cost (7d)"
-              value={fmtMoney(tenant.cost7d)}
-              sub="Estimated"
-            />
+        <div style={{ padding: 16 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 12 }}>
+            {[
+              { title: "Students",    value: fmtInt(tenant.students),    sub: "Current" },
+              { title: "Teachers",    value: fmtInt(tenant.teachers),    sub: "Current" },
+              { title: "AI Calls (7d)", value: fmtInt(tenant.aiCalls7d), sub: "Usage" },
+              { title: "Cost (7d)",   value: fmtMoney(tenant.cost7d),    sub: "Estimated" },
+            ].map(({ title, value, sub }) => (
+              <div key={title} style={{ flex: "1 1 calc(50% - 12px)", minWidth: 120 }}>
+                <MiniCard title={title} value={value} sub={sub} />
+              </div>
+            ))}
           </div>
 
-          <div style={{ gridColumn: "span 12" }}>
+          <div>
             <div
               style={{
                 borderRadius: 18,
@@ -391,10 +368,6 @@ function DetailModal({ open, onClose, tenant }) {
               </div>
             </div>
 
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.65 }}>
-              Suspend, plan changes, limits can be wired when backend PATCH
-              endpoints exist.
-            </div>
           </div>
         </div>
       </div>
@@ -790,7 +763,9 @@ export default function TenantsPage() {
                   {editingTenantId ? "Edit tenant" : "Create tenant"}
                 </div>
                 <div style={{ fontSize: 12, opacity: 0.7 }}>
-                  Use the canonical superadmin tenant CRUD route.
+                  {editingTenantId
+                    ? "Update the details for this tenant."
+                    : "Fill in the details below to add a new tenant to the platform."}
                 </div>
               </div>
               {editingTenantId ? (
@@ -933,33 +908,17 @@ export default function TenantsPage() {
         <div style={{ height: 14 }} />
 
         {/* KPI row */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-            gap: 12,
-          }}
-        >
-          <MiniCard
-            title="Shown"
-            value={fmtInt(sorted.length)}
-            sub="After filters"
-          />
-          <MiniCard
-            title="Tenants"
-            value={fmtInt(tenants.length)}
-            sub="Loaded from API"
-          />
-          <MiniCard
-            title="AI Calls (7d)"
-            value={fmtInt(kpiCalls)}
-            sub="Sum of filtered"
-          />
-          <MiniCard
-            title="Cost (7d)"
-            value={fmtMoney(kpiCost)}
-            sub="Sum of filtered"
-          />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+          {[
+            { title: "Shown",       value: fmtInt(sorted.length),   sub: "After filters" },
+            { title: "Tenants",     value: fmtInt(tenants.length),  sub: "Total" },
+            { title: "AI Calls (7d)", value: fmtInt(kpiCalls),      sub: "Sum of filtered" },
+            { title: "Cost (7d)",   value: fmtMoney(kpiCost),       sub: "Sum of filtered" },
+          ].map(({ title, value, sub }) => (
+            <div key={title} style={{ flex: "1 1 calc(50% - 12px)", minWidth: 130 }}>
+              <MiniCard title={title} value={value} sub={sub} />
+            </div>
+          ))}
         </div>
 
         <div style={{ height: 14 }} />
@@ -1082,9 +1041,6 @@ export default function TenantsPage() {
                 >
                   <FaExclamationTriangle />
                   {error}
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 8 }}>
-                  Endpoint: <code>/api/admin/system/super/tenants</code>
                 </div>
               </div>
             ) : null}

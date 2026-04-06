@@ -16,3 +16,70 @@
 @media (min-width: 992px){
   .dash-main{ padding:24px; }
 }
+
+/* ── Shared page scaffold ────────────────────────────────── */
+.quizzes-page {
+  width: 100%;
+}
+
+/* ── Shared card component ───────────────────────────────── */
+.dash-card {
+  background: var(--card-bg, #1e293b);
+  border: 1px solid var(--border-color, #374151);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--card-shadow, 0 4px 12px rgba(0,0,0,0.12));
+}
+
+.dash-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-heading, #e5e7eb);
+  margin-bottom: 0;
+}
+
+/* ── Tenant scope context banner ─────────────────────────── */
+.tenant-scope-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.tenant-scope-banner.scope-global {
+  background: rgba(59, 130, 246, 0.10);
+  border: 1px solid rgba(59, 130, 246, 0.30);
+  color: #93c5fd;
+}
+.tenant-scope-banner.scope-tenant {
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+}
+
+/* ── Responsive table helper ─────────────────────────────── */
+.table-mobile-card tbody tr {
+  display: block;
+  border: 1px solid var(--border-color, #374151);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+}
+.table-mobile-card tbody td {
+  display: flex;
+  justify-content: space-between;
+  border: none;
+  padding: 4px 0;
+  font-size: 0.85em;
+}
+.table-mobile-card thead { display: none; }
+
+@media (min-width: 768px) {
+  .table-mobile-card tbody tr { display: table-row; border: none; margin-bottom: 0; padding: 0; }
+  .table-mobile-card tbody td { display: table-cell; border-bottom: 1px solid var(--border-color, #374151); padding: 0.5rem; }
+  .table-mobile-card thead { display: table-header-group; }
+}

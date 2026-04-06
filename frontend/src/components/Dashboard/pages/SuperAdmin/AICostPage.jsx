@@ -1,5 +1,6 @@
 // AICostPage — SuperAdmin AI usage & cost overview
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { FaBuilding, FaGlobe } from "react-icons/fa";
 import api from "../../../../services/api/api.js";
 import LoadingSpinner from "../../components/ui/LoadingSpinner.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
@@ -9,11 +10,11 @@ const fmtInt = (v) => new Intl.NumberFormat().format(Math.round(n(v)));
 const fmtMoney = (v) =>
   new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n(v));
 const fmtPct = (v) => `${Math.round(n(v) * 100)}%`;
-const fmtMs = (v) => `${Math.round(n(v))} ms`;
+const fmtMs  = (v) => `${Math.round(n(v))} ms`;
 
 const RANGES = [
   { value: "24h", label: "Last 24 h" },
-  { value: "7d", label: "Last 7 days" },
+  { value: "7d",  label: "Last 7 days" },
   { value: "30d", label: "Last 30 days" },
 ];
 
@@ -23,10 +24,14 @@ function errMsg(e, fallback) {
 
 function SummaryCard({ label, value, sub }) {
   return (
-    <div className="dash-card py-3 px-4">
-      <div className="text-muted" style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
-      <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--text-heading)", lineHeight: 1.2 }}>{value}</div>
-      {sub && <div className="text-muted" style={{ fontSize: "0.75rem", marginTop: 2 }}>{sub}</div>}
+    <div className="dash-card py-3">
+      <div className="text-muted" style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+        {label}
+      </div>
+      <div style={{ fontSize: "1.45rem", fontWeight: 800, color: "var(--text-heading)", lineHeight: 1.2, marginTop: 4 }}>
+        {value}
+      </div>
+      {sub && <div className="text-muted mt-1" style={{ fontSize: "0.72rem" }}>{sub}</div>}
     </div>
   );
 }
@@ -57,33 +62,34 @@ export default function AICostPage() {
   const [tab, setTab] = useState("requests");
   const [range, setRange] = useState("7d");
 
-  // Tenants for filter
   const [tenants, setTenants] = useState([]);
   const [tenantFilter, setTenantFilter] = useState("");
 
-  // Requests
-  const [reqLoading, setReqLoading] = useState(true);
-  const [reqError, setReqError] = useState("");
-  const [reqSummary, setReqSummary] = useState(null);
-  const [reqRows, setReqRows] = useState([]);
-  const [q, setQ] = useState("");
+  // Requests state
+  const [reqLoading, setReqLoading]   = useState(true);
+  const [reqError, setReqError]       = useState("");
+  const [reqSummary, setReqSummary]   = useState(null);
+  const [reqRows, setReqRows]         = useState([]);
+  const [q, setQ]                     = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [provider, setProvider] = useState("");
-  const [model, setModel] = useState("");
-  const [cacheHit, setCacheHit] = useState("");
-  const [limit, setLimit] = useState(50);
-  const [page, setPage] = useState(1);
+  const [provider, setProvider]       = useState("");
+  const [model, setModel]             = useState("");
+  const [cacheHit, setCacheHit]       = useState("");
+  const [limit, setLimit]             = useState(50);
+  const [page, setPage]               = useState(1);
   const skip = useMemo(() => (page - 1) * limit, [page, limit]);
 
-  // Cost
+  // Cost state
   const [costLoading, setCostLoading] = useState(true);
-  const [costError, setCostError] = useState("");
-  const [byTenant, setByTenant] = useState([]);
-  const [byFeature, setByFeature] = useState([]);
+  const [costError, setCostError]     = useState("");
+  const [byTenant, setByTenant]       = useState([]);
+  const [byFeature, setByFeature]     = useState([]);
   const [tenantSortKey, setTenantSortKey] = useState("cost");
   const [tenantSortDir, setTenantSortDir] = useState("desc");
   const [featureSortKey, setFeatureSortKey] = useState("cost");
   const [featureSortDir, setFeatureSortDir] = useState("desc");
+
+  const selectedTenant = tenants.find((t) => t.tenantId === tenantFilter);
 
   useEffect(() => {
     api.admin.listTenants().then((res) => {
@@ -92,7 +98,6 @@ export default function AICostPage() {
   }, []);
 
   const reqTotals = useMemo(() => {
-    // backend returns { summary: {...} } or { totals: {...} }
     const t = reqSummary?.totals || reqSummary?.summary || {};
     return {
       requests: n(t.requests),
@@ -137,7 +142,6 @@ export default function AICostPage() {
         api.admin.getAiRequestsSummary({ range }),
         api.admin.listAiRequests(params),
       ]);
-
       setReqSummary(summary || null);
       setReqRows(Array.isArray(list?.items) ? list.items : Array.isArray(list) ? list : []);
     } catch (e) {
@@ -169,67 +173,105 @@ export default function AICostPage() {
   useEffect(() => { fetchCost(); }, [fetchCost]);
   useEffect(() => { setPage(1); }, [q, statusFilter, provider, model, cacheHit, tenantFilter]);
 
-  const toggleTenantSort = (key) => {
-    if (tenantSortKey !== key) { setTenantSortKey(key); setTenantSortDir("desc"); }
-    else setTenantSortDir((d) => d === "desc" ? "asc" : "desc");
-  };
-  const toggleFeatureSort = (key) => {
-    if (featureSortKey !== key) { setFeatureSortKey(key); setFeatureSortDir("desc"); }
-    else setFeatureSortDir((d) => d === "desc" ? "asc" : "desc");
-  };
+  const toggleTenantSort  = (key) => { if (tenantSortKey  !== key) { setTenantSortKey(key);  setTenantSortDir("desc");  } else setTenantSortDir((d)  => d === "desc" ? "asc" : "desc"); };
+  const toggleFeatureSort = (key) => { if (featureSortKey !== key) { setFeatureSortKey(key); setFeatureSortDir("desc"); } else setFeatureSortDir((d) => d === "desc" ? "asc" : "desc"); };
 
   return (
     <div className="quizzes-page">
+      {/* Page header */}
       <div className="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
         <div>
           <h2>AI Usage &amp; Cost</h2>
-          <p className="text-muted mb-0">Requests, tokens, latency, cache rate and cost breakdown across tenants.</p>
+          <p className="text-muted mb-0">
+            Requests, tokens, latency, cache rate and cost breakdown across tenants.
+          </p>
         </div>
         <button
-          className="btn btn-outline-light"
           type="button"
+          className="btn btn-outline-secondary"
           onClick={() => { fetchRequests(); fetchCost(); }}
         >
           Refresh
         </button>
       </div>
 
-      {/* Controls bar */}
+      {/* Controls card */}
       <div className="dash-card mb-4">
-        <div className="d-flex flex-wrap gap-3 align-items-center">
-          <div className="d-flex align-items-center gap-2">
-            <label className="text-muted mb-0" style={{ fontSize: "0.85em" }}>Range</label>
-            <select className="form-select" style={{ width: "auto" }} value={range} onChange={(e) => setRange(e.target.value)}>
+        <div className="row g-3 align-items-end">
+          {/* Range */}
+          <div className="col-12 col-sm-6 col-md-auto">
+            <label className="form-label mb-1" style={{ fontSize: "0.82rem" }}>Time range</label>
+            <select
+              className="form-select"
+              style={{ minWidth: 140 }}
+              value={range}
+              onChange={(e) => setRange(e.target.value)}
+            >
               {RANGES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           </div>
-          <div className="d-flex align-items-center gap-2">
-            <label className="text-muted mb-0" style={{ fontSize: "0.85em" }}>Tenant</label>
-            <select className="form-select" style={{ width: "auto", minWidth: 180 }} value={tenantFilter} onChange={(e) => setTenantFilter(e.target.value)}>
+
+          {/* Tenant filter */}
+          <div className="col-12 col-sm-6 col-md-auto">
+            <label className="form-label mb-1" style={{ fontSize: "0.82rem" }}>Tenant</label>
+            <select
+              className="form-select"
+              style={{ minWidth: 200 }}
+              value={tenantFilter}
+              onChange={(e) => setTenantFilter(e.target.value)}
+            >
               <option value="">All tenants</option>
               {tenants.map((t) => <option key={t._id} value={t.tenantId}>{t.name || t.tenantId}</option>)}
             </select>
           </div>
-          <div className="ms-auto d-flex gap-2">
-            <button
-              type="button"
-              className={`btn btn-sm ${tab === "requests" ? "btn-primary" : "btn-outline-secondary"}`}
-              onClick={() => setTab("requests")}
-            >
-              Requests
-            </button>
-            <button
-              type="button"
-              className={`btn btn-sm ${tab === "cost" ? "btn-primary" : "btn-outline-secondary"}`}
-              onClick={() => setTab("cost")}
-            >
-              Cost
-            </button>
+
+          {/* Tab switcher */}
+          <div className="col-12 col-md-auto ms-md-auto">
+            <label className="form-label mb-1 d-none d-md-block" style={{ fontSize: "0.82rem", visibility: "hidden" }}>View</label>
+            <div className="btn-group" role="group">
+              <button
+                type="button"
+                className={`btn btn-sm ${tab === "requests" ? "btn-primary" : "btn-outline-secondary"}`}
+                onClick={() => setTab("requests")}
+              >
+                Requests
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${tab === "cost" ? "btn-primary" : "btn-outline-secondary"}`}
+                onClick={() => setTab("cost")}
+              >
+                Cost
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* Tenant scope indicator */}
+        {tenantFilter && (
+          <div className="tenant-scope-banner scope-tenant mt-3">
+            <FaBuilding />
+            <span>
+              Filtered to <strong>{selectedTenant?.name || tenantFilter}</strong>
+            </span>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary ms-auto"
+              onClick={() => setTenantFilter("")}
+            >
+              Clear filter
+            </button>
+          </div>
+        )}
+        {!tenantFilter && (
+          <div className="tenant-scope-banner scope-global mt-3">
+            <FaGlobe />
+            <span>Showing data for <strong>all tenants</strong></span>
+          </div>
+        )}
       </div>
 
-      {/* Requests tab */}
+      {/* ── Requests tab ── */}
       {tab === "requests" && (
         <>
           <div className="row g-3 mb-4">
@@ -247,52 +289,85 @@ export default function AICostPage() {
             </div>
           </div>
 
+          {/* Request filters */}
           <div className="dash-card mb-3">
             <div className="row g-2">
-              <div className="col-md-3">
-                <input className="form-control" placeholder="Search request text…" value={q} onChange={(e) => setQ(e.target.value)} />
+              <div className="col-12 col-md-4">
+                <input
+                  className="form-control form-control-sm"
+                  placeholder="Search request text…"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                />
               </div>
-              <div className="col-md-2">
-                <input className="form-control" placeholder="Provider…" value={provider} onChange={(e) => setProvider(e.target.value)} />
+              <div className="col-6 col-md-2">
+                <input
+                  className="form-control form-control-sm"
+                  placeholder="Provider"
+                  value={provider}
+                  onChange={(e) => setProvider(e.target.value)}
+                />
               </div>
-              <div className="col-md-2">
-                <input className="form-control" placeholder="Model…" value={model} onChange={(e) => setModel(e.target.value)} />
+              <div className="col-6 col-md-2">
+                <input
+                  className="form-control form-control-sm"
+                  placeholder="Model"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                />
               </div>
-              <div className="col-md-2">
-                <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <div className="col-6 col-md-2">
+                <select className="form-select form-select-sm" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                   <option value="">All statuses</option>
-                  <option value="ok">ok</option>
-                  <option value="error">error</option>
+                  <option value="ok">Success</option>
+                  <option value="error">Error</option>
                 </select>
               </div>
-              <div className="col-md-2">
-                <select className="form-select" value={cacheHit} onChange={(e) => setCacheHit(e.target.value)}>
+              <div className="col-6 col-md-2">
+                <select className="form-select form-select-sm" value={cacheHit} onChange={(e) => setCacheHit(e.target.value)}>
                   <option value="">Cache — any</option>
                   <option value="true">Cache hit</option>
                   <option value="false">Cache miss</option>
                 </select>
               </div>
-              <div className="col-md-1">
-                <select className="form-select" value={limit} onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                </select>
-              </div>
             </div>
           </div>
 
-          {reqError && (
-            <div className="alert alert-danger mb-3">{reqError}</div>
-          )}
+          {reqError && <div className="alert alert-danger mb-3">{reqError}</div>}
 
           <div className="dash-card">
-            <div className="d-flex justify-content-between align-items-center mb-3">
+            <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
               <h3 className="dash-card-title mb-0">Latest requests</h3>
-              <div className="d-flex gap-2 align-items-center">
-                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>Prev</button>
-                <span className="text-muted" style={{ fontSize: "0.85em" }}>Page {page}</span>
-                <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setPage((p) => p + 1)} disabled={reqRows.length < limit}>Next</button>
+              <div className="d-flex align-items-center gap-2">
+                <select
+                  className="form-select form-select-sm"
+                  style={{ width: "auto" }}
+                  value={limit}
+                  onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}
+                >
+                  <option value={25}>25 / page</option>
+                  <option value={50}>50 / page</option>
+                  <option value={100}>100 / page</option>
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                >
+                  Prev
+                </button>
+                <span className="text-muted" style={{ fontSize: "0.82em", whiteSpace: "nowrap" }}>
+                  Page {page}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-secondary"
+                  onClick={() => setPage((p) => p + 1)}
+                  disabled={reqRows.length < limit}
+                >
+                  Next
+                </button>
               </div>
             </div>
 
@@ -302,23 +377,24 @@ export default function AICostPage() {
               <EmptyState title="No requests found" message="Try adjusting your filters or date range." />
             ) : (
               <div className="table-responsive">
-                <table className="table table-hover align-middle mb-0" style={{ fontSize: "0.85em" }}>
+                <table className="table table-hover align-middle mb-0" style={{ fontSize: "0.83em" }}>
                   <thead>
                     <tr>
-                      <th>Updated</th>
+                      <th style={{ whiteSpace: "nowrap" }}>Time</th>
                       <th>Provider</th>
                       <th>Model</th>
                       <th>Status</th>
                       <th className="text-end">Tokens</th>
-                      <th className="text-end">Latency</th>
+                      <th className="text-end" style={{ whiteSpace: "nowrap" }}>Latency</th>
                       <th>Cache</th>
-                      <th>Request</th>
                     </tr>
                   </thead>
                   <tbody>
                     {reqRows.map((r) => (
                       <tr key={r._id}>
-                        <td style={{ whiteSpace: "nowrap" }}>{r.updatedAt ? new Date(r.updatedAt).toLocaleString() : "—"}</td>
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          {r.updatedAt ? new Date(r.updatedAt).toLocaleString() : "—"}
+                        </td>
                         <td>{r.provider || "—"}</td>
                         <td>{r.model || "—"}</td>
                         <td>
@@ -333,9 +409,6 @@ export default function AICostPage() {
                             {r.cacheHit ? "hit" : "miss"}
                           </span>
                         </td>
-                        <td style={{ maxWidth: 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {r?.payload?.requestText || "—"}
-                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -346,24 +419,34 @@ export default function AICostPage() {
         </>
       )}
 
-      {/* Cost tab */}
+      {/* ── Cost tab ── */}
       {tab === "cost" && (
         <>
           <div className="row g-3 mb-4">
             <div className="col-6 col-md-4">
-              <SummaryCard label="Total requests" value={fmtInt(costTotals.requests)} sub={tenantFilter ? "filtered tenant" : "all tenants"} />
+              <SummaryCard
+                label="Total requests"
+                value={fmtInt(costTotals.requests)}
+                sub={tenantFilter ? `${selectedTenant?.name || tenantFilter}` : "All tenants"}
+              />
             </div>
             <div className="col-6 col-md-4">
-              <SummaryCard label="Total tokens" value={fmtInt(costTotals.tokens)} sub={tenantFilter ? "filtered tenant" : "all tenants"} />
+              <SummaryCard
+                label="Total tokens"
+                value={fmtInt(costTotals.tokens)}
+                sub={tenantFilter ? `${selectedTenant?.name || tenantFilter}` : "All tenants"}
+              />
             </div>
             <div className="col-6 col-md-4">
-              <SummaryCard label="Estimated cost" value={`$${fmtMoney(costTotals.cost)}`} sub={tenantFilter ? "filtered tenant" : "sum of all tenants"} />
+              <SummaryCard
+                label="Estimated cost"
+                value={`$${fmtMoney(costTotals.cost)}`}
+                sub={tenantFilter ? `${selectedTenant?.name || tenantFilter}` : "Sum of all tenants"}
+              />
             </div>
           </div>
 
-          {costError && (
-            <div className="alert alert-danger mb-3">{costError}</div>
-          )}
+          {costError && <div className="alert alert-danger mb-3">{costError}</div>}
 
           {costLoading ? (
             <LoadingSpinner message="Loading cost data…" />
@@ -381,8 +464,8 @@ export default function AICostPage() {
                           <tr>
                             <th>Tenant</th>
                             <SortTh label="Requests" sortKey="requests" currentKey={tenantSortKey} currentDir={tenantSortDir} onSort={toggleTenantSort} />
-                            <SortTh label="Tokens" sortKey="tokens" currentKey={tenantSortKey} currentDir={tenantSortDir} onSort={toggleTenantSort} />
-                            <SortTh label="Cost" sortKey="cost" currentKey={tenantSortKey} currentDir={tenantSortDir} onSort={toggleTenantSort} />
+                            <SortTh label="Tokens"   sortKey="tokens"   currentKey={tenantSortKey} currentDir={tenantSortDir} onSort={toggleTenantSort} />
+                            <SortTh label="Cost"     sortKey="cost"     currentKey={tenantSortKey} currentDir={tenantSortDir} onSort={toggleTenantSort} />
                           </tr>
                         </thead>
                         <tbody>
@@ -416,8 +499,8 @@ export default function AICostPage() {
                           <tr>
                             <th>Feature</th>
                             <SortTh label="Requests" sortKey="requests" currentKey={featureSortKey} currentDir={featureSortDir} onSort={toggleFeatureSort} />
-                            <SortTh label="Tokens" sortKey="tokens" currentKey={featureSortKey} currentDir={featureSortDir} onSort={toggleFeatureSort} />
-                            <SortTh label="Cost" sortKey="cost" currentKey={featureSortKey} currentDir={featureSortDir} onSort={toggleFeatureSort} />
+                            <SortTh label="Tokens"   sortKey="tokens"   currentKey={featureSortKey} currentDir={featureSortDir} onSort={toggleFeatureSort} />
+                            <SortTh label="Cost"     sortKey="cost"     currentKey={featureSortKey} currentDir={featureSortDir} onSort={toggleFeatureSort} />
                           </tr>
                         </thead>
                         <tbody>
