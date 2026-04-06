@@ -1,0 +1,139 @@
+{
+  "student_id": "student_01",
+  "assignment_name": "trignometry math olevel Quiz",
+  "subject": "Mathematics",
+  "curriculum": "IGCSE",
+  "overall_score": 2,
+  "graded_questions": [
+    {
+      "id": "1",
+      "question": "Given that \\( \\sin(x) + \\cos(x) = \\frac{7}{5} \\), find the value of \\( \\sin(2x) \\).",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "2",
+      "question": "A triangle ABC has sides a = 5cm, b = 7cm and angle C = 60°. Find the length of side c.",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "B",
+      "correct_answer": "B",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "3",
+      "question": "Solve the equation \\( 2\\cos^2(x) + 3\\sin(x) = 3 \\) for \\( 0° \\le x \\le 360° \\).",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "4",
+      "question": "The angle of elevation of the top of a tower from a point A on the ground is 30°. From a point B, which is 20m nearer to the foot of the tower, the angle of elevation is 60°. Find the height of the tower.",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "D",
+      "correct_answer": "D",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "5",
+      "question": "If \\( \\tan(A) = \\frac{3}{4} \\) and \\( \\tan(B) = \\frac{5}{12} \\), find the value of \\( \\tan(A + B) \\).",
+      "type": "multiple_choice",
+      "student_answer": "D",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    }
+  ],
+  "concept_analytics": [
+    {
+      "concept": "Concept",
+      "count": 3
+    }
+  ],
+  "question_analysis": [
+    {
+      "id": "1",
+      "question": "Given that \\( \\sin(x) + \\cos(x) = \\frac{7}{5} \\), find the value of \\( \\sin(2x) \\).",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "2",
+      "question": "A triangle ABC has sides a = 5cm, b = 7cm and angle C = 60°. Find the length of side c.",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "B",
+      "correct_answer": "B",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "3",
+      "question": "Solve the equation \\( 2\\cos^2(x) + 3\\sin(x) = 3 \\) for \\( 0° \\le x \\le 360° \\).",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "4",
+      "question": "The angle of elevation of the top of a tower from a point A on the ground is 30°. From a point B, which is 20m nearer to the foot of the tower, the angle of elevation is 60°. Find the height of the tower.",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "D",
+      "correct_answer": "D",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "5",
+      "question": "If \\( \\tan(A) = \\frac{3}{4} \\) and \\( \\tan(B) = \\frac{5}{12} \\), find the value of \\( \\tan(A + B) \\).",
+      "type": "multiple_choice",
+      "student_answer": "D",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    }
+  ],
+  "study_plan": [],
+  "summary_recommendations": []
+}

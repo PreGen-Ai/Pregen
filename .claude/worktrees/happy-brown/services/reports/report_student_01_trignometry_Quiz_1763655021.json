@@ -1,0 +1,139 @@
+{
+  "student_id": "student_01",
+  "assignment_name": "trignometry Quiz",
+  "subject": "Mathematics",
+  "curriculum": "IGCSE",
+  "overall_score": 0,
+  "graded_questions": [
+    {
+      "id": "1",
+      "question": "In a right-angled triangle, if the angle θ is opposite side 'a' and adjacent to side 'b', what is tan θ?",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "2",
+      "question": "What is the value of sin(90° - θ)?",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "3",
+      "question": "Solve for x: 2sin(x) - 1 = 0, where 0° ≤ x ≤ 90°",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "4",
+      "question": "If cos θ = 5/13, and θ is an acute angle, find the value of sin θ.",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "5",
+      "question": "Which of the following is equivalent to (sin²θ + cos²θ) / cos²θ?",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    }
+  ],
+  "concept_analytics": [
+    {
+      "concept": "Concept",
+      "count": 5
+    }
+  ],
+  "question_analysis": [
+    {
+      "id": "1",
+      "question": "In a right-angled triangle, if the angle θ is opposite side 'a' and adjacent to side 'b', what is tan θ?",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "2",
+      "question": "What is the value of sin(90° - θ)?",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "3",
+      "question": "Solve for x: 2sin(x) - 1 = 0, where 0° ≤ x ≤ 90°",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "4",
+      "question": "If cos θ = 5/13, and θ is an acute angle, find the value of sin θ.",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "5",
+      "question": "Which of the following is equivalent to (sin²θ + cos²θ) / cos²θ?",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    }
+  ],
+  "study_plan": [],
+  "summary_recommendations": []
+}

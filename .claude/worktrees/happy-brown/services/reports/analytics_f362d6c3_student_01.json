@@ -1,0 +1,117 @@
+{
+  "total_score": 3.5,
+  "max_score": 5,
+  "average_score": 70.0,
+  "graded_sections": [
+    {
+      "subject": "Mathematics",
+      "overall_score": 0.7,
+      "max_score": 1,
+      "step_breakdown": [
+        {
+          "step_description": "Basic evaluation",
+          "correct": true,
+          "points_awarded": 0.7,
+          "feedback": "Graded with base criteria - detailed analysis unavailable"
+        }
+      ],
+      "final_answer_correct": false,
+      "strengths": [
+        "Attempted the task"
+      ],
+      "improvements": [
+        "Provide clearer structure and reasoning"
+      ],
+      "conceptual_understanding": "Basic understanding shown",
+      "fallback": true
+    },
+    {
+      "subject": "Mathematics",
+      "overall_score": 0.7,
+      "max_score": 1,
+      "step_breakdown": [
+        {
+          "step_description": "Basic evaluation",
+          "correct": true,
+          "points_awarded": 0.7,
+          "feedback": "Graded with base criteria - detailed analysis unavailable"
+        }
+      ],
+      "final_answer_correct": false,
+      "strengths": [
+        "Attempted the task"
+      ],
+      "improvements": [
+        "Provide clearer structure and reasoning"
+      ],
+      "conceptual_understanding": "Basic understanding shown",
+      "fallback": true
+    },
+    {
+      "subject": "Mathematics",
+      "overall_score": 0.7,
+      "max_score": 1,
+      "step_breakdown": [
+        {
+          "step_description": "Basic evaluation",
+          "correct": true,
+          "points_awarded": 0.7,
+          "feedback": "Graded with base criteria - detailed analysis unavailable"
+        }
+      ],
+      "final_answer_correct": false,
+      "strengths": [
+        "Attempted the task"
+      ],
+      "improvements": [
+        "Provide clearer structure and reasoning"
+      ],
+      "conceptual_understanding": "Basic understanding shown",
+      "fallback": true
+    },
+    {
+      "subject": "Mathematics",
+      "overall_score": 0.7,
+      "max_score": 1,
+      "step_breakdown": [
+        {
+          "step_description": "Basic evaluation",
+          "correct": true,
+          "points_awarded": 0.7,
+          "feedback": "Graded with base criteria - detailed analysis unavailable"
+        }
+      ],
+      "final_answer_correct": false,
+      "strengths": [
+        "Attempted the task"
+      ],
+      "improvements": [
+        "Provide clearer structure and reasoning"
+      ],
+      "conceptual_understanding": "Basic understanding shown",
+      "fallback": true
+    },
+    {
+      "subject": "Mathematics",
+      "overall_score": 0.7,
+      "max_score": 1,
+      "step_breakdown": [
+        {
+          "step_description": "Basic evaluation",
+          "correct": true,
+          "points_awarded": 0.7,
+          "feedback": "Graded with base criteria - detailed analysis unavailable"
+        }
+      ],
+      "final_answer_correct": false,
+      "strengths": [
+        "Attempted the task"
+      ],
+      "improvements": [
+        "Provide clearer structure and reasoning"
+      ],
+      "conceptual_understanding": "Basic understanding shown",
+      "fallback": true
+    }
+  ]
+}

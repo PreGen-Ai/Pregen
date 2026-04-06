@@ -1,0 +1,329 @@
+/* ==========================
+   AI Tutor - Dashboard Layout
+   ========================== */
+
+/* 🌐 Base Container */
+.ai-tutor-container {
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 18px 18px 22px;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 18px;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(10px);
+}
+
+/* 🧠 Title */
+.ai-tutor-container h1 {
+  text-align: center;
+  color: #1f2937;
+  margin: 0 0 14px;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+/* ==========================
+   Toolbar (selects + upload)
+   ========================== */
+
+.tutor-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(249, 250, 251, 0.95);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  margin-bottom: 12px;
+}
+
+/* Make selects consistent */
+.tutor-toolbar select {
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  background: #fff;
+  color: #111827;
+  font-weight: 600;
+  font-size: 0.92rem;
+  outline: none;
+  transition: 0.2s;
+}
+
+.tutor-toolbar select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.18);
+}
+
+/* Upload group (right side) */
+.tutor-toolbar > div {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* Style the native file input nicely */
+.tutor-toolbar input[type="file"] {
+  width: 220px;
+  max-width: 100%;
+  font-size: 0.88rem;
+  color: #111827;
+}
+
+/* Chrome/Edge file button */
+.tutor-toolbar input[type="file"]::file-selector-button {
+  margin-right: 10px;
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.tutor-toolbar input[type="file"]::file-selector-button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+}
+
+/* small helper text */
+.tutor-toolbar small {
+  color: rgba(17, 24, 39, 0.7);
+  font-weight: 600;
+}
+
+/* ==========================
+   Chat Box
+   ========================== */
+
+.chat-box {
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 14px;
+  padding: 14px;
+  height: 420px;
+  overflow-y: auto;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scroll-behavior: smooth;
+}
+
+/* Scrollbar */
+.chat-box::-webkit-scrollbar {
+  width: 8px;
+}
+.chat-box::-webkit-scrollbar-thumb {
+  background: rgba(102, 126, 234, 0.25);
+  border-radius: 10px;
+}
+.chat-box::-webkit-scrollbar-thumb:hover {
+  background: rgba(118, 75, 162, 0.35);
+}
+
+/* ==========================
+   Messages (bubble style)
+   ========================== */
+
+.chat-message {
+  display: flex;
+  width: 100%;
+}
+
+.chat-message p {
+  margin: 0;
+}
+
+/* bubble base */
+.chat-message.user p,
+.chat-message.bot p {
+  padding: 10px 12px;
+  border-radius: 14px;
+  max-width: min(78%, 560px);
+  line-height: 1.45;
+  font-size: 0.98rem;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* user bubble */
+.chat-message.user {
+  justify-content: flex-end;
+}
+.chat-message.user p {
+  background: rgba(102, 126, 234, 0.12);
+  color: #111827;
+  border-color: rgba(102, 126, 234, 0.18);
+  animation: slideInRight 0.22s ease;
+}
+
+/* bot bubble */
+.chat-message.bot {
+  justify-content: flex-start;
+}
+.chat-message.bot p {
+  background: rgba(17, 24, 39, 0.06);
+  color: #111827;
+  animation: slideInLeft 0.22s ease;
+}
+
+/* typing indicator */
+.typing {
+  margin: 2px 0 0;
+  font-style: italic;
+  color: rgba(17, 24, 39, 0.6);
+  font-size: 0.9rem;
+  padding-left: 4px;
+}
+
+/* ==========================
+   Input row (message input + send)
+   ========================== */
+
+.chat-input {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  align-items: center;
+}
+
+.chat-input input {
+  flex: 1;
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 12px;
+  font-size: 1rem;
+  outline: none;
+  transition: 0.2s;
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.chat-input input:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.18);
+}
+
+.chat-input button {
+  height: 46px;
+  min-width: 120px;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #00796b 0%, #0b8f7f 100%);
+  box-shadow: 0 10px 20px rgba(0, 121, 107, 0.22);
+  transition: 0.2s;
+}
+
+.chat-input button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+}
+
+.chat-input button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ==========================
+   Animations
+   ========================== */
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* ==========================
+   Responsive
+   ========================== */
+
+@media (max-width: 1024px) {
+  .ai-tutor-container {
+    max-width: 94%;
+    padding: 16px;
+  }
+  .chat-box {
+    height: 390px;
+  }
+}
+
+@media (max-width: 768px) {
+  .tutor-toolbar {
+    gap: 8px;
+  }
+
+  .tutor-toolbar select {
+    flex: 1;
+    min-width: 140px;
+  }
+
+  .tutor-toolbar input[type="file"] {
+    width: 100%;
+  }
+
+  .chat-box {
+    height: 340px;
+  }
+
+  .chat-input {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .chat-input button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .ai-tutor-container {
+    border-radius: 14px;
+    padding: 14px;
+  }
+
+  .ai-tutor-container h1 {
+    font-size: 1.35rem;
+  }
+
+  .chat-message.user p,
+  .chat-message.bot p {
+    max-width: 92%;
+    font-size: 0.92rem;
+  }
+
+  .chat-box {
+    height: 300px;
+    padding: 12px;
+  }
+}

@@ -1,0 +1,162 @@
+# ==============================
+# 🔧 Core Node & Package Managers
+# ==============================
+node_modules/
+**/node_modules/
+package-lock.json
+.pnp
+.pnp.js
+
+# ==============================
+# ⚡ Vite / React / Next / Gatsby / Vue / Svelte / Docusaurus
+# ==============================
+dist/
+build/
+.next/
+out/
+.cache/
+.parcel-cache/
+.vuepress/dist
+.nuxt
+.svelte-kit/
+.docusaurus
+.vite/
+**/.vitepress/dist
+**/.vitepress/cache
+.temp
+.cache/
+
+# ==============================
+# 📦 Misc Dependency Caches
+# ==============================
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.yarn-integrity
+.npm
+.eslintcache
+.stylelintcache
+.nyc_output
+bower_components
+jspm_packages/
+lib-cov
+.web_modules/
+.lock-wscript
+.vite/
+*.tgz
+
+# ==============================
+# 📁 Python & ML Artifacts
+# ==============================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.joblib
+*.keras
+*.sqlite3
+*.log
+*.db
+*.pid
+*.bak
+
+# ==============================
+# 📦 Python Environments
+# ==============================
+.venv/
+venv/
+ENV/
+server/.venv/
+services/.venv/
+
+# ==============================
+# ⚙️ FastAPI / Backend Specific
+# ==============================
+server/.env
+server/*.sqlite3
+server/*.pkl
+server/*.joblib
+services/__pycache__/
+services/.env
+services/*.pkl
+services/*.joblib
+services/*.keras
+services/*.sqlite3
+services/SCREENSHOTS/
+
+# ==============================
+# 📗 TypeScript & JS Caches
+# ==============================
+*.tsbuildinfo
+
+# ==============================
+# 📒 Jupyter
+# ==============================
+.ipynb_checkpoints/
+
+# ==============================
+# 🧪 Testing & Coverage
+# ==============================
+coverage/
+*.lcov
+.grunt
+.report/
+.vitest/
+
+# ==============================
+# 🔐 Environment Variables / Secrets
+# ==============================
+.env
+.env.*
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+secrets.json
+config.yaml
+
+# ==============================
+# 🖥️ IDE / Editor Specific
+# ==============================
+.vscode/
+*.code-workspace
+.vscode-test
+
+# ==============================
+# 🖥️ System Files
+# ==============================
+.DS_Store
+Thumbs.db
+
+# ==============================
+# 📝 Logs & Reports
+# ==============================
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# ==============================
+# 🔁 Runtime Data
+# ==============================
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# ==============================
+# 📦 Serverless / Firebase / DynamoDB / Misc
+# ==============================
+.serverless/
+.firebase/
+.dynamodb/
+.fusebox/
+.tern-port

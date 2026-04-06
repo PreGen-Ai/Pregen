@@ -1,0 +1,139 @@
+{
+  "student_id": "student_01",
+  "assignment_name": "trignometry math olevel Quiz",
+  "subject": "Mathematics",
+  "curriculum": "IGCSE",
+  "overall_score": 3,
+  "graded_questions": [
+    {
+      "id": "1",
+      "question": "A vertical tower stands on horizontal ground. From a point on the ground 40m away from the base of the tower, the angle of elevation of the top of the tower is 32°. Calculate the height of the tower, correct to 3 significant figures.",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "2",
+      "question": "In triangle ABC, AB = 10 cm, BC = 8 cm, and angle ABC = 60°. Calculate the area of triangle ABC, correct to 3 significant figures.",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "B",
+      "correct_answer": "B",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "3",
+      "question": "Given that sin θ = 3/5 and θ is an obtuse angle, find the value of cos θ.",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "4",
+      "question": "Solve the equation 2cos²x - cos x - 1 = 0 for 0° ≤ x ≤ 360°.",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "D",
+      "correct_answer": "D",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "5",
+      "question": "A ship sails 15 km on a bearing of 070° from point A to point B. It then sails 20 km on a bearing of 160° from point B to point C. Find the distance AC, correct to 3 significant figures.",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    }
+  ],
+  "concept_analytics": [
+    {
+      "concept": "Concept",
+      "count": 2
+    }
+  ],
+  "question_analysis": [
+    {
+      "id": "1",
+      "question": "A vertical tower stands on horizontal ground. From a point on the ground 40m away from the base of the tower, the angle of elevation of the top of the tower is 32°. Calculate the height of the tower, correct to 3 significant figures.",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "2",
+      "question": "In triangle ABC, AB = 10 cm, BC = 8 cm, and angle ABC = 60°. Calculate the area of triangle ABC, correct to 3 significant figures.",
+      "type": "multiple_choice",
+      "student_answer": "B",
+      "expected_answer": "B",
+      "correct_answer": "B",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "3",
+      "question": "Given that sin θ = 3/5 and θ is an obtuse angle, find the value of cos θ.",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct!",
+      "is_correct": true
+    },
+    {
+      "id": "4",
+      "question": "Solve the equation 2cos²x - cos x - 1 = 0 for 0° ≤ x ≤ 360°.",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "D",
+      "correct_answer": "D",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    },
+    {
+      "id": "5",
+      "question": "A ship sails 15 km on a bearing of 070° from point A to point B. It then sails 20 km on a bearing of 160° from point B to point C. Find the distance AC, correct to 3 significant figures.",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect",
+      "is_correct": false
+    }
+  ],
+  "study_plan": [],
+  "summary_recommendations": []
+}

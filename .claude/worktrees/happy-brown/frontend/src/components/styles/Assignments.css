@@ -1,0 +1,626 @@
+/* ============================================
+   Assignments Module — Extending Master Theme
+   Uses CSS variables from :root / .dark / .admin-theme
+============================================ */
+
+/* ---------- Layout overrides for two‑column assignments page ---------- */
+.dashboard-content {
+  grid-template-columns: 2fr 1fr; /* keep same as master */
+}
+
+.left-col,
+.right-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+/* ---------- Alert messages (reuse master .alert if exists, else define) ---------- */
+.alert {
+  padding: 1rem 1.5rem;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  font-weight: 500;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--card-shadow);
+}
+.alert-success {
+  border-left: 4px solid var(--soft-mint);
+  color: var(--text-heading);
+}
+.alert-warning {
+  border-left: 4px solid var(--warm-amber);
+  color: var(--text-heading);
+}
+
+/* ---------- Assignment Controls Card ---------- */
+.assignment-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1 1 auto;
+  min-width: 140px;
+}
+
+.control-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.control-group input,
+.control-group select,
+.control-group textarea {
+  background: var(--stat-icon-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 0.6rem 1rem;
+  color: var(--text-body);
+  font-size: 0.95rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.control-group input:focus,
+.control-group select:focus,
+.control-group textarea:focus {
+  outline: none;
+  border-color: var(--electric-cyan);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.25);
+}
+
+.topic-input {
+  width: 100%;
+}
+
+.control-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+/* ---------- Buttons (extend master .btn) ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1.5rem;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  line-height: 1.2;
+}
+.btn-primary {
+  background: linear-gradient(180deg, var(--gold-1), var(--gold-2));
+  color: #071018;
+  border-color: rgba(255,255,255,0.1);
+}
+.btn-primary:hover {
+  filter: brightness(1.05);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(212, 175, 55, 0.3);
+}
+.btn-secondary {
+  background: rgba(255,255,255,0.03);
+  color: var(--text-heading);
+  border: 1px solid var(--border-color);
+  backdrop-filter: blur(8px);
+}
+.btn-secondary:hover {
+  background: rgba(255,255,255,0.08);
+  transform: translateY(-2px);
+}
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-body);
+}
+.btn-outline:hover {
+  background: var(--border-color);
+  color: var(--text-heading);
+}
+.btn-outline.danger {
+  border-color: var(--red-1);
+  color: var(--red-1);
+}
+.btn-outline.danger:hover {
+  background: var(--red-1);
+  color: white;
+}
+.btn-small {
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+}
+.btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.generate-btn {
+  min-width: 200px;
+}
+
+/* ---------- Badges (reusing master .pill style) ---------- */
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border-color);
+  color: var(--text-body);
+}
+.badge.cyan {
+  background: rgba(34, 211, 238, 0.15);
+  color: var(--electric-cyan);
+}
+.badge.mint {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--soft-mint);
+}
+.badge.amber {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warm-amber);
+}
+.badge.gold {
+  background: rgba(212, 175, 55, 0.15);
+  color: var(--gold-1);
+}
+.badge.purple {
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--purple-1);
+}
+.badge.slate {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--slate-1);
+}
+.badge.red {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--red-1);
+}
+
+/* ---------- Assignment meta rows ---------- */
+.assignment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.assignment-header h4 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  margin: 0;
+}
+.assignment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.assignment-meta-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+/* ---------- Card inner sections (for nested content) ---------- */
+.card-inner {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 1.2rem;
+  margin-bottom: 1rem;
+}
+
+/* ---------- Question cards ---------- */
+.question-card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid var(--border-color);
+  margin-bottom: 1.5rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.question-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--card-hover-shadow);
+}
+.question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.question-header h5 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-heading);
+  margin: 0;
+}
+.question-type {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.question-text {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--text-body);
+  margin-bottom: 1.5rem;
+}
+
+/* Multiple choice options */
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin: 1rem 0;
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.6rem 1rem;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.option:hover {
+  background: rgba(255,255,255,0.05);
+}
+.option input[type="radio"] {
+  accent-color: var(--gold-1);
+  width: 18px;
+  height: 18px;
+}
+.option-letter {
+  font-weight: 700;
+  color: var(--gold-1);
+}
+.option-text {
+  color: var(--text-body);
+}
+
+/* Textareas */
+.answer-textarea {
+  width: 100%;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 1rem;
+  color: var(--text-body);
+  font-size: 0.95rem;
+  resize: vertical;
+  margin: 1rem 0;
+}
+.answer-textarea:focus {
+  outline: none;
+  border-color: var(--electric-cyan);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.25);
+}
+
+/* True/False */
+.true-false-options {
+  display: flex;
+  gap: 1.5rem;
+  margin: 1rem 0;
+}
+.tf-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+.tf-option input[type="radio"] {
+  accent-color: var(--gold-1);
+  width: 18px;
+  height: 18px;
+}
+.tf-label {
+  color: var(--text-body);
+  font-weight: 500;
+}
+
+/* Enhanced explanation preview */
+.enhanced-explanation-preview {
+  background: rgba(52, 211, 153, 0.05);
+  border-left: 4px solid var(--soft-mint);
+  padding: 1rem;
+  border-radius: 0 8px 8px 0;
+  margin-top: 1rem;
+}
+.enhanced-explanation-preview h5 {
+  color: var(--soft-mint);
+  margin-bottom: 0.5rem;
+}
+
+/* ---------- Assignment actions ---------- */
+.assignment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 2rem 0 1rem;
+}
+
+/* ---------- Grading results ---------- */
+.grading-results {
+  margin-top: 2rem;
+}
+.score-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.score-summary {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+.score-circle-large {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold-1), var(--gold-2));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 800;
+  color: #071018;
+  box-shadow: 0 8px 20px rgba(212, 175, 55, 0.3);
+}
+.score-details h5 {
+  font-size: 1.4rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-heading);
+}
+.performance-feedback {
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+.grading-method {
+  margin-top: 0.5rem;
+}
+
+.questions-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.graded-question {
+  padding: 1rem;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border-color);
+}
+.graded-question.correct {
+  border-left: 4px solid var(--soft-mint);
+}
+.graded-question.incorrect {
+  border-left: 4px solid var(--red-1);
+}
+.question-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.result-status.correct {
+  color: var(--soft-mint);
+}
+.result-status.incorrect {
+  color: var(--red-1);
+}
+.question-feedback {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+/* ---------- API Health card ---------- */
+.api-health {
+  padding: 1rem;
+  border-radius: 12px;
+  font-weight: 500;
+}
+.health-good {
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid var(--soft-mint);
+  color: var(--soft-mint);
+}
+.health-bad {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--red-1);
+  color: var(--red-1);
+}
+
+/* ---------- Saved assignments grid ---------- */
+.assignment-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+.assignment-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.2rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.assignment-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--card-hover-shadow);
+}
+.assignment-card h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  margin-bottom: 0.8rem;
+}
+.assignment-card .assignment-meta {
+  margin: 0.8rem 0;
+}
+.card-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.confidence-indicator {
+  margin-top: 0.5rem;
+}
+
+/* ---------- Quick Actions (override master .action-btn) ---------- */
+.quick-actions .action-buttons {
+  grid-template-columns: repeat(2, 1fr);
+}
+.quick-actions .action-btn {
+  background: var(--stat-icon-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--text-heading);
+  transition: all 0.2s;
+  cursor: pointer;
+  font-weight: 500;
+}
+.quick-actions .action-btn:hover {
+  background: var(--electric-cyan);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(34, 211, 238, 0.3);
+}
+
+/* ---------- Floating Calculator ---------- */
+.calculator-window {
+  position: fixed;
+  width: 320px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: var(--card-hover-shadow);
+  backdrop-filter: blur(12px);
+  z-index: 1000;
+  overflow: hidden;
+}
+.calculator-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem 1.2rem;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  color: var(--text-heading);
+  cursor: grab;
+}
+.calculator-header:active {
+  cursor: grabbing;
+}
+.close-calculator {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 0.5rem;
+  border-radius: 6px;
+}
+.close-calculator:hover {
+  color: var(--red-1);
+  background: rgba(239, 68, 68, 0.1);
+}
+.calculator-body {
+  padding: 1rem;
+}
+
+/* ---------- Loading overlay ---------- */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  color: white;
+  font-size: 1.2rem;
+}
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(255,255,255,0.1);
+  border-top-color: var(--gold-1);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 1rem;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- Responsive adjustments ---------- */
+@media (max-width: 992px) {
+  .dashboard-content {
+    grid-template-columns: 1fr;
+  }
+  .control-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .quick-actions .action-buttons {
+    grid-template-columns: 1fr;
+  }
+  .score-summary {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .assignment-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .assignment-actions {
+    flex-direction: column;
+  }
+  .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .calculator-window {
+    width: 90%;
+    left: 5% !important;
+    top: 20% !important;
+  }
+}

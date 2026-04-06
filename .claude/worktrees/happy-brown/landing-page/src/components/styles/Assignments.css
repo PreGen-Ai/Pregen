@@ -1,0 +1,566 @@
+/* ===========================
+   📘 Assignments Page Styling
+   Unified with QuizGenerator aesthetic
+=========================== */
+
+/* Base Layout */
+.assignments-page {
+  padding: 2.5rem;
+  max-width: 1100px;
+  margin: 6rem auto;
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+  font-family: "Urbanist", sans-serif;
+  transition: all 0.3s ease;
+margin-top: 6rem;
+}
+
+.assignments-page:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+
+/* Header */
+.assignments-page h1 {
+  text-align: center;
+  font-size: 2.3rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ===========================
+   Assignment Generator Form
+=========================== */
+.assignment-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.assignment-form input,
+.assignment-form select {
+  padding: 12px 16px;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  flex: 1 1 250px;
+}
+
+.assignment-form input:focus,
+.assignment-form select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.assignment-form button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  padding: 0.9rem 1.5rem;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  box-shadow: 0 10px 25px rgba(118, 75, 162, 0.3);
+  transition: all 0.3s ease;
+}
+
+.assignment-form button:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 15px 35px rgba(102, 126, 234, 0.4);
+}
+
+.assignment-form button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* ===========================
+   Current Assignment Display
+=========================== */
+.current-assignment {
+  background: #f8f9fa;
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
+  margin-bottom: 3rem;
+}
+
+.assignment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+
+.assignment-header h2 {
+  font-size: 1.6rem;
+  color: #2c3e50;
+  margin: 0;
+}
+
+.assignment-icons {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+/* Meta Info */
+.assignment-meta {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  color: #495057;
+  font-weight: 500;
+  margin-bottom: 1.5rem;
+}
+
+.assignment-meta span {
+  background: #ffffff;
+  border: 1px solid #dee2e6;
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 0.9rem;
+}
+
+/* Question Cards */
+.questions-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.question-card {
+  background: #fff;
+  border: 2px solid #e9ecef;
+  border-radius: 16px;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.question-card:hover {
+  border-color: #667eea;
+  box-shadow: 0 10px 25px rgba(102, 126, 234, 0.15);
+}
+
+.question-card h4 {
+  font-size: 1.1rem;
+  color: #2c3e50;
+  margin-bottom: 1rem;
+}
+
+/* Options */
+.options label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f9fafc;
+  border: 2px solid #e9ecef;
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.options label:hover {
+  background: #f1f3ff;
+  border-color: #667eea;
+}
+
+.options input {
+  accent-color: #667eea;
+  color: #000;
+}
+.options{
+  color: #000;
+}
+/* Textarea */
+textarea {
+  width: 100%;
+  border: 2px solid #e9ecef;
+  border-radius: 10px;
+  padding: 12px;
+  resize: vertical;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+/* ===========================
+   Action Buttons
+=========================== */
+.assignment-actions {
+  display: flex;
+  gap: 15px;
+  margin-top: 2rem;
+  flex-wrap: wrap;
+}
+
+.assignment-actions .submit-btn,
+.assignment-actions .delete-btn {
+  flex: 1;
+  padding: 14px 20px;
+  border: none;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.submit-btn {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+  color: white;
+}
+
+.submit-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(255, 107, 107, 0.3);
+}
+
+.delete-btn {
+  background: #6c757d;
+  color: white;
+}
+
+.delete-btn:hover {
+  background: #5a6268;
+  transform: translateY(-2px);
+}
+
+/* ===========================
+   Grading Results
+=========================== */
+.grading-results {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-top: 2rem;
+  border-left: 5px solid #28a745;
+}
+
+.grading-results h3 {
+  color: #155724;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.grading-results h4 {
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.grading-results p {
+  color: #495057;
+  font-size: 1rem;
+}
+
+/* ===========================
+   Saved Assignments Section
+=========================== */
+.assignments-list {
+  margin-top: 3rem;
+}
+
+.assignments-list h3 {
+  color: #2c3e50;
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+}
+
+.assignment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+  color:rgba(0, 0, 0, 0.1);
+}
+
+.assignment-card .card-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 1rem;
+  color:#333;
+}
+.assignment-card  {
+
+  color:#333;
+}
+
+
+
+.card-actions button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.view-btn {
+  background: #667eea;
+  color: white;
+}
+
+.view-btn:hover {
+  background: #4c56da;
+}
+
+.pdf-btn {
+  background: #2e86de;
+  color: white;
+}
+
+.pdf-btn:hover {
+  background: #1b4f72;
+}
+
+.delete-btn {
+  background: #dc3545;
+}
+
+.delete-btn:hover {
+  background: #b02a37;
+}
+
+/* Empty State */
+.no-assignments {
+  text-align: center;
+  color: #6c757d;
+  padding: 2rem;
+  font-size: 1.1rem;
+}
+
+/* ===========================
+   🧮 Calculator Modal Styles
+=========================== */
+.calculator-window {
+  position: fixed;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+  width: 460px;
+  z-index: 2000;
+  user-select: none;
+  overflow: hidden;
+  animation: fadeIn 0.4s ease;
+}
+
+.calculator-header {
+  background: linear-gradient(135deg, #2e86de, #1b4f72);
+  color: white;
+  padding: 12px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: move;
+  font-weight: 600;
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
+
+.close-calculator {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.close-calculator:hover {
+  color: #ffd700;
+}
+
+.calculator-body {
+  padding: 15px;
+  background: #f8f9fa;
+}
+
+/* ===========================
+   ✨ Animations
+=========================== */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ===========================
+   📱 Responsive Design
+=========================== */
+@media (max-width: 1268px) {
+  .assignments-page {
+    padding: 1.5rem;
+    margin-left: 26%;
+    max-width: 70%;
+  }
+}
+@media (max-width: 768px) {
+  .assignments-page {
+    padding: 1.5rem;
+    margin: 5rem 1rem;
+    max-width: 80%;
+  }
+
+  .assignment-form {
+    flex-direction: column;
+  }
+
+  .assignment-actions {
+    flex-direction: column;
+  }
+
+  .calculator-window {
+    width: 90%;
+    left: 5%;
+  }
+}
+
+@media (max-width: 480px) {
+  .assignments-page h1 {
+    font-size: 1.8rem;
+  }
+
+  .assignment-card h4 {
+    font-size: 1rem;
+  }
+}
+/* styles/Assignments.css */
+.alert {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin: 16px 0;
+  font-weight: 500;
+}
+
+.alert-success {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.alert-error {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.enhanced-explanation-preview {
+  background: #e8f5e8;
+  padding: 16px;
+  border-radius: 8px;
+  margin-top: 16px;
+  border-left: 4px solid #28a745;
+}
+
+.grading-results {
+  background: #f8f9fa;
+  padding: 24px;
+  border-radius: 12px;
+  margin-top: 24px;
+  border: 2px solid #e9ecef;
+}
+
+.score-breakdown {
+  text-align: center;
+}
+
+.questions-breakdown {
+  margin-top: 20px;
+  text-align: left;
+}
+
+.graded-question {
+  padding: 12px;
+  margin: 8px 0;
+  border-radius: 6px;
+  border-left: 4px solid #6c757d;
+}
+
+.graded-question.correct {
+  border-left-color: #28a745;
+  background: #d4edda;
+}
+
+.graded-question.incorrect {
+  border-left-color: #dc3545;
+  background: #f8d7da;
+}
+
+.question-feedback {
+  font-style: italic;
+  color: #6c757d;
+  margin-top: 8px;
+}
+
+.assignment-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+}
+
+.submit-btn, .pdf-btn, .delete-btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.submit-btn {
+  background: #007bff;
+  color: white;
+}
+
+.submit-btn:hover {
+  background: #0056b3;
+}
+
+.pdf-btn {
+  background: #28a745;
+  color: white;
+}
+
+.pdf-btn:hover {
+  background: #1e7e34;
+}
+
+.delete-btn {
+  background: #dc3545;
+  color: white;
+}
+
+.delete-btn:hover {
+  background: #c82333;
+}
+
+
+.question-card{
+  color: #000;
+}
