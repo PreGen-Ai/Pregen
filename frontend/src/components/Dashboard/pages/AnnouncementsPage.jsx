@@ -52,6 +52,7 @@ const formatClassroomLabel = (item) =>
 export default function AnnouncementsPage() {
   const { user } = useAuthContext();
   const role = roleValue(user);
+  const isSuperAdmin = role === "SUPERADMIN";
   const canCreate = ["TEACHER", "ADMIN", "SUPERADMIN"].includes(role);
   const canCreateTenantScope = ["ADMIN", "SUPERADMIN"].includes(role);
 
@@ -61,6 +62,17 @@ export default function AnnouncementsPage() {
   const [courses, setCourses] = useState([]);
   const [classrooms, setClassrooms] = useState([]);
   const [form, setForm] = useState(() => createEmptyForm(canCreateTenantScope));
+
+  // Superadmin: tenant selector
+  const [tenants, setTenants] = useState([]);
+  const [selectedTenantId, setSelectedTenantId] = useState("");
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    api.admin.listTenants().then((res) => {
+      setTenants(Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : []);
+    }).catch(() => {});
+  }, [isSuperAdmin]);
 
   const classroomOptions = useMemo(() => {
     const merged = new Map();
@@ -86,10 +98,28 @@ export default function AnnouncementsPage() {
     return Array.from(merged.values()).sort((a, b) => a.label.localeCompare(b.label));
   }, [courses, classrooms]);
 
+  const tenantHeader = isSuperAdmin && selectedTenantId
+    ? { headers: { "x-tenant-id": selectedTenantId } }
+    : undefined;
+
   const load = useCallback(async () => {
+    // Superadmin must select a tenant before loading
+    if (isSuperAdmin && !selectedTenantId) {
+      setAnnouncements([]);
+      setCourses([]);
+      setClassrooms([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const requests = [api.announcements.list(), api.courses.getAllCourses({ limit: 200 })];
+      const cfg = isSuperAdmin && selectedTenantId
+        ? { headers: { "x-tenant-id": selectedTenantId } }
+        : undefined;
+      const requests = [
+        api.announcements.list(undefined, cfg),
+        api.courses.getAllCourses({ limit: 200 }),
+      ];
 
       if (canCreateTenantScope) {
         requests.push(api.admin.listClasses({ limit: 200 }));
@@ -105,7 +135,7 @@ export default function AnnouncementsPage() {
     } finally {
       setLoading(false);
     }
-  }, [canCreateTenantScope]);
+  }, [canCreateTenantScope, isSuperAdmin, selectedTenantId]);
 
   useEffect(() => {
     load();
@@ -150,15 +180,23 @@ export default function AnnouncementsPage() {
       return;
     }
 
+    if (isSuperAdmin && !selectedTenantId) {
+      toast.error("Select a tenant before publishing");
+      return;
+    }
+
     try {
       setSaving(true);
-      await api.announcements.create({
-        ...form,
-        expiresAt: form.expiresAt || null,
-        pinned: form.pinned,
-        courseId: form.scope === "course" ? form.courseId : null,
-        classroomId: form.scope === "classroom" ? form.classroomId : null,
-      });
+      await api.announcements.create(
+        {
+          ...form,
+          expiresAt: form.expiresAt || null,
+          pinned: form.pinned,
+          courseId: form.scope === "course" ? form.courseId : null,
+          classroomId: form.scope === "classroom" ? form.classroomId : null,
+        },
+        tenantHeader,
+      );
       toast.success("Announcement created");
       setForm(createEmptyForm(canCreateTenantScope));
       await load();
@@ -193,6 +231,30 @@ export default function AnnouncementsPage() {
           </p>
         </div>
       </div>
+
+      {isSuperAdmin && (
+        <div className="dash-card mb-4">
+          <div className="d-flex align-items-center gap-3 flex-wrap">
+            <label className="fw-semibold mb-0" style={{ minWidth: 90 }}>Tenant</label>
+            <select
+              className={`form-select ${!selectedTenantId ? "border-warning" : ""}`}
+              style={{ maxWidth: 300 }}
+              value={selectedTenantId}
+              onChange={(e) => setSelectedTenantId(e.target.value)}
+            >
+              <option value="">— Select tenant —</option>
+              {tenants.map((t) => (
+                <option key={t._id} value={t._id}>
+                  {t.name || t.slug || t._id}
+                </option>
+              ))}
+            </select>
+            {!selectedTenantId && (
+              <small className="text-warning">Select a tenant to view or post announcements</small>
+            )}
+          </div>
+        </div>
+      )}
 
       {canCreate ? (
         <div className="dash-card mb-4">

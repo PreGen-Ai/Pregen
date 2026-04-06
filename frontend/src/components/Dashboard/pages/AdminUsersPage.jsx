@@ -2,13 +2,14 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import api from "../../../services/api/api.js";
+import { useAuthContext } from "../../../context/AuthContext.js";
 import LoadingSpinner from "../components/ui/LoadingSpinner.jsx";
 import EmptyState from "../components/ui/EmptyState.jsx";
 import StatusBadge from "../components/ui/StatusBadge.jsx";
 
 const ROLES = ["STUDENT", "TEACHER", "ADMIN"];
 
-const emptyForm = { email: "", password: "", firstName: "", lastName: "", role: "STUDENT" };
+const emptyForm = { email: "", password: "", firstName: "", lastName: "", role: "STUDENT", tenantId: "" };
 
 function nameOf(u) {
   return (
@@ -21,13 +22,25 @@ function nameOf(u) {
 }
 
 export default function AdminUsersPage() {
+  const { user } = useAuthContext() || {};
+  const isSuperAdmin = String(user?.role || "").toUpperCase() === "SUPERADMIN";
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [users, setUsers] = useState([]);
+  const [tenants, setTenants] = useState([]);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState(emptyForm);
+
+  // Load tenants list for superadmin tenant selector
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    api.admin.listTenants().then((res) => {
+      setTenants(Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : []);
+    }).catch(() => {});
+  }, [isSuperAdmin]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,9 +67,15 @@ export default function AdminUsersPage() {
       toast.error("Email and password are required");
       return;
     }
+    if (isSuperAdmin && !form.tenantId) {
+      toast.error("Select a tenant to create the user under");
+      return;
+    }
     setSaving(true);
     try {
-      await api.admin.createUser(form);
+      const payload = { ...form };
+      if (!isSuperAdmin) delete payload.tenantId;
+      await api.admin.createUser(payload);
       toast.success("User created");
       setShowCreate(false);
       setForm(emptyForm);
@@ -154,6 +173,22 @@ export default function AdminUsersPage() {
                 ))}
               </select>
             </div>
+            {isSuperAdmin && (
+              <div className="col-md-4">
+                <select
+                  className={`form-select ${!form.tenantId ? "border-warning" : ""}`}
+                  value={form.tenantId}
+                  onChange={(e) => setForm((p) => ({ ...p, tenantId: e.target.value }))}
+                >
+                  <option value="">— Select tenant * —</option>
+                  {tenants.map((t) => (
+                    <option key={t._id} value={t._id}>
+                      {t.name || t.slug || t._id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="col-md-3">
               <button
                 className="btn btn-primary w-100"
