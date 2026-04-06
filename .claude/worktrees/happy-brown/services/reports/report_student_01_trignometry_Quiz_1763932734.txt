@@ -1,5 +1,0 @@
-Grading Report
-Student: student_01
-Assignment: trignometry Quiz
-Score: 3
-Date: 2025-11-23T23:18:54.753745

@@ -1,5 +1,0 @@
-Grading Report
-Student: student_01
-Assignment: c++ Quiz
-Score: 80.0
-Date: 2026-01-21T22:01:47.092323
