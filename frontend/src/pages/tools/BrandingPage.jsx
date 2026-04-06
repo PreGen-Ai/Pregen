@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import api from "../../services/api/api.js";
+import { API_BASE_URL } from "../../services/api/http.js";
 import "../../components/styles/admin-tools.css";
 
 const DEFAULT_BRANDING = {
@@ -195,6 +196,12 @@ export default function BrandingPage() {
 
   const displayedLogo = form.logoUrl || localLogoPreview;
 
+  // Prefix relative server paths (e.g. /uploads/logo.png) with the API origin
+  // so the img resolves to the backend, not the frontend dev server.
+  const resolvedDisplayedLogo = displayedLogo?.startsWith("/")
+    ? `${API_BASE_URL}${displayedLogo}`
+    : displayedLogo;
+
   return (
     <div className="admin-shell">
       <div className="admin-content">
@@ -312,7 +319,7 @@ export default function BrandingPage() {
                   >
                     {displayedLogo ? (
                       <img
-                        src={displayedLogo}
+                        src={resolvedDisplayedLogo}
                         alt="logo"
                         style={{ width: 64, height: 64, objectFit: "contain" }}
                         onError={() => {
@@ -442,7 +449,7 @@ export default function BrandingPage() {
                           >
                             {displayedLogo ? (
                               <img
-                                src={displayedLogo}
+                                src={resolvedDisplayedLogo}
                                 alt="logo"
                                 style={{
                                   width: 22,
