@@ -544,11 +544,8 @@ export default function UserManagementPage() {
             </div>
 
             {error ? (
-              <div className="mt-3 p-3 rounded-lg border border-red-300 bg-red-50 text-red-700">
+              <div className="admin-alert admin-alert-error">
                 {error}
-                <div className="text-xs opacity-80 mt-2">
-                  Expected endpoint: <code>/api/admin/users</code>
-                </div>
               </div>
             ) : null}
 
@@ -656,7 +653,7 @@ export default function UserManagementPage() {
               </div>
 
               {lastCreateResult?.user ? (
-                <div className="mt-3 p-3 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800">
+                <div className="admin-alert admin-alert-success">
                   Created: <b>{lastCreateResult.user.email}</b>{" "}
                   <span className="badge ok">{lastCreateResult.user.role}</span>
                   {lastCreateResult.user.tenantId ? (
@@ -739,10 +736,9 @@ export default function UserManagementPage() {
               </div>
 
               {lastInviteResult ? (
-                <div className="mt-3 p-3 rounded-lg border border-slate-300 bg-slate-50 text-slate-800">
+                <div className="admin-alert admin-alert-neutral">
                   <div>
-                    Latest result:{" "}
-                    <b>{lastInviteResult?.user?.email || lastInviteResult?.message}</b>
+                    Created: <b>{lastInviteResult?.user?.email || lastInviteResult?.message}</b>
                   </div>
                   {lastInviteResult?.tempPassword ? (
                     <div style={{ marginTop: 8 }}>
@@ -790,10 +786,10 @@ export default function UserManagementPage() {
 
                           <div
                             style={{
-                              color: "#000000",
                               display: "flex",
                               gap: 10,
                               flexWrap: "wrap",
+                              opacity: 0.75,
                             }}
                           >
                             <span>{u.email}</span>
@@ -880,9 +876,6 @@ export default function UserManagementPage() {
           </div>
         </div>
 
-        <div className="text-xs opacity-70" style={{ marginTop: 12 }}>
-          Backend mounts reminder: admin module routes are under <code>/api/admin</code> and system routes are under <code>/api/admin/system</code>.
-        </div>
       </div>
     </div>
   );
