@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import api from "../../services/api/api.js";
+import { useAuthContext } from "../../context/AuthContext";
 import { API_BASE_URL } from "../../services/api/http.js";
 import "../../components/styles/admin-tools.css";
 
@@ -44,6 +45,12 @@ function stableStringify(obj) {
 }
 
 export default function BrandingPage() {
+  const { user } = useAuthContext();
+  const isSuperAdmin = String(user?.role || "").toUpperCase() === "SUPERADMIN";
+
+  const [tenants, setTenants] = useState([]);
+  const [selectedTenantId, setSelectedTenantId] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -53,6 +60,23 @@ export default function BrandingPage() {
 
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [localLogoPreview, setLocalLogoPreview] = useState("");
+
+  // Load tenant list for superadmin
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    api.admin
+      .listTenants()
+      .then((res) => {
+        setTenants(
+          Array.isArray(res?.items)
+            ? res.items
+            : Array.isArray(res)
+              ? res
+              : [],
+        );
+      })
+      .catch(() => {});
+  }, [isSuperAdmin]);
 
   const baselineSigRef = useRef(stableStringify(DEFAULT_BRANDING));
   useEffect(() => {
@@ -70,10 +94,15 @@ export default function BrandingPage() {
     };
   }, [localLogoPreview]);
 
-  async function load() {
+  async function load(tenantId = "") {
+    const cfg =
+      isSuperAdmin && tenantId
+        ? { headers: { "x-tenant-id": tenantId } }
+        : {};
+
     setLoading(true);
     try {
-      const data = await api.admin.getBranding();
+      const data = await api.admin.getBranding(cfg);
 
       // Accept multiple response shapes:
       // { branding: {...} } OR { settings: {...} } OR {...}
@@ -92,17 +121,27 @@ export default function BrandingPage() {
     }
   }
 
+  // Re-run load when tenant selection changes
   useEffect(() => {
     let alive = true;
+
+    if (isSuperAdmin && !selectedTenantId) {
+      setForm(DEFAULT_BRANDING);
+      setBaseline(DEFAULT_BRANDING);
+      setLoading(false);
+      return;
+    }
+
     (async () => {
       if (!alive) return;
-      await load();
+      await load(selectedTenantId);
     })();
+
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isSuperAdmin, selectedTenantId]);
 
   function onReset() {
     setForm(baseline);
@@ -124,11 +163,16 @@ export default function BrandingPage() {
       return;
     }
 
+    const cfg =
+      isSuperAdmin && selectedTenantId
+        ? { headers: { "x-tenant-id": selectedTenantId } }
+        : {};
+
     try {
       setSaving(true);
 
       // backend expects a flat payload (institutionName, primaryColor, logoUrl)
-      const res = await api.admin.updateBranding(next);
+      const res = await api.admin.updateBranding(next, cfg);
 
       const savedBranding = res?.branding || res?.settings || res || next;
       const merged = mergeBranding(savedBranding);
@@ -167,10 +211,15 @@ export default function BrandingPage() {
     const previewUrl = URL.createObjectURL(file);
     setLocalLogoPreview(previewUrl);
 
+    const cfg =
+      isSuperAdmin && selectedTenantId
+        ? { headers: { "x-tenant-id": selectedTenantId } }
+        : {};
+
     try {
       setUploading(true);
 
-      const data = await api.admin.uploadLogo(file);
+      const data = await api.admin.uploadLogo(file, cfg);
 
       // Accept multiple shapes: { logoUrl } OR { url } OR { branding: { logoUrl } }
       const url =
@@ -234,7 +283,7 @@ export default function BrandingPage() {
 
             <button
               className="btn-ghost"
-              onClick={load}
+              onClick={() => load(selectedTenantId)}
               disabled={loading || saving || uploading}
             >
               Refresh
@@ -249,273 +298,331 @@ export default function BrandingPage() {
           </div>
         </div>
 
-        <div className="card">
-          <div className="card-inner">
-            {loading ? (
-              <div>Loading...</div>
-            ) : (
-              <>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 220px 160px",
-                    gap: 10,
-                  }}
+        {/* Tenant selector — superadmin only */}
+        {isSuperAdmin && (
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div className="card-inner">
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span style={{ fontWeight: 700, minWidth: 60 }}>Tenant</span>
+                <select
+                  className="select"
+                  style={{ minWidth: 260 }}
+                  value={selectedTenantId}
+                  onChange={(e) => setSelectedTenantId(e.target.value)}
                 >
-                  <input
-                    className="input"
-                    value={form.institutionName}
-                    onChange={(e) =>
-                      setForm((p) => ({
-                        ...p,
-                        institutionName: e.target.value,
-                      }))
-                    }
-                    placeholder="Institution name"
-                    disabled={saving || uploading}
-                  />
-
-                  <input
-                    className="input"
-                    type="color"
-                    value={
-                      isHexColor(form.primaryColor)
-                        ? form.primaryColor
-                        : DEFAULT_BRANDING.primaryColor
-                    }
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, primaryColor: e.target.value }))
-                    }
-                    title="Primary color"
-                    disabled={saving || uploading}
-                  />
-
-                  <button
-                    className="btn-gold"
-                    onClick={onSave}
-                    disabled={saving || uploading || !isDirty}
+                  <option value="">— Select tenant —</option>
+                  {tenants.map((t) => (
+                    <option key={t._id} value={t.tenantId}>
+                      {t.name || t.tenantId}
+                    </option>
+                  ))}
+                </select>
+                {!selectedTenantId && (
+                  <span
+                    className="badge"
                     style={{
-                      opacity: saving || uploading || !isDirty ? 0.7 : 1,
+                      color: "#fbbf24",
+                      borderColor: "rgba(234,179,8,0.4)",
                     }}
-                    title={!isDirty ? "No changes to save" : "Save branding"}
                   >
-                    {saving ? "Saving..." : "Save"}
-                  </button>
-                </div>
+                    Select a tenant to continue
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
-                <div style={{ height: 14 }} />
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 18,
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                  }}
-                >
+        {/* Main content — gated for superadmin until tenant selected */}
+        {!isSuperAdmin || selectedTenantId ? (
+          <div className="card">
+            <div className="card-inner">
+              {loading ? (
+                <div>Loading...</div>
+              ) : (
+                <>
                   <div
-                    className="kpi-icon"
-                    style={{ width: 90, height: 90, borderRadius: 18 }}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 220px 160px",
+                      gap: 10,
+                    }}
                   >
-                    {displayedLogo ? (
-                      <img
-                        src={resolvedDisplayedLogo}
-                        alt="logo"
-                        style={{ width: 64, height: 64, objectFit: "contain" }}
-                        onError={() => {
-                          if (form.logoUrl)
-                            toast.error("Logo URL could not be loaded");
-                        }}
-                      />
-                    ) : (
-                      <div style={{ fontWeight: 900, color: "#D1D5DB" }}>
-                        Logo
-                      </div>
-                    )}
+                    <input
+                      className="input"
+                      value={form.institutionName}
+                      onChange={(e) =>
+                        setForm((p) => ({
+                          ...p,
+                          institutionName: e.target.value,
+                        }))
+                      }
+                      placeholder="Institution name"
+                      disabled={saving || uploading}
+                    />
+
+                    <input
+                      className="input"
+                      type="color"
+                      value={
+                        isHexColor(form.primaryColor)
+                          ? form.primaryColor
+                          : DEFAULT_BRANDING.primaryColor
+                      }
+                      onChange={(e) =>
+                        setForm((p) => ({ ...p, primaryColor: e.target.value }))
+                      }
+                      title="Primary color"
+                      disabled={saving || uploading}
+                    />
+
+                    <button
+                      className="btn-gold"
+                      onClick={onSave}
+                      disabled={saving || uploading || !isDirty}
+                      style={{
+                        opacity: saving || uploading || !isDirty ? 0.7 : 1,
+                      }}
+                      title={!isDirty ? "No changes to save" : "Save branding"}
+                    >
+                      {saving ? "Saving..." : "Save"}
+                    </button>
                   </div>
 
-                  <div style={{ flex: 1, minWidth: 240 }}>
-                    <div style={{ fontWeight: 1000, fontSize: 18 }}>
-                      {form.institutionName}
-                    </div>
-                    <div style={{ color: "#D1D5DB" }}>
-                      Primary: {form.primaryColor}
-                    </div>
+                  <div style={{ height: 14 }} />
 
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 18,
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                    }}
+                  >
                     <div
-                      style={{ marginTop: 8, color: "#D1D5DB", fontSize: 12 }}
+                      className="kpi-icon"
+                      style={{ width: 90, height: 90, borderRadius: 18 }}
                     >
-                      {form.logoUrl ? (
-                        <span style={{ fontFamily: "monospace" }}>
-                          {form.logoUrl}
-                        </span>
+                      {displayedLogo ? (
+                        <img
+                          src={resolvedDisplayedLogo}
+                          alt="logo"
+                          style={{
+                            width: 64,
+                            height: 64,
+                            objectFit: "contain",
+                          }}
+                          onError={() => {
+                            if (form.logoUrl)
+                              toast.error("Logo URL could not be loaded");
+                          }}
+                        />
                       ) : (
-                        "No logo uploaded yet"
+                        <div style={{ fontWeight: 900, color: "#D1D5DB" }}>
+                          Logo
+                        </div>
                       )}
                     </div>
 
-                    <div
-                      style={{
-                        marginTop: 10,
-                        display: "flex",
-                        gap: 10,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <label
-                        className="btn-ghost"
-                        style={{
-                          cursor:
-                            saving || uploading ? "not-allowed" : "pointer",
-                        }}
-                      >
-                        {uploading ? "Uploading..." : "Upload Logo"}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          style={{ display: "none" }}
-                          onChange={onUpload}
-                          disabled={saving || uploading}
-                        />
-                      </label>
-
-                      {form.logoUrl ? (
-                        <button
-                          className="btn-ghost"
-                          onClick={() => {
-                            setForm((p) => ({ ...p, logoUrl: "" }));
-                            toast.info(
-                              "Logo cleared locally. Click Save to apply",
-                            );
-                          }}
-                          disabled={saving || uploading}
-                          title="Clear logo URL"
-                        >
-                          Clear Logo
-                        </button>
-                      ) : null}
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: 12,
-                        color: "#D1D5DB",
-                        fontSize: 12,
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      Tips:
-                      <div>• Use a square PNG for best results</div>
-                      <div>• Keep the logo under 5MB</div>
-                      <div>• Save after changing name or primary color</div>
-                    </div>
-                  </div>
-
-                  <div style={{ minWidth: 220 }}>
-                    <div
-                      style={{
-                        border: "1px solid rgba(255,255,255,0.12)",
-                        borderRadius: 14,
-                        padding: 12,
-                        background: "rgba(17,24,39,0.35)",
-                      }}
-                    >
-                      <div style={{ fontWeight: 900, marginBottom: 8 }}>
-                        Preview
+                    <div style={{ flex: 1, minWidth: 240 }}>
+                      <div style={{ fontWeight: 1000, fontSize: 18 }}>
+                        {form.institutionName}
                       </div>
+                      <div style={{ color: "#D1D5DB" }}>
+                        Primary: {form.primaryColor}
+                      </div>
+
+                      <div
+                        style={{ marginTop: 8, color: "#D1D5DB", fontSize: 12 }}
+                      >
+                        {form.logoUrl ? (
+                          <span style={{ fontFamily: "monospace" }}>
+                            {form.logoUrl}
+                          </span>
+                        ) : (
+                          "No logo uploaded yet"
+                        )}
+                      </div>
+
                       <div
                         style={{
-                          borderRadius: 12,
-                          padding: 12,
-                          border: `1px solid ${form.primaryColor}`,
+                          marginTop: 10,
+                          display: "flex",
+                          gap: 10,
+                          flexWrap: "wrap",
                         }}
                       >
+                        <label
+                          className="btn-ghost"
+                          style={{
+                            cursor:
+                              saving || uploading ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          {uploading ? "Uploading..." : "Upload Logo"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            onChange={onUpload}
+                            disabled={saving || uploading}
+                          />
+                        </label>
+
+                        {form.logoUrl ? (
+                          <button
+                            className="btn-ghost"
+                            onClick={() => {
+                              setForm((p) => ({ ...p, logoUrl: "" }));
+                              toast.info(
+                                "Logo cleared locally. Click Save to apply",
+                              );
+                            }}
+                            disabled={saving || uploading}
+                            title="Clear logo URL"
+                          >
+                            Clear Logo
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 12,
+                          color: "#D1D5DB",
+                          fontSize: 12,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        Tips:
+                        <div>• Use a square PNG for best results</div>
+                        <div>• Keep the logo under 5MB</div>
+                        <div>• Save after changing name or primary color</div>
+                      </div>
+                    </div>
+
+                    <div style={{ minWidth: 220 }}>
+                      <div
+                        style={{
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          borderRadius: 14,
+                          padding: 12,
+                          background: "rgba(17,24,39,0.35)",
+                        }}
+                      >
+                        <div style={{ fontWeight: 900, marginBottom: 8 }}>
+                          Preview
+                        </div>
                         <div
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
+                            borderRadius: 12,
+                            padding: 12,
+                            border: `1px solid ${form.primaryColor}`,
                           }}
                         >
                           <div
                             style={{
-                              width: 34,
-                              height: 34,
-                              borderRadius: 10,
-                              display: "grid",
-                              placeItems: "center",
-                              border: `1px solid ${form.primaryColor}`,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
                             }}
                           >
-                            {displayedLogo ? (
-                              <img
-                                src={resolvedDisplayedLogo}
-                                alt="logo"
-                                style={{
-                                  width: 22,
-                                  height: 22,
-                                  objectFit: "contain",
-                                }}
-                              />
-                            ) : (
-                              <span
-                                style={{ fontWeight: 900, color: "#D1D5DB" }}
-                              >
-                                P
-                              </span>
-                            )}
+                            <div
+                              style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 10,
+                                display: "grid",
+                                placeItems: "center",
+                                border: `1px solid ${form.primaryColor}`,
+                              }}
+                            >
+                              {displayedLogo ? (
+                                <img
+                                  src={resolvedDisplayedLogo}
+                                  alt="logo"
+                                  style={{
+                                    width: 22,
+                                    height: 22,
+                                    objectFit: "contain",
+                                  }}
+                                />
+                              ) : (
+                                <span
+                                  style={{ fontWeight: 900, color: "#D1D5DB" }}
+                                >
+                                  P
+                                </span>
+                              )}
+                            </div>
+
+                            <div>
+                              <div style={{ fontWeight: 900 }}>
+                                {form.institutionName}
+                              </div>
+                              <div style={{ fontSize: 12, color: "#D1D5DB" }}>
+                                Dashboard header sample
+                              </div>
+                            </div>
                           </div>
 
-                          <div>
-                            <div style={{ fontWeight: 900 }}>
-                              {form.institutionName}
-                            </div>
-                            <div style={{ fontSize: 12, color: "#D1D5DB" }}>
-                              Dashboard header sample
-                            </div>
+                          <div
+                            style={{
+                              marginTop: 10,
+                              display: "flex",
+                              gap: 8,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 12,
+                                padding: "6px 10px",
+                                borderRadius: 999,
+                                border: `1px solid ${form.primaryColor}`,
+                              }}
+                            >
+                              Badge
+                            </span>
+                            <button
+                              type="button"
+                              style={{
+                                fontSize: 12,
+                                padding: "6px 10px",
+                                borderRadius: 10,
+                                background: form.primaryColor,
+                                color: "#111827",
+                                fontWeight: 900,
+                              }}
+                            >
+                              Primary
+                            </button>
                           </div>
-                        </div>
-
-                        <div
-                          style={{
-                            marginTop: 10,
-                            display: "flex",
-                            gap: 8,
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: 12,
-                              padding: "6px 10px",
-                              borderRadius: 999,
-                              border: `1px solid ${form.primaryColor}`,
-                            }}
-                          >
-                            Badge
-                          </span>
-                          <button
-                            type="button"
-                            style={{
-                              fontSize: 12,
-                              padding: "6px 10px",
-                              borderRadius: 10,
-                              background: form.primaryColor,
-                              color: "#111827",
-                              fontWeight: 900,
-                            }}
-                          >
-                            Primary
-                          </button>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </>
-            )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="card">
+            <div
+              className="card-inner"
+              style={{ color: "#9CA3AF", padding: "20px 0" }}
+            >
+              Select a tenant above to view and manage branding settings.
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

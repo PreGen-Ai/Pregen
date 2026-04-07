@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import api from "../../services/api/api.js";
+import { useAuthContext } from "../../context/AuthContext";
 import "../../components/styles/admin-tools.css";
 
 const DEFAULT_SETTINGS = {
@@ -72,6 +73,12 @@ function mergeSettings(serverSettings) {
 }
 
 export default function AIControlsPage() {
+  const { user } = useAuthContext();
+  const isSuperAdmin = String(user?.role || "").toUpperCase() === "SUPERADMIN";
+
+  const [tenants, setTenants] = useState([]);
+  const [selectedTenantId, setSelectedTenantId] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -79,6 +86,23 @@ export default function AIControlsPage() {
   const [baseline, setBaseline] = useState(DEFAULT_SETTINGS);
 
   const [lastSavedAt, setLastSavedAt] = useState(null);
+
+  // Load tenant list for superadmin
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    api.admin
+      .listTenants()
+      .then((res) => {
+        setTenants(
+          Array.isArray(res?.items)
+            ? res.items
+            : Array.isArray(res)
+              ? res
+              : [],
+        );
+      })
+      .catch(() => {});
+  }, [isSuperAdmin]);
 
   const baselineSigRef = useRef(stableStringify(DEFAULT_SETTINGS));
   useEffect(() => {
@@ -95,13 +119,26 @@ export default function AIControlsPage() {
       : false;
   }, [form.softCapDaily, form.softCapWeekly]);
 
+  // Main load — re-runs when tenant selection changes
   useEffect(() => {
     let alive = true;
+
+    if (isSuperAdmin && !selectedTenantId) {
+      setForm(DEFAULT_SETTINGS);
+      setBaseline(DEFAULT_SETTINGS);
+      setLoading(false);
+      return;
+    }
+
+    const cfg =
+      isSuperAdmin && selectedTenantId
+        ? { headers: { "x-tenant-id": selectedTenantId } }
+        : {};
 
     (async () => {
       setLoading(true);
       try {
-        const data = await api.admin.getAiSettings();
+        const data = await api.admin.getAiSettings(cfg);
 
         // Accept shapes: { settings } OR { ai } OR flat object
         const serverSettings = data?.settings || data?.ai || data;
@@ -124,7 +161,8 @@ export default function AIControlsPage() {
     return () => {
       alive = false;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin, selectedTenantId]);
 
   const setFeature = (key, value) => {
     setForm((prev) => ({
@@ -152,10 +190,15 @@ export default function AIControlsPage() {
       return;
     }
 
+    const cfg =
+      isSuperAdmin && selectedTenantId
+        ? { headers: { "x-tenant-id": selectedTenantId } }
+        : {};
+
     try {
       setSaving(true);
 
-      const res = await api.admin.updateAiSettings(next);
+      const res = await api.admin.updateAiSettings(next, cfg);
 
       const returned = res?.settings || res?.ai || res || next;
       const merged = mergeSettings(returned);
@@ -177,205 +220,266 @@ export default function AIControlsPage() {
     toast.info("Changes reset");
   };
 
-  if (loading) {
-    return (
-      <div className="admin-shell">
-        <div className="admin-content">Loading...</div>
-      </div>
-    );
-  }
-
   return (
     <div className="admin-shell">
       <div className="admin-content">
         <div className="admin-title">AI Controls</div>
 
-        <div className="card">
-          <div className="card-inner">
-            <div className="toolbar" style={{ gap: 10, flexWrap: "wrap" }}>
-              <label
-                className="badge"
-                style={{ display: "flex", gap: 10, alignItems: "center" }}
-                title="Master switch for AI features"
-              >
-                <input
-                  type="checkbox"
-                  checked={!!form.enabled}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, enabled: e.target.checked }))
-                  }
-                />
-                AI Enabled
-              </label>
-
-              <select
-                className="select"
-                value={form.feedbackTone}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, feedbackTone: e.target.value }))
-                }
-                title="Default feedback tone"
-              >
-                <option value="strict">Strict</option>
-                <option value="neutral">Neutral</option>
-                <option value="encouraging">Encouraging</option>
-              </select>
-
-              <input
-                className="input"
-                type="number"
-                min="0"
-                value={form.softCapDaily}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    softCapDaily: coerceInt(e.target.value, 0),
-                  }))
-                }
-                placeholder="Daily soft cap"
-                title="Soft cap tokens per day"
-              />
-
-              <input
-                className="input"
-                type="number"
-                min="0"
-                value={form.softCapWeekly}
-                onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    softCapWeekly: coerceInt(e.target.value, 0),
-                  }))
-                }
-                placeholder="Weekly soft cap"
-                title="Soft cap tokens per week"
-              />
-
-              <button
-                className="btn-gold"
-                onClick={onSave}
-                disabled={!isDirty || saving}
-                title={!isDirty ? "No changes to save" : "Save settings"}
-                style={{ opacity: !isDirty || saving ? 0.7 : 1 }}
-              >
-                {saving ? "Saving..." : "Save"}
-              </button>
-
-              <button
-                className="btn-ghost"
-                onClick={onReset}
-                disabled={!isDirty || saving}
-                title="Reset changes"
-                style={{ opacity: !isDirty || saving ? 0.7 : 1 }}
-              >
-                Reset
-              </button>
-
-              <button
-                className="btn-ghost"
-                onClick={() => window.location.reload()}
-                disabled={saving}
-                title="Reload from server"
-                style={{ opacity: saving ? 0.7 : 1 }}
-              >
-                Reload
-              </button>
-
+        {/* Tenant selector — superadmin only */}
+        {isSuperAdmin && (
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div className="card-inner">
               <div
                 style={{
-                  marginLeft: "auto",
                   display: "flex",
                   alignItems: "center",
-                  gap: 10,
+                  gap: 12,
+                  flexWrap: "wrap",
                 }}
               >
-                {isDirty ? (
-                  <span className="badge" title="Unsaved changes">
-                    Unsaved
-                  </span>
-                ) : (
-                  <span className="badge" title="All changes saved">
-                    Saved
+                <span style={{ fontWeight: 700, minWidth: 60 }}>Tenant</span>
+                <select
+                  className="select"
+                  style={{ minWidth: 260 }}
+                  value={selectedTenantId}
+                  onChange={(e) => setSelectedTenantId(e.target.value)}
+                >
+                  <option value="">— Select tenant —</option>
+                  {tenants.map((t) => (
+                    <option key={t._id} value={t.tenantId}>
+                      {t.name || t.tenantId}
+                    </option>
+                  ))}
+                </select>
+                {!selectedTenantId && (
+                  <span
+                    className="badge"
+                    style={{
+                      color: "#fbbf24",
+                      borderColor: "rgba(234,179,8,0.4)",
+                    }}
+                  >
+                    Select a tenant to continue
                   </span>
                 )}
-
-                {lastSavedAt ? (
-                  <span className="badge" title="Last saved time">
-                    {lastSavedAt.toLocaleString()}
-                  </span>
-                ) : null}
               </div>
             </div>
+          </div>
+        )}
 
-            {weeklyIsSmallerThanDaily ? (
-              <div
-                style={{
-                  marginTop: 10,
-                  padding: 10,
-                  borderRadius: 10,
-                  border: "1px solid rgba(239, 68, 68, 0.35)",
-                  background: "rgba(239, 68, 68, 0.08)",
-                  color: "#ef4444",
-                  fontSize: 13,
-                  fontWeight: 700,
-                }}
-              >
-                Weekly soft cap is smaller than daily soft cap. This will be
-                blocked on save.
-              </div>
-            ) : null}
-
-            <div
-              style={{
-                marginTop: 12,
-                display: "grid",
-                gridTemplateColumns: "repeat(2, minmax(260px, 1fr))",
-                gap: 12,
-              }}
-            >
-              {Object.entries(form.features || {}).map(([k, v]) => (
-                <label
-                  key={k}
-                  className="btn-ghost"
-                  style={{ display: "flex", alignItems: "center", gap: 10 }}
-                  title={`Toggle ${FEATURE_LABELS[k] || k}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!v}
-                    onChange={(e) => setFeature(k, e.target.checked)}
-                    disabled={!form.enabled}
-                  />
-                  <span style={{ fontWeight: 900 }}>
-                    {FEATURE_LABELS[k] || k}
-                  </span>
-                  {!form.enabled ? (
-                    <span
+        {/* Main content — gated for superadmin until tenant selected */}
+        {!isSuperAdmin || selectedTenantId ? (
+          loading ? (
+            <div className="card">
+              <div className="card-inner">Loading...</div>
+            </div>
+          ) : (
+            <>
+              <div className="card">
+                <div className="card-inner">
+                  <div className="toolbar" style={{ gap: 10, flexWrap: "wrap" }}>
+                    <label
                       className="badge"
-                      style={{ marginLeft: "auto", opacity: 0.8 }}
+                      style={{ display: "flex", gap: 10, alignItems: "center" }}
+                      title="Master switch for AI features"
                     >
-                      Disabled by master switch
-                    </span>
+                      <input
+                        type="checkbox"
+                        checked={!!form.enabled}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            enabled: e.target.checked,
+                          }))
+                        }
+                      />
+                      AI Enabled
+                    </label>
+
+                    <select
+                      className="select"
+                      value={form.feedbackTone}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          feedbackTone: e.target.value,
+                        }))
+                      }
+                      title="Default feedback tone"
+                    >
+                      <option value="strict">Strict</option>
+                      <option value="neutral">Neutral</option>
+                      <option value="encouraging">Encouraging</option>
+                    </select>
+
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      value={form.softCapDaily}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          softCapDaily: coerceInt(e.target.value, 0),
+                        }))
+                      }
+                      placeholder="Daily soft cap"
+                      title="Soft cap tokens per day"
+                    />
+
+                    <input
+                      className="input"
+                      type="number"
+                      min="0"
+                      value={form.softCapWeekly}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          softCapWeekly: coerceInt(e.target.value, 0),
+                        }))
+                      }
+                      placeholder="Weekly soft cap"
+                      title="Soft cap tokens per week"
+                    />
+
+                    <button
+                      className="btn-gold"
+                      onClick={onSave}
+                      disabled={!isDirty || saving}
+                      title={!isDirty ? "No changes to save" : "Save settings"}
+                      style={{ opacity: !isDirty || saving ? 0.7 : 1 }}
+                    >
+                      {saving ? "Saving..." : "Save"}
+                    </button>
+
+                    <button
+                      className="btn-ghost"
+                      onClick={onReset}
+                      disabled={!isDirty || saving}
+                      title="Reset changes"
+                      style={{ opacity: !isDirty || saving ? 0.7 : 1 }}
+                    >
+                      Reset
+                    </button>
+
+                    <button
+                      className="btn-ghost"
+                      onClick={() => window.location.reload()}
+                      disabled={saving}
+                      title="Reload from server"
+                      style={{ opacity: saving ? 0.7 : 1 }}
+                    >
+                      Reload
+                    </button>
+
+                    <div
+                      style={{
+                        marginLeft: "auto",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                    >
+                      {isDirty ? (
+                        <span className="badge" title="Unsaved changes">
+                          Unsaved
+                        </span>
+                      ) : (
+                        <span className="badge" title="All changes saved">
+                          Saved
+                        </span>
+                      )}
+
+                      {lastSavedAt ? (
+                        <span className="badge" title="Last saved time">
+                          {lastSavedAt.toLocaleString()}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {weeklyIsSmallerThanDaily ? (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: 10,
+                        borderRadius: 10,
+                        border: "1px solid rgba(239, 68, 68, 0.35)",
+                        background: "rgba(239, 68, 68, 0.08)",
+                        color: "#ef4444",
+                        fontSize: 13,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Weekly soft cap is smaller than daily soft cap. This will
+                      be blocked on save.
+                    </div>
                   ) : null}
-                </label>
-              ))}
+
+                  <div
+                    style={{
+                      marginTop: 12,
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(260px, 1fr))",
+                      gap: 12,
+                    }}
+                  >
+                    {Object.entries(form.features || {}).map(([k, v]) => (
+                      <label
+                        key={k}
+                        className="btn-ghost"
+                        style={{ display: "flex", alignItems: "center", gap: 10 }}
+                        title={`Toggle ${FEATURE_LABELS[k] || k}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!v}
+                          onChange={(e) => setFeature(k, e.target.checked)}
+                          disabled={!form.enabled}
+                        />
+                        <span style={{ fontWeight: 900 }}>
+                          {FEATURE_LABELS[k] || k}
+                        </span>
+                        {!form.enabled ? (
+                          <span
+                            className="badge"
+                            style={{ marginLeft: "auto", opacity: 0.8 }}
+                          >
+                            Disabled by master switch
+                          </span>
+                        ) : null}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ height: 14 }} />
+
+              <div className="card">
+                <div
+                  className="card-inner"
+                  style={{ color: "#D1D5DB", lineHeight: 1.4 }}
+                >
+                  Soft caps are not hard blocking by default. When exceeded, you
+                  can:
+                  <div>• degrade to shorter outputs</div>
+                  <div>• require admin approval</div>
+                  <div>• limit AI grading to premium classes only</div>
+                </div>
+              </div>
+            </>
+          )
+        ) : (
+          <div className="card">
+            <div
+              className="card-inner"
+              style={{ color: "#9CA3AF", padding: "20px 0" }}
+            >
+              Select a tenant above to view and manage AI settings.
             </div>
           </div>
-        </div>
-
-        <div style={{ height: 14 }} />
-
-        <div className="card">
-          <div
-            className="card-inner"
-            style={{ color: "#D1D5DB", lineHeight: 1.4 }}
-          >
-            Soft caps are not hard blocking by default. When exceeded, you can:
-            <div>• degrade to shorter outputs</div>
-            <div>• require admin approval</div>
-            <div>• limit AI grading to premium classes only</div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

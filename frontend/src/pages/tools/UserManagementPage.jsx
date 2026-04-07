@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import api from "../../services/api/api.js";
 import { useAuthContext } from "../../context/AuthContext";
-
 import "../../components/styles/admin-tools.css";
 
 const FILTER_ROLES = ["ADMIN", "TEACHER", "STUDENT", "PARENT"];
@@ -55,10 +54,12 @@ export default function UserManagementPage() {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
 
+  const [tenants, setTenants] = useState([]);
+  const [selectedTenantId, setSelectedTenantId] = useState("");
+
   const [q, setQ] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [status, setStatus] = useState("");
-  const [tenantScope, setTenantScope] = useState("");
   const [applied, setApplied] = useState({
     q: "",
     role: "",
@@ -88,6 +89,23 @@ export default function UserManagementPage() {
   const [busy, setBusy] = useState({});
   const setBusyFor = (userId, val) => setBusy((p) => ({ ...p, [userId]: val }));
 
+  // Load tenant list for superadmin
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    api.admin
+      .listTenants()
+      .then((res) => {
+        setTenants(
+          Array.isArray(res?.items)
+            ? res.items
+            : Array.isArray(res)
+              ? res
+              : [],
+        );
+      })
+      .catch(() => {});
+  }, [isSuperAdmin]);
+
   const debounceRef = useRef(null);
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -105,9 +123,9 @@ export default function UserManagementPage() {
       ...p,
       role: roleFilter,
       status,
-      tenantId: isSuperAdmin ? tenantScope.trim() : "",
+      tenantId: isSuperAdmin ? selectedTenantId : "",
     }));
-  }, [roleFilter, status, tenantScope, isSuperAdmin]);
+  }, [roleFilter, status, selectedTenantId, isSuperAdmin]);
 
   const buildTenantConfig = (tenantId) =>
     isSuperAdmin && tenantId
@@ -121,14 +139,18 @@ export default function UserManagementPage() {
     setLoading(true);
     setError("");
     try {
-      const data = await api.admin.listUsers({
-        q: filters.q || "",
-        role: filters.role || "",
-        status: filters.status || "",
-        ...(isSuperAdmin && filters.tenantId
-          ? { tenantId: filters.tenantId }
-          : {}),
-      });
+      const cfg =
+        isSuperAdmin && filters.tenantId
+          ? { headers: { "x-tenant-id": filters.tenantId } }
+          : {};
+      const data = await api.admin.listUsers(
+        {
+          q: filters.q || "",
+          role: filters.role || "",
+          status: filters.status || "",
+        },
+        cfg,
+      );
 
       const items = Array.isArray(data)
         ? data
@@ -222,7 +244,7 @@ export default function UserManagementPage() {
     const lastName = createForm.lastName.trim();
     const selectedRole = normalizeRole(createForm.role || "STUDENT");
 
-    if (isSuperAdmin && !tenantScope.trim()) {
+    if (isSuperAdmin && !selectedTenantId) {
       return toast.error("Tenant ID is required for superadmin user creation");
     }
     if (!email) return toast.error("Email is required");
@@ -246,7 +268,7 @@ export default function UserManagementPage() {
             lastName,
             username: email.split("@")[0],
           },
-          tenantScope.trim(),
+          selectedTenantId,
         ),
       );
 
@@ -276,7 +298,7 @@ export default function UserManagementPage() {
     const roleUpper = normalizeRole(invite.role || "STUDENT");
     const password = invite.password.trim();
 
-    if (isSuperAdmin && !tenantScope.trim()) {
+    if (isSuperAdmin && !selectedTenantId) {
       return toast.error("Tenant ID is required for superadmin invite flow");
     }
     if (!email) return toast.error("Email is required");
@@ -297,7 +319,7 @@ export default function UserManagementPage() {
             role: roleUpper,
             ...(password ? { password } : {}),
           },
-          tenantScope.trim(),
+          selectedTenantId,
         ),
       );
 
@@ -333,7 +355,7 @@ export default function UserManagementPage() {
       await api.admin.setUserStatus(
         id,
         next,
-        buildTenantConfig(String(u?.tenantId || tenantScope || "").trim()),
+        buildTenantConfig(String(u?.tenantId || selectedTenantId || "").trim()),
       );
 
       toast.success("User updated");
@@ -363,7 +385,7 @@ export default function UserManagementPage() {
       await api.admin.setUserRole(
         id,
         next,
-        buildTenantConfig(String(u?.tenantId || tenantScope || "").trim()),
+        buildTenantConfig(String(u?.tenantId || selectedTenantId || "").trim()),
       );
 
       toast.success("Role updated");
@@ -387,7 +409,7 @@ export default function UserManagementPage() {
       setBusyFor(id, true);
       const result = await api.admin.resetUserPassword(
         id,
-        buildTenantConfig(String(u?.tenantId || tenantScope || "").trim()),
+        buildTenantConfig(String(u?.tenantId || selectedTenantId || "").trim()),
       );
       if (result?.tempPassword) {
         setLastInviteResult(result);
@@ -404,6 +426,52 @@ export default function UserManagementPage() {
     <div className="admin-shell">
       <div className="admin-content">
         <div className="admin-title">User Management</div>
+
+        {/* Tenant selector — superadmin only */}
+        {isSuperAdmin && (
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div className="card-inner">
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span style={{ fontWeight: 700, minWidth: 60 }}>Tenant</span>
+                <select
+                  className="select"
+                  style={{ minWidth: 260 }}
+                  value={selectedTenantId}
+                  onChange={(e) => setSelectedTenantId(e.target.value)}
+                >
+                  <option value="">— Select tenant —</option>
+                  {tenants.map((t) => (
+                    <option key={t._id} value={t.tenantId}>
+                      {t.name || t.tenantId}
+                    </option>
+                  ))}
+                </select>
+                {!selectedTenantId && (
+                  <span
+                    className="badge"
+                    style={{
+                      color: "#fbbf24",
+                      borderColor: "rgba(234,179,8,0.4)",
+                    }}
+                  >
+                    Select a tenant to continue
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Main content — gated for superadmin until tenant selected */}
+        {!isSuperAdmin || selectedTenantId ? (
+          <>
 
         <div
           style={{
@@ -510,16 +578,6 @@ export default function UserManagementPage() {
                 <option value="enabled">Enabled</option>
                 <option value="disabled">Disabled</option>
               </select>
-
-              {isSuperAdmin ? (
-                <input
-                  className="input"
-                  style={{ minWidth: 220 }}
-                  placeholder="Tenant ID scope"
-                  value={tenantScope}
-                  onChange={(e) => setTenantScope(e.target.value)}
-                />
-              ) : null}
 
               <button
                 className="btn-gold"
@@ -649,7 +707,7 @@ export default function UserManagementPage() {
               </div>
 
               <div className="text-xs opacity-70" style={{ marginTop: 10 }}>
-                Accounts are admin-created only. {isSuperAdmin ? "Choose a tenant scope before creating users." : "Tenant scope is enforced from your current admin session."}
+                Accounts are admin-created only. {isSuperAdmin ? "Select a tenant above before creating users." : "Tenant scope is enforced from your current admin session."}
               </div>
 
               {lastCreateResult?.user ? (
@@ -875,6 +933,18 @@ export default function UserManagementPage() {
             )}
           </div>
         </div>
+
+          </>
+        ) : (
+          <div className="card">
+            <div
+              className="card-inner"
+              style={{ color: "#9CA3AF", padding: "20px 0" }}
+            >
+              Select a tenant above to view and manage users.
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
