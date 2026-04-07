@@ -192,7 +192,7 @@ export const AI_SERVICE_URL_SOURCE =
   aiServiceEntry?.name || (IS_PROD ? "default-production" : "default-development");
 export const AI_SERVICE_URL =
   aiServiceEntry?.value ||
-  (IS_PROD ? "https://pregen.onrender.com" : "http://localhost:8000");
+  (IS_PROD ? "https://pregen-xce4.onrender.com" : "http://localhost:8000");
 
 export function getRuntimeConfigWarnings() {
   const warnings = [];

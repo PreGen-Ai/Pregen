@@ -49,9 +49,7 @@ export const AI_BASE_URL =
   ENV_AI ||
   (hostname === "localhost" || hostname === "127.0.0.1"
     ? "http://localhost:8000"
-    : hostname.includes("preprod")
-      ? "https://pregen.onrender.com"
-      : "https://pregen.onrender.com");
+    : "https://pregen-xce4.onrender.com");
 
 /**
  * Token handling
