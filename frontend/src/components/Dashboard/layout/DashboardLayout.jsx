@@ -6,18 +6,20 @@ const NavBar = lazy(() => import("../../Home/Navbar")); // adjust path if needed
 
 export default function DashboardLayout() {
   return (
-    <div className="dash-shell">
-      <Sidebar />
+    <>
+      <Suspense fallback={null}>
+        <NavBar />
+      </Suspense>
 
-      <div className="dashboard-main">
-        <Suspense fallback={null}>
-          <NavBar />
-        </Suspense>
+      <div className="dash-shell">
+        <Sidebar />
 
-        <main className="dash-main">
-          <Outlet />
-        </main>
+        <div className="dashboard-main">
+          <main className="dash-main">
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
