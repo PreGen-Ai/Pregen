@@ -50,6 +50,15 @@ const compactText = (value, max = 1800) => {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 };
 
+/** Strip HTML gateway error pages and return a clean user-facing message */
+const sanitizeApiError = (msg, fallback = "AI service temporarily unavailable. Please try again shortly.") => {
+  if (!msg) return fallback;
+  const s = String(msg).trimStart();
+  if (s.startsWith("<!") || /^<html[\s>]/i.test(s)) return fallback;
+  if (s.length > 300) return s.slice(0, 300) + "…";
+  return s;
+};
+
 // ==================== Main PracticeLab Component ====================
 export default function PracticeLab() {
   const { user } = useAuthContext();
@@ -798,7 +807,7 @@ export default function PracticeLab() {
         setAlertMessage("❌ Server error. Please try again later.");
       else if (String(err?.message || "").includes("timeout"))
         setAlertMessage("❌ Request timeout. Please check your connection.");
-      else setAlertMessage(`❌ Failed to generate practice: ${err.message}`);
+      else setAlertMessage(`❌ Failed to generate practice: ${sanitizeApiError(err.message)}`);
     } finally {
       setLoading(false);
       abortRef.current = null;
@@ -1698,7 +1707,9 @@ export default function PracticeLab() {
                     }`}
                   >
                     <span>API Status: {apiHealth.status}</span>
-                    {apiHealth.message && <span> - {apiHealth.message}</span>}
+                    {apiHealth.message && (
+                      <span> - {sanitizeApiError(apiHealth.message, "Service unavailable")}</span>
+                    )}
                   </div>
                 )}
 

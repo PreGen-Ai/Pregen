@@ -38,9 +38,18 @@ export function buildAiServiceUrl(path, query) {
   return url.toString();
 }
 
+/** Returns true if a string is an HTML document (e.g. Render/nginx 502 pages) */
+function looksLikeHtml(s) {
+  const t = String(s || "").trimStart();
+  return t.startsWith("<!") || /^<html[\s>]/i.test(t);
+}
+
 function extractMessage(data, fallback) {
   if (!data) return fallback;
-  if (typeof data === "string") return data;
+  if (typeof data === "string") {
+    // Don't surface raw HTML error pages (e.g. Render.com 502 gateway page)
+    return looksLikeHtml(data) ? fallback : data;
+  }
   if (typeof data?.message === "string") return data.message;
   if (typeof data?.detail === "string") return data.detail;
   if (typeof data?.error === "string") return data.error;

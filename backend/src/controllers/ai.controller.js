@@ -44,13 +44,24 @@ function buildForwardHeaders(req, requestId, extraHeaders = {}) {
   return headers;
 }
 
+function looksLikeHtml(s) {
+  const t = String(s || "").trimStart();
+  return t.startsWith("<!") || /^<html[\s>]/i.test(t);
+}
+
+function sanitizeMessage(raw, fallback = "AI request failed") {
+  if (!raw) return fallback;
+  const s = String(raw);
+  return looksLikeHtml(s) ? fallback : s;
+}
+
 function buildBridgeError(error, requestId) {
   const upstreamDetail = error?.data?.detail;
-  const message =
+  const message = sanitizeMessage(
     error?.message ||
     error?.data?.message ||
-    error?.data?.error ||
-    "AI request failed";
+    error?.data?.error,
+  );
 
   return {
     status:
@@ -552,7 +563,10 @@ export async function getAssignmentsHealth(req, res) {
   } catch (error) {
     return res.status(200).json({
       status: "unavailable",
-      message: error?.message || "Assignments AI health unavailable",
+      message: sanitizeMessage(
+        error?.message,
+        "Assignments AI health unavailable",
+      ),
     });
   }
 }
