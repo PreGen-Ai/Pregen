@@ -661,6 +661,20 @@ function TeacherAssignmentsView() {
   const [review, setReview] = useState(null);
   const [feedbackDrafts, setFeedbackDrafts] = useState({});
 
+  const [aiConfig, setAiConfig] = useState({
+    topic: "",
+    subject: "Mathematics",
+    gradeLevel: "High School",
+    curriculum: "General",
+    assignmentType: "homework",
+    questionType: "mixed",
+    difficulty: "medium",
+    numQuestions: 5,
+  });
+  const [generating, setGenerating] = useState(false);
+  const [aiGenerated, setAiGenerated] = useState(null); // holds generated assignment data
+  const [assignMode, setAssignMode] = useState("course"); // "course" | "class" | "students"
+
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -814,8 +828,8 @@ function TeacherAssignmentsView() {
       maxScore: Number(form.maxScore || 100),
       status: form.status,
       courseId: selectedCourseId,
-      classroomId: emptyToNull(form.classroomId),
-      studentIds: form.studentIds,
+      classroomId: assignMode === "class" ? emptyToNull(form.classroomId) : null,
+      studentIds: assignMode === "students" ? form.studentIds : [],
     };
 
     try {
@@ -883,39 +897,36 @@ function TeacherAssignmentsView() {
   };
 
   const generateDraft = async () => {
-    if (!form.title.trim()) return toast.error("Enter a title or topic first");
-
+    if (!aiConfig.topic.trim()) return toast.error("Enter a topic first");
+    setGenerating(true);
     try {
       const response = await api.ai.generateAssignment({
-        topic: form.title.trim(),
-        subject: "General",
-        grade_level: "All",
-        num_questions: 3,
-        question_type: "mixed",
-        difficulty: "medium",
-        assignment_type: "homework",
-        curriculum: "General",
+        topic: aiConfig.topic.trim(),
+        subject: aiConfig.subject,
+        grade_level: aiConfig.gradeLevel,
+        num_questions: Number(aiConfig.numQuestions),
+        question_type: aiConfig.questionType,
+        difficulty: aiConfig.difficulty,
+        assignment_type: aiConfig.assignmentType,
+        curriculum: aiConfig.curriculum,
         exam_focus: "practice",
       });
 
-      const generated = response?.assignment || response?.data || response || {};
-      const instructions =
-        generated?.instructions ||
-        generated?.assignment_text ||
-        generated?.description ||
-        "";
+      const generated = response?.data || response?.assignment || response || {};
+      const questions = generated?.assignment || generated?.questions || [];
+      setAiGenerated({ ...generated, questions });
 
-      setForm((prev) => ({
+      setForm(prev => ({
         ...prev,
-        description:
-          generated?.topic || generated?.title
-            ? `AI draft for ${generated.topic || generated.title}`
-            : prev.description,
-        instructions: instructions || prev.instructions,
+        title: generated?.topic || aiConfig.topic,
+        description: `AI-generated ${aiConfig.assignmentType} on ${aiConfig.topic}`,
+        instructions: generated?.instructions || questions.map((q, i) => `${i+1}. ${q.question || q.questionText || ""}`).join("\n") || "",
       }));
-      toast.success("AI draft applied to assignment form");
+      toast.success(`Assignment generated — review and assign below`);
     } catch (error) {
-      toast.error(error?.message || "Failed to generate AI draft");
+      toast.error(error?.message || "AI generation failed");
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -956,183 +967,224 @@ function TeacherAssignmentsView() {
 
       <div className="row g-4">
         <div className="col-lg-5">
+          {/* ── Step 1: AI Generator ─────────────────────────── */}
+          <div className="dash-card mb-3">
+            <div className="d-flex align-items-center gap-2 mb-3">
+              <FaMagic style={{ color: "#a78bfa" }} />
+              <h3 className="dash-card-title mb-0">Generate with AI</h3>
+            </div>
+
+            <div className="mb-3">
+              <label className="form-label fw-semibold">Topic <span className="text-danger">*</span></label>
+              <input
+                className="form-control"
+                placeholder="e.g. Quadratic equations, The French Revolution…"
+                value={aiConfig.topic}
+                onChange={e => setAiConfig(p => ({ ...p, topic: e.target.value }))}
+                onKeyDown={e => e.key === "Enter" && generateDraft()}
+              />
+            </div>
+
+            <div className="row g-2 mb-3">
+              <div className="col-6">
+                <label className="form-label fw-semibold">Subject</label>
+                <select className="form-select" value={aiConfig.subject} onChange={e => setAiConfig(p => ({ ...p, subject: e.target.value }))}>
+                  {["Mathematics","Physics","Chemistry","Biology","English","History","Geography","Computer Science","Economics","General"].map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="col-6">
+                <label className="form-label fw-semibold">Exam / Curriculum</label>
+                <select className="form-select" value={aiConfig.curriculum} onChange={e => setAiConfig(p => ({ ...p, curriculum: e.target.value }))}>
+                  {["General","SAT","IGCSE","AP","IB","GCSE","A-Level","Regents"].map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="col-6">
+                <label className="form-label fw-semibold">Assignment type</label>
+                <select className="form-select" value={aiConfig.assignmentType} onChange={e => setAiConfig(p => ({ ...p, assignmentType: e.target.value }))}>
+                  <option value="homework">Homework</option>
+                  <option value="classwork">Classwork</option>
+                  <option value="worksheet">Worksheet</option>
+                  <option value="project">Project</option>
+                  <option value="assessment">Assessment</option>
+                  <option value="practice">Practice</option>
+                </select>
+              </div>
+              <div className="col-6">
+                <label className="form-label fw-semibold">Question type</label>
+                <select className="form-select" value={aiConfig.questionType} onChange={e => setAiConfig(p => ({ ...p, questionType: e.target.value }))}>
+                  <option value="multiple_choice">Multiple choice</option>
+                  <option value="short_answer">Short answer</option>
+                  <option value="essay">Essay</option>
+                  <option value="problem_solving">Problem solving</option>
+                  <option value="mixed">Mixed</option>
+                </select>
+              </div>
+              <div className="col-6">
+                <label className="form-label fw-semibold">Difficulty</label>
+                <select className="form-select" value={aiConfig.difficulty} onChange={e => setAiConfig(p => ({ ...p, difficulty: e.target.value }))}>
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
+              </div>
+              <div className="col-3">
+                <label className="form-label fw-semibold"># Questions</label>
+                <input className="form-control" type="number" min="1" max="20" value={aiConfig.numQuestions}
+                  onChange={e => setAiConfig(p => ({ ...p, numQuestions: e.target.value }))} />
+              </div>
+              <div className="col-3">
+                <label className="form-label fw-semibold">Grade level</label>
+                <input className="form-control" placeholder="e.g. 10" value={aiConfig.gradeLevel}
+                  onChange={e => setAiConfig(p => ({ ...p, gradeLevel: e.target.value }))} />
+              </div>
+            </div>
+
+            <button
+              className="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2"
+              type="button"
+              onClick={generateDraft}
+              disabled={generating || !aiConfig.topic.trim()}
+            >
+              <FaMagic />
+              {generating ? "Generating…" : "Generate with AI"}
+            </button>
+          </div>
+
+          {/* ── AI Preview ───────────────────────────────────── */}
+          {aiGenerated && (
+            <div className="dash-card mb-3" style={{ border: "1px solid rgba(167,139,250,0.4)", background: "rgba(167,139,250,0.06)" }}>
+              <div className="d-flex justify-content-between align-items-start mb-2">
+                <h4 className="dash-card-title mb-0" style={{ color: "#a78bfa" }}>
+                  ✓ Generated — {aiGenerated.questions?.length || 0} questions
+                </h4>
+                <button className="btn btn-sm btn-outline-secondary" onClick={() => setAiGenerated(null)}>✕</button>
+              </div>
+              <p className="dash-card-muted mb-2" style={{ fontSize: "0.82rem" }}>
+                Topic: <strong>{aiGenerated.topic || aiConfig.topic}</strong> · Difficulty: {aiGenerated.difficulty || aiConfig.difficulty} · Curriculum: {aiGenerated.curriculum || aiConfig.curriculum}
+              </p>
+              <div className="d-flex flex-column gap-1" style={{ maxHeight: 180, overflowY: "auto" }}>
+                {(aiGenerated.questions || []).slice(0, 5).map((q, i) => (
+                  <div key={i} className="small p-2 rounded" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    <span style={{ opacity: 0.5 }}>{i + 1}.</span> {q.question || q.questionText || "(no text)"}
+                  </div>
+                ))}
+                {(aiGenerated.questions?.length || 0) > 5 && (
+                  <p className="dash-card-muted mb-0 small">+ {aiGenerated.questions.length - 5} more questions</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 2: Details & Assign ─────────────────────── */}
           <div className="dash-card">
             <div className="d-flex justify-content-between align-items-center mb-3">
               <h3 className="dash-card-title mb-0">
                 <FaClipboardList className="me-2" />
-                {selectedAssignmentId ? "Edit assignment" : "Create assignment"}
+                {selectedAssignmentId ? "Edit assignment" : "Details & Assign"}
               </h3>
-              <button className="btn btn-outline-secondary btn-sm" type="button" onClick={resetForm}>
+              <button className="btn btn-outline-secondary btn-sm" type="button" onClick={() => { resetForm(); setAiGenerated(null); }}>
                 Reset
               </button>
             </div>
 
             <div className="mb-3">
               <label className="form-label">Course</label>
-              <select
-                className="form-select"
-                value={selectedCourseId}
-                onChange={(event) => setSelectedCourseId(event.target.value)}
-              >
+              <select className="form-select" value={selectedCourseId} onChange={e => setSelectedCourseId(e.target.value)}>
                 <option value="">Select course</option>
-                {courses.map((course) => (
-                  <option key={course._id} value={course._id}>
-                    {course.title || course.name || course.code || course._id}
-                  </option>
-                ))}
+                {courses.map(c => <option key={c._id} value={c._id}>{c.title || c.name || c._id}</option>)}
               </select>
             </div>
 
             <div className="mb-3">
               <label className="form-label">Title</label>
-              <input
-                className="form-control"
-                value={form.title}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, title: event.target.value }))
-                }
-              />
+              <input className="form-control" value={form.title}
+                onChange={e => setForm(p => ({ ...p, title: e.target.value }))} />
             </div>
 
             <div className="mb-3">
               <label className="form-label">Description</label>
-              <textarea
-                className="form-control"
-                rows={3}
-                value={form.description}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, description: event.target.value }))
-                }
-              />
+              <textarea className="form-control" rows={2} value={form.description}
+                onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
             </div>
 
             <div className="mb-3">
               <label className="form-label">Instructions</label>
-              <textarea
-                className="form-control"
-                rows={3}
-                value={form.instructions}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, instructions: event.target.value }))
-                }
-              />
+              <textarea className="form-control" rows={4} value={form.instructions}
+                onChange={e => setForm(p => ({ ...p, instructions: e.target.value }))} />
             </div>
 
-            <div className="row g-3">
+            <div className="row g-3 mb-3">
               <div className="col-md-6">
                 <label className="form-label">Due date</label>
-                <input
-                  className="form-control"
-                  type="datetime-local"
-                  value={form.dueDate}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, dueDate: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="col-md-6">
-                <label className="form-label">Status</label>
-                <select
-                  className="form-select"
-                  value={form.status}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, status: event.target.value }))
-                  }
-                >
-                  {STATUS_OPTIONS.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-md-6">
-                <label className="form-label">Type</label>
-                <select
-                  className="form-select"
-                  value={form.type}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, type: event.target.value }))
-                  }
-                >
-                  {ASSIGNMENT_TYPES.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
+                <input className="form-control" type="datetime-local" value={form.dueDate}
+                  onChange={e => setForm(p => ({ ...p, dueDate: e.target.value }))} />
               </div>
               <div className="col-md-6">
                 <label className="form-label">Max score</label>
-                <input
-                  className="form-control"
-                  type="number"
-                  min="0"
-                  value={form.maxScore}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, maxScore: event.target.value }))
-                  }
-                />
+                <input className="form-control" type="number" value={form.maxScore}
+                  onChange={e => setForm(p => ({ ...p, maxScore: e.target.value }))} />
+              </div>
+              <div className="col-md-6">
+                <label className="form-label">Type</label>
+                <select className="form-select" value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}>
+                  {ASSIGNMENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <div className="col-md-6">
+                <label className="form-label">Status</label>
+                <select className="form-select" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
+                  {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
+                </select>
               </div>
             </div>
 
-            <div className="mt-3">
-              <label className="form-label">Classroom target</label>
-              <select
-                className="form-select"
-                value={form.classroomId}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, classroomId: event.target.value }))
-                }
-              >
-                <option value="">Course-wide or selected students</option>
-                {roster.classrooms.map((classroom) => (
-                  <option key={classroom._id} value={classroom._id}>
-                    {classroom.name}
-                  </option>
+            {/* Assign to section */}
+            <div className="mb-3">
+              <label className="form-label fw-semibold">Assign to</label>
+              <div className="d-flex gap-2 mb-2">
+                {["course","class","students"].map(mode => (
+                  <button key={mode} type="button"
+                    className={`btn btn-sm ${assignMode === mode ? "btn-primary" : "btn-outline-secondary"}`}
+                    onClick={() => setAssignMode(mode)}>
+                    {mode === "course" ? "Entire course" : mode === "class" ? "Class" : "Specific students"}
+                  </button>
                 ))}
-              </select>
-            </div>
-
-            <div className="mt-3">
-              <label className="form-label">Selected students</label>
-              <select
-                className="form-select"
-                multiple
-                size={6}
-                value={form.studentIds}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    studentIds: Array.from(
-                      event.target.selectedOptions,
-                      (option) => option.value,
-                    ),
-                  }))
-                }
-              >
-                {roster.students.map((student) => (
-                  <option key={student._id} value={student._id}>
-                    {nameForUser(student)} • {student.email}
-                  </option>
-                ))}
-              </select>
-              <div className="form-text">
-                Leave student selection empty to assign course-wide or by classroom.
               </div>
+
+              {assignMode === "class" && (
+                <select className="form-select" value={form.classroomId}
+                  onChange={e => setForm(p => ({ ...p, classroomId: e.target.value }))}>
+                  <option value="">Select class / classroom</option>
+                  {roster.classrooms.map(cl => <option key={cl._id} value={cl._id}>{cl.name}</option>)}
+                </select>
+              )}
+
+              {assignMode === "students" && (
+                <>
+                  <p className="dash-card-muted mb-1" style={{ fontSize: "0.8rem" }}>Hold Ctrl/Cmd to select multiple</p>
+                  <select className="form-select" multiple size={6} value={form.studentIds}
+                    onChange={e => setForm(p => ({ ...p, studentIds: Array.from(e.target.selectedOptions, o => o.value) }))}>
+                    {roster.students.map(s => (
+                      <option key={s._id} value={s._id}>{nameForUser(s)} · {s.email}</option>
+                    ))}
+                  </select>
+                  {form.studentIds.length > 0 && (
+                    <p className="dash-card-muted mb-0 mt-1" style={{ fontSize: "0.8rem" }}>
+                      {form.studentIds.length} student{form.studentIds.length !== 1 ? "s" : ""} selected
+                    </p>
+                  )}
+                </>
+              )}
             </div>
 
-            <div className="d-flex gap-2 flex-wrap mt-4">
-              <button className="btn btn-primary" type="button" onClick={saveAssignment} disabled={saving}>
-                {saving
-                  ? "Saving..."
-                  : selectedAssignmentId
-                    ? "Update assignment"
-                    : "Create assignment"}
+            <div className="d-flex gap-2">
+              <button className="btn btn-outline-light flex-fill" type="button" disabled={saving}
+                onClick={() => { setForm(p => ({ ...p, status: "draft" })); saveAssignment(); }}>
+                Save draft
               </button>
-              <button className="btn btn-outline-light" type="button" onClick={generateDraft}>
-                <FaMagic className="me-2" />
-                Draft with AI
+              <button className="btn btn-primary flex-fill" type="button" disabled={saving}
+                onClick={() => { setForm(p => ({ ...p, status: "published" })); saveAssignment(); }}>
+                {saving ? "Saving…" : "Publish"}
               </button>
             </div>
           </div>

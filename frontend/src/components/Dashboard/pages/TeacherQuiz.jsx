@@ -171,6 +171,17 @@ export default function TeacherQuiz() {
   const [selectedQuizId, setSelectedQuizId] = useState(null);
   const [results, setResults] = useState(null);
   const [aiPreview, setAiPreview] = useState(null); // questions staged for review before insert
+  const [aiConfig, setAiConfig] = useState({
+    topic: "",
+    subject: "",
+    gradeLevel: "All",
+    curriculum: "General",
+    questionType: "multiple_choice",
+    difficulty: "medium",
+    numQuestions: 5,
+  });
+  const [generating, setGenerating] = useState(false);
+  const [assignMode, setAssignMode] = useState("course"); // "course" | "class" | "students"
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -412,8 +423,8 @@ export default function TeacherQuiz() {
       passingScore: Number(form.passingScore || 60),
       status: form.status,
       courseId: selectedCourseId,
-      classroomId: form.classroomId || null,
-      studentIds: form.studentIds,
+      classroomId: assignMode === "class" ? (form.classroomId || null) : null,
+      studentIds: assignMode === "students" ? form.studentIds : [],
       questions: form.questions.map((question) => ({
         questionText: question.questionText.trim(),
         questionType: question.questionType,
@@ -446,20 +457,20 @@ export default function TeacherQuiz() {
   };
 
   const generateQuizDraft = async () => {
-    if (!form.title.trim() && !form.subject.trim()) {
-      toast.error("Enter a title or subject first");
+    if (!aiConfig.topic.trim() && !aiConfig.subject.trim()) {
+      toast.error("Enter a topic or subject first");
       return;
     }
-
+    setGenerating(true);
     try {
       const response = await api.ai.generateQuiz({
-        topic: form.title.trim() || form.subject.trim(),
-        subject: form.subject.trim() || "General",
-        grade_level: form.gradeLevel.trim() || "All",
-        num_questions: 5,
-        question_type: "multiple_choice",
-        difficulty: "medium",
-        curriculum: form.curriculum.trim() || "General",
+        topic: aiConfig.topic.trim() || aiConfig.subject.trim(),
+        subject: aiConfig.subject.trim() || "General",
+        grade_level: aiConfig.gradeLevel,
+        num_questions: Number(aiConfig.numQuestions),
+        question_type: aiConfig.questionType,
+        difficulty: aiConfig.difficulty,
+        curriculum: aiConfig.curriculum,
         exam_focus: "practice",
       });
 
@@ -470,11 +481,19 @@ export default function TeacherQuiz() {
       }
 
       setAiPreview(questions);
-      toast.success(
-        `${questions.length} questions ready — review and insert below`,
-      );
+      // Auto-fill title
+      setForm(prev => ({
+        ...prev,
+        title: prev.title || (aiConfig.topic.trim() ? `${aiConfig.topic} Quiz` : prev.title),
+        subject: prev.subject || aiConfig.subject,
+        gradeLevel: prev.gradeLevel !== "All" ? prev.gradeLevel : aiConfig.gradeLevel,
+        curriculum: aiConfig.curriculum,
+      }));
+      toast.success(`${questions.length} questions generated — review below`);
     } catch (error) {
-      toast.error(error?.message || "Failed to generate quiz draft");
+      toast.error(error?.message || "Failed to generate quiz");
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -537,417 +556,292 @@ export default function TeacherQuiz() {
 
       <div className="row g-4">
         <div className="col-lg-5">
+          {/* ── Step 1: AI Generator ─────────────────────────── */}
+          <div className="dash-card mb-3">
+            <div className="d-flex align-items-center gap-2 mb-3">
+              <FaMagic style={{ color: "#a78bfa" }} />
+              <h3 className="dash-card-title mb-0">Generate Quiz with AI</h3>
+            </div>
+
+            <div className="mb-3">
+              <label className="form-label fw-semibold">Topic <span className="text-danger">*</span></label>
+              <input
+                className="form-control"
+                placeholder="e.g. Newton's laws, World War II, Algebra…"
+                value={aiConfig.topic}
+                onChange={e => setAiConfig(p => ({ ...p, topic: e.target.value }))}
+                onKeyDown={e => e.key === "Enter" && generateQuizDraft()}
+              />
+            </div>
+
+            <div className="row g-2 mb-3">
+              <div className="col-6">
+                <label className="form-label fw-semibold">Subject</label>
+                <select className="form-select" value={aiConfig.subject} onChange={e => setAiConfig(p => ({ ...p, subject: e.target.value }))}>
+                  <option value="">— select —</option>
+                  {["Mathematics","Physics","Chemistry","Biology","English","History","Geography","Computer Science","Economics"].map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="col-6">
+                <label className="form-label fw-semibold">Exam / Curriculum</label>
+                <select className="form-select" value={aiConfig.curriculum} onChange={e => setAiConfig(p => ({ ...p, curriculum: e.target.value }))}>
+                  {["General","SAT","IGCSE","AP","IB","GCSE","A-Level","Regents"].map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div className="col-6">
+                <label className="form-label fw-semibold">Question type</label>
+                <select className="form-select" value={aiConfig.questionType} onChange={e => setAiConfig(p => ({ ...p, questionType: e.target.value }))}>
+                  <option value="multiple_choice">Multiple choice</option>
+                  <option value="true_false">True / False</option>
+                  <option value="short_answer">Short answer</option>
+                  <option value="essay">Essay</option>
+                  <option value="mixed">Mixed</option>
+                </select>
+              </div>
+              <div className="col-6">
+                <label className="form-label fw-semibold">Difficulty</label>
+                <select className="form-select" value={aiConfig.difficulty} onChange={e => setAiConfig(p => ({ ...p, difficulty: e.target.value }))}>
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
+              </div>
+              <div className="col-4">
+                <label className="form-label fw-semibold"># Questions</label>
+                <input className="form-control" type="number" min="1" max="20" value={aiConfig.numQuestions}
+                  onChange={e => setAiConfig(p => ({ ...p, numQuestions: e.target.value }))} />
+              </div>
+              <div className="col-4">
+                <label className="form-label fw-semibold">Grade</label>
+                <input className="form-control" placeholder="e.g. 10" value={aiConfig.gradeLevel}
+                  onChange={e => setAiConfig(p => ({ ...p, gradeLevel: e.target.value }))} />
+              </div>
+            </div>
+
+            <button
+              className="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2"
+              type="button"
+              onClick={generateQuizDraft}
+              disabled={generating || (!aiConfig.topic.trim() && !aiConfig.subject.trim())}
+            >
+              <FaMagic />
+              {generating ? "Generating…" : "Generate with AI"}
+            </button>
+          </div>
+
+          {/* ── AI Preview ───────────────────────────────────── */}
+          {aiPreview && (
+            <div className="dash-card mb-3" style={{ border: "1px solid rgba(167,139,250,0.4)", background: "rgba(167,139,250,0.06)" }}>
+              <div className="d-flex justify-content-between align-items-start mb-2">
+                <h4 className="dash-card-title mb-0" style={{ color: "#a78bfa" }}>
+                  ✓ {aiPreview.length} questions ready
+                </h4>
+                <div className="d-flex gap-2">
+                  <button className="btn btn-sm btn-primary" onClick={insertAiPreview}>Use these</button>
+                  <button className="btn btn-sm btn-outline-secondary" onClick={() => setAiPreview(null)}>✕</button>
+                </div>
+              </div>
+              <div className="d-flex flex-column gap-1" style={{ maxHeight: 180, overflowY: "auto" }}>
+                {aiPreview.slice(0, 5).map((q, i) => (
+                  <div key={i} className="small p-2 rounded" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                    <span style={{ opacity: 0.5 }}>{i + 1}.</span>{" "}
+                    <span className="badge me-1" style={{ fontSize: "0.65rem", background: "rgba(99,102,241,0.3)" }}>{q.questionType?.replace("_"," ") || "mcq"}</span>
+                    {q.questionText || "(no text)"}
+                  </div>
+                ))}
+                {aiPreview.length > 5 && (
+                  <p className="dash-card-muted mb-0 small">+ {aiPreview.length - 5} more</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 2: Quiz Details & Assign ────────────────── */}
           <div className="dash-card">
             <div className="d-flex justify-content-between align-items-center mb-3">
               <h3 className="dash-card-title mb-0">
                 <FaBookOpen className="me-2" />
-                {selectedQuizId ? "Edit quiz" : "Create quiz"}
+                {selectedQuizId ? "Edit quiz" : "Details & Assign"}
               </h3>
-              <button className="btn btn-outline-secondary btn-sm" type="button" onClick={resetForm}>
+              <button className="btn btn-outline-secondary btn-sm" type="button" onClick={() => { resetForm(); setAiPreview(null); }}>
                 Reset
               </button>
             </div>
 
             <div className="mb-3">
               <label className="form-label">Course</label>
-              <select
-                className="form-select"
-                value={selectedCourseId}
-                onChange={(event) => setSelectedCourseId(event.target.value)}
-              >
+              <select className="form-select" value={selectedCourseId} onChange={e => setSelectedCourseId(e.target.value)}>
                 <option value="">Select course</option>
-                {courses.map((course) => (
-                  <option key={course._id} value={course._id}>
-                    {course.title || course.name || course.code || course._id}
-                  </option>
-                ))}
+                {courses.map(c => <option key={c._id} value={c._id}>{c.title || c.name || c._id}</option>)}
               </select>
             </div>
 
-            <div className="row g-3">
-              <div className="col-md-8">
+            <div className="row g-3 mb-3">
+              <div className="col-8">
                 <label className="form-label">Title</label>
-                <input
-                  className="form-control"
-                  value={form.title}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, title: event.target.value }))
-                  }
-                />
+                <input className="form-control" value={form.title}
+                  onChange={e => setForm(p => ({ ...p, title: e.target.value }))} />
               </div>
-              <div className="col-md-4">
+              <div className="col-4">
                 <label className="form-label">Subject</label>
-                <input
-                  className="form-control"
-                  value={form.subject}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, subject: event.target.value }))
-                  }
-                />
+                <input className="form-control" value={form.subject}
+                  onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} />
               </div>
             </div>
 
-            <div className="mt-3">
+            <div className="mb-3">
               <label className="form-label">Description</label>
-              <textarea
-                className="form-control"
-                rows={3}
-                value={form.description}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, description: event.target.value }))
-                }
-              />
+              <textarea className="form-control" rows={2} value={form.description}
+                onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
             </div>
 
-            <div className="row g-3 mt-1">
-              <div className="col-md-6">
+            <div className="row g-2 mb-3">
+              <div className="col-6">
                 <label className="form-label">Due date</label>
-                <input
-                  className="form-control"
-                  type="datetime-local"
-                  value={form.dueDate}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, dueDate: event.target.value }))
-                  }
-                />
+                <input className="form-control" type="datetime-local" value={form.dueDate}
+                  onChange={e => setForm(p => ({ ...p, dueDate: e.target.value }))} />
               </div>
-              <div className="col-md-6">
+              <div className="col-6">
                 <label className="form-label">Status</label>
-                <select
-                  className="form-select"
-                  value={form.status}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, status: event.target.value }))
-                  }
-                >
-                  {STATUS_OPTIONS.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
+                <select className="form-select" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
+                  {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
-              <div className="col-md-4">
-                <label className="form-label">Time limit (min)</label>
-                <input
-                  className="form-control"
-                  type="number"
-                  min="1"
-                  value={form.timeLimit}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, timeLimit: event.target.value }))
-                  }
-                />
+              <div className="col-4">
+                <label className="form-label">Time (min)</label>
+                <input className="form-control" type="number" min="1" value={form.timeLimit}
+                  onChange={e => setForm(p => ({ ...p, timeLimit: e.target.value }))} />
               </div>
-              <div className="col-md-4">
+              <div className="col-4">
                 <label className="form-label">Max attempts</label>
-                <input
-                  className="form-control"
-                  type="number"
-                  min="1"
-                  value={form.maxAttempts}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, maxAttempts: event.target.value }))
-                  }
-                />
+                <input className="form-control" type="number" min="1" value={form.maxAttempts}
+                  onChange={e => setForm(p => ({ ...p, maxAttempts: e.target.value }))} />
               </div>
-              <div className="col-md-4">
-                <label className="form-label">Passing score</label>
-                <input
-                  className="form-control"
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={form.passingScore}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, passingScore: event.target.value }))
-                  }
-                />
+              <div className="col-4">
+                <label className="form-label">Pass %</label>
+                <input className="form-control" type="number" min="0" max="100" value={form.passingScore}
+                  onChange={e => setForm(p => ({ ...p, passingScore: e.target.value }))} />
               </div>
             </div>
 
-            <div className="mt-3">
-              <label className="form-label">Classroom target</label>
-              <select
-                className="form-select"
-                value={form.classroomId}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, classroomId: event.target.value }))
-                }
-              >
-                <option value="">Course-wide or selected students</option>
-                {roster.classrooms.map((classroom) => (
-                  <option key={classroom._id} value={classroom._id}>
-                    {classroom.name}
-                  </option>
+            {/* Assign to */}
+            <div className="mb-3">
+              <label className="form-label fw-semibold">Assign to</label>
+              <div className="d-flex gap-2 mb-2">
+                {["course","class","students"].map(mode => (
+                  <button key={mode} type="button"
+                    className={`btn btn-sm ${assignMode === mode ? "btn-primary" : "btn-outline-secondary"}`}
+                    onClick={() => setAssignMode(mode)}>
+                    {mode === "course" ? "Entire course" : mode === "class" ? "Class" : "Specific students"}
+                  </button>
                 ))}
-              </select>
-            </div>
-
-            <div className="mt-3">
-              <label className="form-label">Selected students</label>
-              <select
-                className="form-select"
-                multiple
-                size={6}
-                value={form.studentIds}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    studentIds: Array.from(
-                      event.target.selectedOptions,
-                      (option) => option.value,
-                    ),
-                  }))
-                }
-              >
-                {roster.students.map((student) => (
-                  <option key={student._id} value={student._id}>
-                    {nameForUser(student)} • {student.email}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="mt-4">
-              <div className="d-flex justify-content-between align-items-center mb-3">
-                <h4 className="h6 mb-0">Questions</h4>
-                <button className="btn btn-outline-light btn-sm" type="button" onClick={addQuestion}>
-                  <FaPlus className="me-2" />
-                  Add question
-                </button>
               </div>
+              {assignMode === "class" && (
+                <select className="form-select" value={form.classroomId}
+                  onChange={e => setForm(p => ({ ...p, classroomId: e.target.value }))}>
+                  <option value="">Select class</option>
+                  {roster.classrooms.map(cl => <option key={cl._id} value={cl._id}>{cl.name}</option>)}
+                </select>
+              )}
+              {assignMode === "students" && (
+                <>
+                  <p className="dash-card-muted mb-1" style={{ fontSize: "0.8rem" }}>Hold Ctrl/Cmd to select multiple</p>
+                  <select className="form-select" multiple size={6} value={form.studentIds}
+                    onChange={e => setForm(p => ({ ...p, studentIds: Array.from(e.target.selectedOptions, o => o.value) }))}>
+                    {roster.students.map(s => (
+                      <option key={s._id} value={s._id}>{nameForUser(s)} · {s.email}</option>
+                    ))}
+                  </select>
+                  {form.studentIds.length > 0 && (
+                    <p className="dash-card-muted mb-0 mt-1" style={{ fontSize: "0.8rem" }}>
+                      {form.studentIds.length} student{form.studentIds.length !== 1 ? "s" : ""} selected
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
 
-              <div className="d-flex flex-column gap-3">
-                {form.questions.map((question, index) => (
-                  <div key={`question-${index}`} className="border rounded p-3 bg-light-subtle">
-                    <div className="d-flex justify-content-between align-items-center mb-3">
-                      <strong>Question {index + 1}</strong>
-                      <button
-                        className="btn btn-outline-danger btn-sm"
-                        type="button"
-                        onClick={() => removeQuestion(index)}
-                        disabled={form.questions.length === 1}
-                      >
-                        <FaTrash />
-                      </button>
+            {/* Questions count */}
+            <div className="mb-3 d-flex justify-content-between align-items-center">
+              <span className="dash-card-muted" style={{ fontSize: "0.85rem" }}>
+                Questions: <strong>{form.questions.length}</strong>
+                {aiPreview && <span className="text-warning ms-2">(⚠ AI preview not yet applied — click &quot;Use these&quot; above)</span>}
+              </span>
+              <button className="btn btn-outline-light btn-sm" type="button" onClick={addQuestion}>
+                <FaPlus className="me-1" /> Add question
+              </button>
+            </div>
+
+            {/* Questions list */}
+            <div className="d-flex flex-column gap-3 mb-3" style={{ maxHeight: 400, overflowY: "auto" }}>
+              {form.questions.map((question, index) => (
+                <div key={`question-${index}`} className="border rounded p-3" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <strong style={{ fontSize: "0.85rem" }}>Question {index + 1}</strong>
+                    <button className="btn btn-outline-danger btn-sm" type="button"
+                      onClick={() => removeQuestion(index)} disabled={form.questions.length === 1}>
+                      <FaTrash />
+                    </button>
+                  </div>
+                  <textarea className="form-control mb-2" rows={2} placeholder="Question text"
+                    value={question.questionText}
+                    onChange={e => updateQuestion(index, { questionText: e.target.value })} />
+                  <div className="row g-2">
+                    <div className="col-6">
+                      <select className="form-select form-select-sm" value={question.questionType}
+                        onChange={e => updateQuestionType(index, e.target.value)}>
+                        {QUESTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
                     </div>
-
-                    <div className="mb-3">
-                      <label className="form-label">Question text</label>
-                      <textarea
-                        className="form-control"
-                        rows={2}
-                        value={question.questionText}
-                        onChange={(event) =>
-                          updateQuestion(index, { questionText: event.target.value })
-                        }
-                      />
+                    <div className="col-6">
+                      <input className="form-control form-control-sm" type="number" min="1" placeholder="Points"
+                        value={question.points} onChange={e => updateQuestion(index, { points: e.target.value })} />
                     </div>
-
-                    <div className="row g-3">
-                      <div className="col-md-6">
-                        <label className="form-label">Type</label>
-                        <select
-                          className="form-select"
-                          value={question.questionType}
-                          onChange={(event) =>
-                            updateQuestionType(index, event.target.value)
-                          }
-                        >
-                          {QUESTION_TYPES.map((type) => (
-                            <option key={type.value} value={type.value}>
-                              {type.label}
+                  </div>
+                  {question.questionType === "multiple_choice" && (
+                    <div className="mt-2 d-flex flex-column gap-1">
+                      {question.options.map((opt, oi) => (
+                        <div key={oi} className="input-group input-group-sm">
+                          <span className="input-group-text">{String.fromCharCode(65+oi)}</span>
+                          <input className="form-control" value={opt}
+                            onChange={e => updateQuestionOption(index, oi, e.target.value)} />
+                        </div>
+                      ))}
+                      <div className="mt-1">
+                        <select className="form-select form-select-sm" value={question.correctAnswer}
+                          onChange={e => updateQuestion(index, { correctAnswer: e.target.value })}>
+                          {question.options.map((_, oi) => (
+                            <option key={oi} value={String.fromCharCode(65+oi)}>
+                              Correct: {String.fromCharCode(65+oi)}
                             </option>
                           ))}
                         </select>
                       </div>
-                      <div className="col-md-6">
-                        <label className="form-label">Points</label>
-                        <input
-                          className="form-control"
-                          type="number"
-                          min="1"
-                          value={question.points}
-                          onChange={(event) =>
-                            updateQuestion(index, { points: event.target.value })
-                          }
-                        />
-                      </div>
                     </div>
-
-                    {question.questionType === "multiple_choice" ? (
-                      <div className="mt-3">
-                        <label className="form-label">Options</label>
-                        <div className="d-flex flex-column gap-2">
-                          {question.options.map((option, optionIndex) => (
-                            <div key={`option-${optionIndex}`} className="input-group">
-                              <span className="input-group-text">
-                                {String.fromCharCode(65 + optionIndex)}
-                              </span>
-                              <input
-                                className="form-control"
-                                value={option}
-                                onChange={(event) =>
-                                  updateQuestionOption(
-                                    index,
-                                    optionIndex,
-                                    event.target.value,
-                                  )
-                                }
-                              />
-                            </div>
-                          ))}
-                        </div>
-                        <div className="mt-3">
-                          <label className="form-label">Correct answer</label>
-                          <select
-                            className="form-select"
-                            value={question.correctAnswer}
-                            onChange={(event) =>
-                              updateQuestion(index, { correctAnswer: event.target.value })
-                            }
-                          >
-                            {question.options.map((_, optionIndex) => {
-                              const letter = String.fromCharCode(65 + optionIndex);
-                              return (
-                                <option key={letter} value={letter}>
-                                  {letter}
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </div>
-                      </div>
-                    ) : question.questionType === "true_false" ? (
-                      <div className="mt-3">
-                        <label className="form-label">Correct answer</label>
-                        <select
-                          className="form-select"
-                          value={question.correctAnswer}
-                          onChange={(event) =>
-                            updateQuestion(index, { correctAnswer: event.target.value })
-                          }
-                        >
-                          <option value="true">True</option>
-                          <option value="false">False</option>
-                        </select>
-                      </div>
-                    ) : (
-                      <div className="mt-3">
-                        <label className="form-label">Expected answer</label>
-                        <textarea
-                          className="form-control"
-                          rows={2}
-                          value={question.correctAnswer}
-                          onChange={(event) =>
-                            updateQuestion(index, { correctAnswer: event.target.value })
-                          }
-                        />
-                      </div>
-                    )}
-
-                    <div className="mt-3">
-                      <label className="form-label">Explanation</label>
-                      <textarea
-                        className="form-control"
-                        rows={2}
-                        value={question.explanation}
-                        onChange={(event) =>
-                          updateQuestion(index, { explanation: event.target.value })
-                        }
-                      />
+                  )}
+                  {question.questionType === "true_false" && (
+                    <div className="mt-2">
+                      <select className="form-select form-select-sm" value={question.correctAnswer}
+                        onChange={e => updateQuestion(index, { correctAnswer: e.target.value })}>
+                        <option value="true">True</option>
+                        <option value="false">False</option>
+                      </select>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  )}
+                </div>
+              ))}
             </div>
 
-            <div className="d-flex gap-2 flex-wrap mt-4">
-              <button className="btn btn-primary" type="button" onClick={saveQuiz} disabled={saving}>
-                {saving ? "Saving..." : selectedQuizId ? "Update quiz" : "Create quiz"}
+            <div className="d-flex gap-2">
+              <button className="btn btn-outline-light flex-fill" type="button" disabled={saving}
+                onClick={() => { setForm(p => ({ ...p, status: "draft" })); saveQuiz(); }}>
+                Save draft
               </button>
-              <button
-                className="btn btn-outline-light"
-                type="button"
-                onClick={generateQuizDraft}
-                title="Generate draft questions with AI — review before inserting"
-              >
-                <FaMagic className="me-2" />
-                Draft with AI
+              <button className="btn btn-primary flex-fill" type="button" disabled={saving}
+                onClick={() => { setForm(p => ({ ...p, status: "published" })); saveQuiz(); }}>
+                {saving ? "Saving…" : "Publish"}
               </button>
             </div>
-
-            {(form.subject || selectedCourseId) && (
-              <div className="form-text mt-2">
-                AI context:{" "}
-                {[
-                  courses.find((c) => c._id === selectedCourseId)?.title,
-                  form.subject,
-                  form.gradeLevel !== "All" ? form.gradeLevel : null,
-                ]
-                  .filter(Boolean)
-                  .join(" › ") || "no context yet — enter a subject first"}
-              </div>
-            )}
-
-            {aiPreview && aiPreview.length > 0 && (
-              <div
-                className="border rounded p-3 mt-3"
-                style={{
-                  borderColor: "var(--purple, #6F79E6)",
-                  background: "rgba(111,121,230,0.06)",
-                }}
-              >
-                <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-                  <div>
-                    <span className="badge bg-warning text-dark me-2">
-                      AI Draft
-                    </span>
-                    <span className="fw-semibold">
-                      {aiPreview.length} questions — review before inserting
-                    </span>
-                  </div>
-                  <div className="d-flex gap-2">
-                    <button
-                      className="btn btn-primary btn-sm"
-                      type="button"
-                      onClick={insertAiPreview}
-                    >
-                      Insert into form
-                    </button>
-                    <button
-                      className="btn btn-outline-secondary btn-sm"
-                      type="button"
-                      onClick={() => setAiPreview(null)}
-                    >
-                      Discard
-                    </button>
-                  </div>
-                </div>
-                <div className="d-flex flex-column gap-2">
-                  {aiPreview.map((q, i) => (
-                    <div
-                      key={`preview-${i}`}
-                      className="border rounded p-2"
-                      style={{ background: "var(--card-bg)" }}
-                    >
-                      <div className="fw-semibold mb-1">
-                        Q{i + 1}: {q.questionText}
-                      </div>
-                      <div className="text-muted" style={{ fontSize: "0.82em" }}>
-                        {q.questionType} · {q.points} pt
-                        {q.questionType === "multiple_choice" && q.options.length > 0
-                          ? ` · Options: ${q.options.join(", ")} · Answer: ${q.correctAnswer}`
-                          : q.questionType === "true_false"
-                          ? ` · Answer: ${q.correctAnswer}`
-                          : ""}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
