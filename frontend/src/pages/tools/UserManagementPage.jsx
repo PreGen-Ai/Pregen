@@ -270,6 +270,7 @@ export default function UserManagementPage() {
           },
           selectedTenantId,
         ),
+        buildTenantConfig(selectedTenantId),
       );
 
       setLastCreateResult(result);
@@ -321,6 +322,7 @@ export default function UserManagementPage() {
           },
           selectedTenantId,
         ),
+        buildTenantConfig(selectedTenantId),
       );
 
       setLastInviteResult(result);
