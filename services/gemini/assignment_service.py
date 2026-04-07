@@ -200,7 +200,22 @@ class AssignmentService(BaseGeminiClient):
         else:
             json_data = result
 
+        # Normalize alternative structures Gemini sometimes returns:
+        #   - bare list  → wrap as {"assignment": [...]}
+        #   - dict with "questions"/"items"/"problems" key instead of "assignment"
+        if json_data and "assignment" not in json_data:
+            if isinstance(json_data, list):
+                json_data = {"assignment": json_data}
+            elif isinstance(json_data, dict):
+                for alt in ("questions", "Questions", "Assignment", "items", "problems", "content"):
+                    if alt in json_data and isinstance(json_data[alt], list):
+                        json_data = {"assignment": json_data[alt]}
+                        logger.info(f"Remapped Gemini key '{alt}' → 'assignment'")
+                        break
+
         if not json_data or "assignment" not in json_data:
+            raw = json_data if json_data else {}
+            logger.error(f"Gemini JSON missing 'assignment' key. Top-level keys: {list(raw.keys()) if isinstance(raw, dict) else type(raw)}")
             raise HTTPException(status_code=500, detail="Invalid JSON format returned from Gemini")
 
         raw_assignment = json_data["assignment"]

@@ -48,6 +48,7 @@ _ALLOWED_SAMPLING_KEYS = {
     "max_output_tokens",
     "stop_sequences",
     "candidate_count",
+    "response_mime_type",
 }
 
 JsonLike = Union[dict, list, str, int, float, bool, None]
@@ -421,6 +422,10 @@ class BaseGeminiClient:
             "stop_sequences": gen_kwargs.get("stop_sequences"),
             "candidate_count": gen_kwargs.get("candidate_count", 1),
         }
+        # Force JSON MIME type when expect_json=True so Gemini always returns
+        # valid JSON without markdown fences or extra prose.
+        if expect_json and not gen_kwargs.get("response_mime_type"):
+            sampling_params["response_mime_type"] = "application/json"
         sampling_params = {k: v for k, v in sampling_params.items() if k in _ALLOWED_SAMPLING_KEYS and v is not None}
 
         params_fingerprint = json.dumps(sampling_params, sort_keys=True)
