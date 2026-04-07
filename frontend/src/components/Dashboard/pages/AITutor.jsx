@@ -6,7 +6,6 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 
 import "../../styles/AITutor.css";
-import "../../styles/dashboard.css";
 import { useAuthContext } from "../../../context/AuthContext";
 import api from "../../../services/api/api";
 
@@ -88,6 +87,51 @@ const normalizeApiError = (err) => {
   return { text, errors, raw };
 };
 
+/* ── SVG icons ─────────────────────────────────────────────── */
+
+const BotIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+    <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.38-1 1.73V7h1a7 7 0 0 1 7 7H3a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 10 4a2 2 0 0 1 2-2zM7.5 14a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm9 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM3 21v-2a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2H3z" />
+  </svg>
+);
+
+const SendIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+  </svg>
+);
+
+const SpinIcon = () => (
+  <svg
+    className="ait-spin"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.5"
+    width="16"
+    height="16"
+  >
+    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+  </svg>
+);
+
+const ClipIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    width="19"
+    height="19"
+  >
+    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+  </svg>
+);
+
+/* ── Component ─────────────────────────────────────────────── */
+
 export default function AITutor() {
   const { user } = useAuthContext() || {};
 
@@ -95,39 +139,34 @@ export default function AITutor() {
     {
       id: "m0",
       sender: "bot",
-      text: "Hello. Upload a file or ask a question.",
+      text: "Hello! Upload a file or ask me any question — I'm here to help you learn.",
     },
   ]);
 
-  // input + sending states
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
+  const [input, setInput]       = useState("");
+  const [sending, setSending]   = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  // session
   const [sessionId, setSessionId] = useState(null);
 
-  // preferences (from version 1)
-  const [subject, setSubject] = useState("mathematics");
-  const [tone, setTone] = useState("supportive");
-  const [language, setLanguage] = useState("English");
+  const [subject, setSubject]       = useState("mathematics");
+  const [tone, setTone]             = useState("supportive");
+  const [language, setLanguage]     = useState("English");
   const [curriculum, setCurriculum] = useState("SAT");
 
-  // debugging toggle
   const [showDebug, setShowDebug] = useState(false);
 
-  // file attach (version 2 quick attach) + material upload input (version 1)
-  const [attachedFile, setAttachedFile] = useState(null);
+  const [attachedFile, setAttachedFile]         = useState(null);
   const [uploadedFileName, setUploadedFileName] = useState("");
   const fileInputRef = useRef(null);
 
-  // UI helpers
   const scrollRef = useRef(null);
-  const abortRef = useRef(null);
+  const abortRef  = useRef(null);
 
-  const canSend = useMemo(() => {
-    return !sending && (input.trim().length > 0 || !!attachedFile);
-  }, [sending, input, attachedFile]);
+  const canSend = useMemo(
+    () => !sending && (input.trim().length > 0 || !!attachedFile),
+    [sending, input, attachedFile],
+  );
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
@@ -135,23 +174,18 @@ export default function AITutor() {
     el.scrollTop = el.scrollHeight;
   }, []);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+  useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
   useEffect(() => {
-    return () => {
-      if (abortRef.current) abortRef.current.abort();
-    };
+    return () => { if (abortRef.current) abortRef.current.abort(); };
   }, []);
 
-  // Start session on mount (version 1 behavior)
+  // Start session on mount
   useEffect(() => {
     const startSession = async () => {
       try {
         const newSessionId = `session_${Date.now()}`;
         setSessionId(newSessionId);
-
         await api.ai.startTutorSession(newSessionId, {
           context: { subject: "general", level: "student" },
         });
@@ -169,11 +203,10 @@ export default function AITutor() {
         ]);
       }
     };
-
     startSession();
   }, []);
 
-  // Material upload to session (version 1)
+  // Material upload to session
   const uploadMaterial = async (file) => {
     if (!file || !sessionId || uploading || sending) return;
 
@@ -186,22 +219,20 @@ export default function AITutor() {
       {
         id: `b_${Date.now() + 1}`,
         sender: "bot",
-        text: "Processing the file and extracting key points...",
+        text: "Processing the file and extracting key points…",
       },
     ]);
 
     try {
       const form = new FormData();
       form.append("file", file);
-
       await api.ai.uploadTutorMaterial(sessionId, form);
-
       setMessages((prev) => [
         ...prev,
         {
           id: `b_${Date.now() + 2}`,
           sender: "bot",
-          text: "File stored for this session. Ask questions based on it.",
+          text: "File stored for this session. Ask me questions based on it.",
         },
       ]);
     } catch (err) {
@@ -224,14 +255,11 @@ export default function AITutor() {
     }
   };
 
-  // Send chat message:
-  // - If attachedFile exists => send multipart (keeps version 2 feature)
-  // - Else send JSON with prefs + session_id (version 1)
+  // Send message
   const onSend = async () => {
     if (!canSend || !sessionId) return;
 
     const msgText = input.trim() || "(file attached)";
-
     setMessages((prev) => [
       ...prev,
       { id: `u_${Date.now()}`, sender: "user", text: msgText },
@@ -249,45 +277,33 @@ export default function AITutor() {
         const form = new FormData();
         form.append("message", msgText);
         form.append("session_id", sessionId);
-
-        // pass prefs too (best effort)
         form.append("subject", subject);
         form.append("tone", tone);
         form.append("language", language);
         form.append("curriculum", curriculum);
-
         if (user?._id) form.append("user_id", user._id);
-
         form.append("file", attachedFile);
-
-        res = await api.ai.tutorChat(form, {
-          signal: controller.signal,
-        });
+        res = await api.ai.tutorChat(form, { signal: controller.signal });
       } else {
-        res = await api.ai.tutorChat({
-          session_id: sessionId,
-          message: msgText,
-          subject,
-          tone,
-          language,
-          curriculum,
-          user_profile: user?._id ? { _id: user._id } : undefined,
-        }, {
-          signal: controller.signal,
-        });
+        res = await api.ai.tutorChat(
+          {
+            session_id: sessionId,
+            message: msgText,
+            subject,
+            tone,
+            language,
+            curriculum,
+            user_profile: user?._id ? { _id: user._id } : undefined,
+          },
+          { signal: controller.signal },
+        );
       }
 
-      const botReply =
-        res?.reply ??
-        res?.message ??
-        res?.text ??
-        "No response.";
-
+      const botReply = res?.reply ?? res?.message ?? res?.text ?? "No response.";
       setMessages((prev) => [
         ...prev,
         { id: `b_${Date.now()}`, sender: "bot", text: toText(botReply) },
       ]);
-
       setAttachedFile(null);
     } catch (e) {
       const isCanceled =
@@ -320,7 +336,6 @@ export default function AITutor() {
   };
 
   const onKeyDown = (e) => {
-    // Enter sends, Shift+Enter new line
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       onSend();
@@ -328,170 +343,224 @@ export default function AITutor() {
   };
 
   const isStudent = String(user?.role || "").toUpperCase() === "STUDENT";
+  const userInitial = (user?.username || user?.name || "U")[0].toUpperCase();
+
+  /* ── Render ─────────────────────────────────────────────── */
 
   return (
-    <div className="ai-tutor-page">
-      {/* Header with title, subtitle and actions */}
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <div>
-          <h2>AI Tutor</h2>
-          <p className="text-muted">
-            Ask questions, upload a file, get explanations with math support.
-          </p>
+    <div className="ait-page">
+
+      {/* Header */}
+      <div className="ait-header">
+        <div className="ait-header-info">
+          <div className="ait-header-icon">
+            <BotIcon />
+          </div>
+          <div>
+            <h2 className="ait-title">AI Tutor</h2>
+            <p className="ait-subtitle">
+              Ask questions, upload a file, get explanations with math support.
+            </p>
+          </div>
         </div>
+
         {sending && (
           <button
-            className="btn btn-outline-light"
+            className="ait-btn-cancel"
             onClick={() => abortRef.current?.abort()}
             type="button"
           >
-            Cancel
+            ✕ Cancel
           </button>
         )}
       </div>
 
-      {/* Student scope notice */}
+      {/* Student notice */}
       {isStudent && (
-        <div
-          className="mb-3 p-3 rounded"
-          style={{
-            background: "rgba(245,158,11,0.10)",
-            border: "1px solid rgba(245,158,11,0.35)",
-            fontSize: "0.88em",
-          }}
-        >
-          <strong>Study help only.</strong> The AI Tutor can explain concepts,
-          help you understand material, and answer study questions. It will not
-          complete assignments, quizzes, or exams for you. Select a subject
-          below to keep answers on-topic.
+        <div className="ait-notice">
+          <span className="ait-notice-icon">⚠</span>
+          <div>
+            <strong>Study help only.</strong> The AI Tutor can explain concepts,
+            help you understand material, and answer study questions. It will not
+            complete assignments, quizzes, or exams for you.
+          </div>
         </div>
       )}
 
-      {/* Toolbar (version 1) */}
-      <div className="tutor-toolbar">
-        <select value={subject} onChange={(e) => setSubject(e.target.value)}>
-          <option value="mathematics">Mathematics</option>
-          <option value="physics">Physics</option>
-          <option value="chemistry">Chemistry</option>
-          <option value="biology">Biology</option>
-          <option value="english">English</option>
-          <option value="history">History</option>
-          <option value="general">General</option>
-        </select>
-
-        <select
-          value={curriculum}
-          onChange={(e) => setCurriculum(e.target.value)}
-        >
-          <option value="SAT">SAT</option>
-          <option value="IGCSE">IGCSE</option>
-          <option value="">Unknown</option>
-        </select>
-
-        <select value={tone} onChange={(e) => setTone(e.target.value)}>
-          <option value="supportive">Supportive</option>
-          <option value="friendly">Friendly</option>
-          <option value="strict">Strict</option>
-          <option value="encouraging">Encouraging</option>
-        </select>
-
-        <select value={language} onChange={(e) => setLanguage(e.target.value)}>
-          <option value="English">English</option>
-          <option value="Arabic">Arabic</option>
-        </select>
-
-        {/* Material upload (stored for session) */}
-        <div className="tutor-upload">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.docx,.txt"
-            disabled={!sessionId || uploading || sending}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) uploadMaterial(f);
-            }}
-          />
-          <small>
-            {uploadedFileName
-              ? `Last: ${uploadedFileName}`
-              : "Upload PDF/DOCX/TXT (optional)"}
-          </small>
+      {/* Settings bar */}
+      <div className="ait-settings-bar">
+        <div className="ait-setting">
+          <label className="ait-setting-label">Subject</label>
+          <select
+            className="ait-select"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+          >
+            <option value="mathematics">Mathematics</option>
+            <option value="physics">Physics</option>
+            <option value="chemistry">Chemistry</option>
+            <option value="biology">Biology</option>
+            <option value="english">English</option>
+            <option value="history">History</option>
+            <option value="general">General</option>
+          </select>
         </div>
 
-        {/* Debug toggle */}
-        <label className="tutor-debug-toggle">
+        <div className="ait-setting">
+          <label className="ait-setting-label">Curriculum</label>
+          <select
+            className="ait-select"
+            value={curriculum}
+            onChange={(e) => setCurriculum(e.target.value)}
+          >
+            <option value="SAT">SAT</option>
+            <option value="IGCSE">IGCSE</option>
+            <option value="">General</option>
+          </select>
+        </div>
+
+        <div className="ait-setting">
+          <label className="ait-setting-label">Tone</label>
+          <select
+            className="ait-select"
+            value={tone}
+            onChange={(e) => setTone(e.target.value)}
+          >
+            <option value="supportive">Supportive</option>
+            <option value="friendly">Friendly</option>
+            <option value="strict">Strict</option>
+            <option value="encouraging">Encouraging</option>
+          </select>
+        </div>
+
+        <div className="ait-setting">
+          <label className="ait-setting-label">Language</label>
+          <select
+            className="ait-select"
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+          >
+            <option value="English">English</option>
+            <option value="Arabic">Arabic</option>
+          </select>
+        </div>
+
+        <div className="ait-setting">
+          <label className="ait-setting-label">Session Doc</label>
+          <label className="ait-upload-btn" title="Upload PDF/DOCX/TXT for this session">
+            {uploading
+              ? "Uploading…"
+              : uploadedFileName
+              ? `✓ ${uploadedFileName}`
+              : "📎 Upload doc"}
+            <input
+              ref={fileInputRef}
+              type="file"
+              hidden
+              accept=".pdf,.docx,.txt"
+              disabled={!sessionId || uploading || sending}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadMaterial(f);
+              }}
+            />
+          </label>
+        </div>
+
+        <label className="ait-debug-check">
           <input
             type="checkbox"
             checked={showDebug}
             onChange={(e) => setShowDebug(e.target.checked)}
           />
-          <small>Debug</small>
+          <span>Debug</span>
         </label>
       </div>
 
-      {/* Chat shell (dashboard-style) */}
-      <div className="chat-shell">
-        <div className="chat-messages" ref={scrollRef}>
+      {/* Chat window */}
+      <div className="ait-chat-window">
+
+        {/* Messages */}
+        <div className="ait-messages" ref={scrollRef}>
           {messages.map((m) => (
             <div
               key={m.id}
-              className={`chat-bubble ${m.sender === "user" ? "user" : ""}`}
+              className={`ait-msg ${
+                m.sender === "user" ? "ait-msg--user" : "ait-msg--bot"
+              }`}
             >
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex]}
-              >
-                {toText(m.text)}
-              </ReactMarkdown>
-
-              {/* structured errors */}
-              {Array.isArray(m.errors) && m.errors.length > 0 && (
-                <ul className="ai-error-list">
-                  {m.errors.map((e, idx) => (
-                    <li key={idx}>
-                      {e.msg}
-                      {Array.isArray(e.loc) ? ` — ${e.loc.join(" > ")}` : ""}
-                    </li>
-                  ))}
-                </ul>
+              {m.sender === "bot" && (
+                <div className="ait-avatar ait-avatar--bot" aria-hidden="true">
+                  <BotIcon />
+                </div>
               )}
 
-              {/* raw debug */}
-              {showDebug && m.raw && (
-                <pre className="ai-debug-pre">
-                  {JSON.stringify(m.raw, null, 2)}
-                </pre>
+              <div className="ait-bubble">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                >
+                  {toText(m.text)}
+                </ReactMarkdown>
+
+                {Array.isArray(m.errors) && m.errors.length > 0 && (
+                  <ul className="ait-error-list">
+                    {m.errors.map((e, idx) => (
+                      <li key={idx}>
+                        {e.msg}
+                        {Array.isArray(e.loc) ? ` — ${e.loc.join(" > ")}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {showDebug && m.raw && (
+                  <pre className="ait-debug-pre">
+                    {JSON.stringify(m.raw, null, 2)}
+                  </pre>
+                )}
+              </div>
+
+              {m.sender === "user" && (
+                <div className="ait-avatar ait-avatar--user" aria-hidden="true">
+                  {userInitial}
+                </div>
               )}
             </div>
           ))}
 
-          {(sending || uploading) && <p className="typing">Thinking...</p>}
-        </div>
-
-        {/* Inputbar (textarea + attach + send) */}
-        <div className="chat-inputbar">
-          {attachedFile ? (
-            <div className="dash-card mb-2" style={{ padding: 10 }}>
-              <div className="d-flex align-items-center justify-content-between gap-2">
-                <div className="dash-card-muted" style={{ margin: 0 }}>
-                  Attached: <strong>{attachedFile.name}</strong>
-                </div>
-                <button
-                  className="btn btn-sm btn-outline-light"
-                  onClick={() => setAttachedFile(null)}
-                  type="button"
-                  disabled={sending}
-                >
-                  Remove
-                </button>
+          {(sending || uploading) && (
+            <div className="ait-msg ait-msg--bot">
+              <div className="ait-avatar ait-avatar--bot" aria-hidden="true">
+                <BotIcon />
+              </div>
+              <div className="ait-typing">
+                <span /><span /><span />
               </div>
             </div>
-          ) : null}
+          )}
+        </div>
 
-          <div className="chat-row">
+        {/* Input footer */}
+        <div className="ait-input-footer">
+          {attachedFile && (
+            <div className="ait-file-chip">
+              <span>📎 {attachedFile.name}</span>
+              <button
+                className="ait-file-remove"
+                onClick={() => setAttachedFile(null)}
+                disabled={sending}
+                type="button"
+                aria-label="Remove attached file"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          <div className="ait-input-row">
             <textarea
-              className="chat-textarea"
+              className="ait-textarea"
               rows={2}
               placeholder="Type your question… (Shift+Enter for new line)"
               value={input}
@@ -500,24 +569,29 @@ export default function AITutor() {
               disabled={!sessionId || sending || uploading}
             />
 
-            <label className="btn btn-outline-light chat-btn mb-0">
-              File
-              <input
-                type="file"
-                hidden
-                onChange={(e) => setAttachedFile(e.target.files?.[0] || null)}
-                disabled={!sessionId || sending || uploading}
-              />
-            </label>
+            <div className="ait-input-btns">
+              <label className="ait-attach" title="Attach file to message">
+                <ClipIcon />
+                <input
+                  type="file"
+                  hidden
+                  onChange={(e) =>
+                    setAttachedFile(e.target.files?.[0] || null)
+                  }
+                  disabled={!sessionId || sending || uploading}
+                />
+              </label>
 
-            <button
-              className="btn btn-primary chat-btn"
-              onClick={onSend}
-              disabled={!sessionId || uploading || !canSend}
-              type="button"
-            >
-              {sending ? "Sending…" : "Send"}
-            </button>
+              <button
+                className="ait-send"
+                onClick={onSend}
+                disabled={!sessionId || uploading || !canSend}
+                type="button"
+              >
+                {sending ? <SpinIcon /> : <SendIcon />}
+                <span>{sending ? "Sending…" : "Send"}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
