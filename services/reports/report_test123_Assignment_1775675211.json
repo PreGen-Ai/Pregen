@@ -1,0 +1,42 @@
+{
+  "student_id": "test123",
+  "assignment_name": "Assignment",
+  "subject": "General",
+  "curriculum": "General",
+  "overall_score": 100.0,
+  "raw_score": 1,
+  "max_score": 1,
+  "graded_questions": [
+    {
+      "id": "q1",
+      "question": "Q?",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct! The answer is A.",
+      "is_correct": true
+    }
+  ],
+  "concept_analytics": [],
+  "question_analysis": [
+    {
+      "id": "q1",
+      "question": "Q?",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "A",
+      "correct_answer": "A",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct! The answer is A.",
+      "is_correct": true
+    }
+  ],
+  "study_plan": [],
+  "summary_recommendations": [
+    "Great job—keep practicing mixed questions to stay sharp."
+  ]
+}

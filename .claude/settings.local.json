@@ -27,7 +27,9 @@
       "Bash(node --max-old-space-size=2048 node_modules/.bin/eslint src/components/Dashboard/pages/TeacherQuiz.jsx src/components/Dashboard/pages/PracticeLab.jsx src/components/Dashboard/pages/AnnouncementsPage.jsx src/services/api/api.js --no-eslintrc -c \"{\"\"parser\"\":\"\"@babel/eslint-parser\"\",\"\"parserOptions\"\":{\"\"requireConfigFile\"\":false,\"\"ecmaVersion\"\":2020,\"\"sourceType\"\":\"\"module\"\",\"\"ecmaFeatures\"\":{\"\"jsx\"\":true}}}\")",
       "Bash(npx --no-install eslint src/components/Dashboard/pages/TeacherQuiz.jsx src/components/Dashboard/pages/PracticeLab.jsx src/components/Dashboard/pages/AnnouncementsPage.jsx)",
       "Bash(python -m py_compile gemini/teacher_tools_service.py endpoints/teacher_tools_endpoints.py gemini/prompts.py models/request_models.py models/response_models.py gemini/quiz_service.py gemini/chat_service.py gemini/grading_service.py regression_check.py)",
-      "Bash(node --check src/controllers/ai.controller.js src/routes/ai.routes.js)"
+      "Bash(node --check src/controllers/ai.controller.js src/routes/ai.routes.js)",
+      "Bash(python -c \"from config import GEMINI_API_KEY, PORT, ENVIRONMENT; print\\(''KEY:'', repr\\(GEMINI_API_KEY[:10]\\) if GEMINI_API_KEY else ''MISSING''\\); print\\(''PORT:'', PORT\\); print\\(''ENV:'', ENVIRONMENT\\)\")",
+      "Bash(curl -s --max-time 10 \"https://pregen-xce4.onrender.com/health\")"
     ]
   }
 }
