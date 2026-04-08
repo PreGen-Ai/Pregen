@@ -112,6 +112,7 @@ class ExplanationService(BaseGeminiClient):
             language=ctx["language"],
             style=ctx["style"],
             previous_knowledge=ctx["previous_knowledge"],
+            course_context_block="",
         )
 
         #  enforce hard character limit in the prompt itself

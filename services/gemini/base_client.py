@@ -80,7 +80,7 @@ class BaseGeminiClient:
         self.model_name = model_name
         self.max_retries = max_retries
         # Different capacity pool used on the final retry attempt when primary is overloaded.
-        self.fallback_model = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-1.5-flash")
+        self.fallback_model = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.0-flash")
 
         # ✅ Always OrderedDict: key -> (ts, value)
         self._cache: "OrderedDict[str, Tuple[float, Any]]" = OrderedDict()

@@ -85,6 +85,43 @@ async function parseResponseBody(response, responseType) {
   return raw;
 }
 
+// How long to wait before retrying a cold-start 502 (Render waking the service).
+const COLD_START_RETRY_DELAY_MS = 35000;
+// Only retry 502s from the upstream (not 4xx or other errors).
+const COLD_START_MAX_RETRIES = 1;
+
+async function _doFetch({ url, method, headers, body, timeoutMs }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      method,
+      headers,
+      body,
+      signal: controller.signal,
+      redirect: "follow",
+    });
+
+    return response;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new AiUpstreamError({
+        message: "AI service timed out",
+        status: 504,
+        cause: error,
+      });
+    }
+    throw new AiUpstreamError({
+      message: "Unable to reach AI service",
+      status: 502,
+      cause: error,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function callAiService({
   path,
   method = "GET",
@@ -94,9 +131,6 @@ export async function callAiService({
   responseType = "json",
   timeoutMs = 45000,
 }) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
   let preparedBody = body;
   const preparedHeaders = { ...headers };
 
@@ -111,55 +145,67 @@ export async function callAiService({
     preparedBody = JSON.stringify(preparedBody);
   }
 
-  try {
-    const response = await fetch(buildAiServiceUrl(path, query), {
-      method,
-      headers: preparedHeaders,
-      body: preparedBody,
-      signal: controller.signal,
-      redirect: "follow",
-    });
+  const url = buildAiServiceUrl(path, query);
 
-    const responseHeaders = Object.fromEntries(response.headers.entries());
-    const data = await parseResponseBody(response, responseType);
-
-    if (!response.ok) {
-      throw new AiUpstreamError({
-        message: extractMessage(
-          data,
-          `AI service request failed with status ${response.status}`,
-        ),
-        status: response.status >= 500 ? 502 : response.status,
-        upstreamStatus: response.status,
-        data,
-        headers: responseHeaders,
+  for (let attempt = 0; attempt <= COLD_START_MAX_RETRIES; attempt++) {
+    try {
+      const response = await _doFetch({
+        url,
+        method,
+        headers: preparedHeaders,
+        body: preparedBody,
+        timeoutMs,
       });
-    }
 
-    return {
-      status: response.status,
-      headers: responseHeaders,
-      data,
-    };
-  } catch (error) {
-    if (error instanceof AiUpstreamError) {
-      throw error;
-    }
+      const responseHeaders = Object.fromEntries(response.headers.entries());
+      const data = await parseResponseBody(response, responseType);
 
-    if (error?.name === "AbortError") {
+      if (!response.ok) {
+        const isColdStart502 =
+          response.status === 502 && attempt < COLD_START_MAX_RETRIES;
+
+        if (isColdStart502) {
+          // Render's proxy returns 502 while the service wakes from sleep.
+          // Wait for the service to finish starting, then retry once.
+          console.warn(
+            `[ai-client] upstream 502 on attempt ${attempt + 1} — service may be starting up, retrying in ${COLD_START_RETRY_DELAY_MS / 1000}s`,
+          );
+          await new Promise((r) => setTimeout(r, COLD_START_RETRY_DELAY_MS));
+          continue;
+        }
+
+        throw new AiUpstreamError({
+          message: extractMessage(
+            data,
+            `AI service request failed with status ${response.status}`,
+          ),
+          status: response.status >= 500 ? 502 : response.status,
+          upstreamStatus: response.status,
+          data,
+          headers: responseHeaders,
+        });
+      }
+
+      return {
+        status: response.status,
+        headers: responseHeaders,
+        data,
+      };
+    } catch (error) {
+      if (error instanceof AiUpstreamError) {
+        throw error;
+      }
       throw new AiUpstreamError({
-        message: "AI service timed out",
-        status: 504,
+        message: "Unable to reach AI service",
+        status: 502,
         cause: error,
       });
     }
-
-    throw new AiUpstreamError({
-      message: "Unable to reach AI service",
-      status: 502,
-      cause: error,
-    });
-  } finally {
-    clearTimeout(timer);
   }
+
+  // Exhausted retries (should not be reached in practice)
+  throw new AiUpstreamError({
+    message: "AI service unavailable after retries",
+    status: 502,
+  });
 }

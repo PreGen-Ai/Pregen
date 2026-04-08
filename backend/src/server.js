@@ -49,6 +49,7 @@ import { adminSystemRouter } from "./routes/adminRoutes.js"; // /api/admin/syste
 
 // Cron jobs
 import "./cron/cleanupCron.js";
+import "./cron/aiServiceKeepalive.js";
 
 // Path setup (ESM)
 const __filename = fileURLToPath(import.meta.url);
