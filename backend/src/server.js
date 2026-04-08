@@ -94,7 +94,9 @@ const allowedOrigins = [
 
 const allowedOriginSet = new Set(allowedOrigins);
 
-console.log(`[startup] corsAllowedOrigins=${Array.from(allowedOriginSet).join(", ")}`);
+console.log(
+  `[startup] corsAllowedOrigins=${Array.from(allowedOriginSet).join(", ")}`,
+);
 
 const corsOptions = {
   origin: (origin, cb) => {
@@ -157,10 +159,14 @@ export const upload = multer({ storage });
 // Allow cross-origin embedding of uploaded assets (images, logos).
 // Helmet sets Cross-Origin-Resource-Policy: same-origin globally; override
 // it here so the Netlify frontend can load images hosted on Render.
-app.use("/uploads", (req, res, next) => {
-  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-  next();
-}, express.static(uploadsDir));
+app.use(
+  "/uploads",
+  (req, res, next) => {
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    next();
+  },
+  express.static(uploadsDir),
+);
 
 /**
  * ---------- Session store (Mongo-backed) ----------

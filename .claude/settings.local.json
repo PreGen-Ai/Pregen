@@ -16,7 +16,10 @@
       "Bash(git checkout:*)",
       "Bash(git merge:*)",
       "Bash(npx react-scripts:*)",
-      "Bash(grep -v \"^$\")"
+      "Bash(grep -v \"^$\")",
+      "Bash(DISABLE_MONGO=true python -c \":*)",
+      "Bash(DISABLE_MONGO=true python regression_check.py)",
+      "Bash(git add:*)"
     ]
   }
 }
