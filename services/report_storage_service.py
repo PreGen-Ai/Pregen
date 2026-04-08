@@ -227,8 +227,14 @@ class ReportStorageService:
         try:
             col = self._safe_collection()
             if col is None:
-                # Mongo disabled: fail safely (or return True if you prefer local-only semantics)
-                return False
+                # Mongo disabled: gracefully skip persistence rather than failing the request.
+                # The caller already has the report_id and data in memory, so the user's
+                # workflow can complete — analytics just won't be persisted this session.
+                logger.warning(
+                    "save_report: Mongo unavailable — skipping persistence for report_id=%s",
+                    report_id,
+                )
+                return True
 
             report_data["report_id"] = report_id
             report_data["created_at"] = report_data.get("created_at", datetime.utcnow())

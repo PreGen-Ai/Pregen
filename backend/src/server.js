@@ -84,6 +84,8 @@ app.use(morgan(IS_PROD ? "combined" : "dev"));
 const allowedOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
+  "http://localhost:3001",    // React dev server alternate port
+  "http://127.0.0.1:3001",
   "https://preprod-pregen.netlify.app",
   "https://pregen.netlify.app",
   CLIENT_URL,

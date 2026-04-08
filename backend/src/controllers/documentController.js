@@ -660,6 +660,8 @@ export const exportPDF = async (req, res) => {
       });
     }
 
+    // API2PDF v2 response: { FileUrl: "https://...", Success: true, ... }
+    // inlinePdf:false → FileUrl is a remote URL; we fetch it and stream back to client.
     const result = await axios.post(
       "https://v2.api2pdf.com/pdf/wkhtmltopdf",
       { html, inlinePdf: false, fileName: filename },
@@ -671,15 +673,25 @@ export const exportPDF = async (req, res) => {
       },
     );
 
-    const pdfBase64 = result.data.pdf;
-    const pdfBuffer = Buffer.from(pdfBase64, "base64");
+    if (!result.data?.Success || !result.data?.FileUrl) {
+      console.error("API2PDF error response:", result.data);
+      return res.status(502).json({
+        success: false,
+        error: result.data?.Error || "PDF generation failed (upstream error)",
+      });
+    }
+
+    // Download the generated PDF from the API2PDF CDN URL
+    const pdfDownload = await axios.get(result.data.FileUrl, {
+      responseType: "arraybuffer",
+    });
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
       `attachment; filename="${filename || "document.pdf"}"`,
     );
-    return res.send(pdfBuffer);
+    return res.send(Buffer.from(pdfDownload.data));
   } catch (error) {
     console.error("PDF Export Error:", error.response?.data || error);
     return res
