@@ -19,6 +19,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import random
 import re
 import time
@@ -78,6 +79,8 @@ class BaseGeminiClient:
         self.client = genai.Client(api_key=api_key)
         self.model_name = model_name
         self.max_retries = max_retries
+        # Different capacity pool used on the final retry attempt when primary is overloaded.
+        self.fallback_model = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-1.5-flash")
 
         # ✅ Always OrderedDict: key -> (ts, value)
         self._cache: "OrderedDict[str, Tuple[float, Any]]" = OrderedDict()
@@ -490,9 +493,21 @@ class BaseGeminiClient:
 
         for attempt in range(self.max_retries):
             try:
+                # On the final attempt, switch to the fallback model if the primary has been
+                # failing or returning empty — it draws from a different capacity pool.
+                effective_model = model
+                if (attempt == self.max_retries - 1
+                        and self.fallback_model
+                        and model != self.fallback_model):
+                    effective_model = self.fallback_model
+                    logger.warning(
+                        f"Primary model {model} failed/degraded — switching to fallback "
+                        f"{effective_model} on final attempt"
+                    )
+
                 def _do_generate():
                     return self.client.models.generate_content(
-                        model=model,
+                        model=effective_model,
                         contents=[safe_prompt],
                         **genai_kwargs,
                     )
