@@ -100,6 +100,9 @@ export default function PracticeLab() {
     y: 100,
   });
   const [enhancedExplanations, setEnhancedExplanations] = useState({});
+  const [studyMode, setStudyMode] = useState("general");
+  const [mistakeExplanations, setMistakeExplanations] = useState({});
+  const [explainMistakeLoading, setExplainMistakeLoading] = useState({});
   const [alertMessage, setAlertMessage] = useState("");
   const [apiHealth, setApiHealth] = useState(null);
   const [courses, setCourses] = useState([]);
@@ -794,6 +797,8 @@ export default function PracticeLab() {
       setStudentAnswers({});
       setGradingResults(null);
       setEnhancedExplanations({});
+      setMistakeExplanations({});
+      setExplainMistakeLoading({});
 
       setAlertMessage(
         newPractice.confidence < 0.7
@@ -842,9 +847,34 @@ export default function PracticeLab() {
     setStudentAnswers({});
     setGradingResults(null);
     setEnhancedExplanations({});
+    setMistakeExplanations({});
+    setExplainMistakeLoading({});
     setTopic("");
     setAlertMessage("🔄 Starting new practice...");
     if (isMobile) setMobileTab("practice");
+  };
+
+  // ---------- Explain Mistake ----------
+  const handleExplainMistake = async (gradedQ, question) => {
+    const qId = question.id;
+    setExplainMistakeLoading((prev) => ({ ...prev, [qId]: true }));
+    try {
+      const result = await api.ai.explainMistake({
+        question_text: question.question,
+        correct_answer: question.correct_answer || question.expected_answer || "",
+        student_answer: studentAnswers[qId] || gradedQ.student_answer || "",
+        question_type: question.type,
+        subject: currentPractice.subject,
+        grade_level: currentPractice.grade_level,
+        explanation: question.explanation || "",
+      });
+      setMistakeExplanations((prev) => ({ ...prev, [qId]: result }));
+    } catch (err) {
+      console.error("Explain mistake failed:", err);
+      setAlertMessage("❌ Could not explain mistake. Please try again.");
+    } finally {
+      setExplainMistakeLoading((prev) => ({ ...prev, [qId]: false }));
+    }
   };
 
   // ---------- File Upload ----------
@@ -1429,6 +1459,20 @@ export default function PracticeLab() {
                           <option value="conceptual">Conceptual</option>
                         </select>
                       </div>
+                      <div className="control-group">
+                        <label>Study Mode</label>
+                        <select
+                          value={studyMode}
+                          onChange={(e) => setStudyMode(e.target.value)}
+                        >
+                          <option value="general">General</option>
+                          <option value="explain_simply">Explain Simply</option>
+                          <option value="explain_deeply">Explain Deeply</option>
+                          <option value="give_example">Give Example</option>
+                          <option value="quiz_me">Quiz Me</option>
+                          <option value="summarize">Summarize</option>
+                        </select>
+                      </div>
                     </div>
 
                     <div className="action-buttons">
@@ -1747,6 +1791,122 @@ export default function PracticeLab() {
                                       {q.feedback}
                                     </p>
                                   )}
+                                  {!q.is_correct && (() => {
+                                    const origQ = currentPractice.questions.find(
+                                      (oq) => oq.id === q.id,
+                                    );
+                                    const exp = mistakeExplanations[q.id];
+                                    const loadingExp = explainMistakeLoading[q.id];
+                                    return (
+                                      <div style={{ marginTop: 8 }}>
+                                        {!exp && (
+                                          <button
+                                            className="btn btn-sm btn-outline-secondary"
+                                            style={{ fontSize: "0.8em" }}
+                                            disabled={loadingExp}
+                                            onClick={() =>
+                                              handleExplainMistake(q, origQ)
+                                            }
+                                          >
+                                            {loadingExp
+                                              ? "Explaining…"
+                                              : "Explain My Mistake"}
+                                          </button>
+                                        )}
+                                        {exp && (
+                                          <div
+                                            className="card-inner"
+                                            style={{
+                                              marginTop: 8,
+                                              borderLeft:
+                                                "3px solid var(--accent-cyan,#06B6D4)",
+                                              paddingLeft: 10,
+                                            }}
+                                          >
+                                            <div
+                                              style={{
+                                                display: "flex",
+                                                justifyContent: "space-between",
+                                                alignItems: "center",
+                                                marginBottom: 4,
+                                              }}
+                                            >
+                                              <strong
+                                                style={{ fontSize: "0.85em" }}
+                                              >
+                                                Mistake Explained
+                                              </strong>
+                                              <button
+                                                className="btn btn-sm"
+                                                style={{
+                                                  fontSize: "0.7em",
+                                                  padding: "1px 6px",
+                                                }}
+                                                onClick={() =>
+                                                  setMistakeExplanations(
+                                                    (prev) => {
+                                                      const next = {
+                                                        ...prev,
+                                                      };
+                                                      delete next[q.id];
+                                                      return next;
+                                                    },
+                                                  )
+                                                }
+                                              >
+                                                ✕
+                                              </button>
+                                            </div>
+                                            {exp.what_was_wrong && (
+                                              <p
+                                                style={{
+                                                  fontSize: "0.82em",
+                                                  marginBottom: 4,
+                                                }}
+                                              >
+                                                <strong>What was wrong:</strong>{" "}
+                                                {exp.what_was_wrong}
+                                              </p>
+                                            )}
+                                            {exp.why_it_was_wrong && (
+                                              <p
+                                                style={{
+                                                  fontSize: "0.82em",
+                                                  marginBottom: 4,
+                                                }}
+                                              >
+                                                <strong>Why it was wrong:</strong>{" "}
+                                                {exp.why_it_was_wrong}
+                                              </p>
+                                            )}
+                                            {exp.how_to_fix && (
+                                              <p
+                                                style={{
+                                                  fontSize: "0.82em",
+                                                  marginBottom: 4,
+                                                }}
+                                              >
+                                                <strong>How to fix:</strong>{" "}
+                                                {exp.how_to_fix}
+                                              </p>
+                                            )}
+                                            {exp.practice_question && (
+                                              <p
+                                                style={{
+                                                  fontSize: "0.82em",
+                                                  marginBottom: 0,
+                                                  fontStyle: "italic",
+                                                }}
+                                              >
+                                                <strong>Try this:</strong>{" "}
+                                                {exp.practice_question}
+                                              </p>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               ),
                             )}

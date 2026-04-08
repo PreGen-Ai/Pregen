@@ -27,6 +27,7 @@ from endpoints.grading_endpoints import router as grading_router
 from endpoints.report_endpoints import router as report_router
 from endpoints.assignment_endpoints import router as assignment_router
 from endpoints.explanation_endpoints import router as explanation_router
+from endpoints.teacher_tools_endpoints import router as teacher_tools_router  # Commit 20
 
 # ------------------------------------------------------------------------------
 # Logging
@@ -101,6 +102,7 @@ app.include_router(grading_router)
 app.include_router(report_router)
 app.include_router(assignment_router)
 app.include_router(explanation_router)
+app.include_router(teacher_tools_router)  # Commit 20: teacher copilot tools
 
 # ------------------------------------------------------------------------------
 # Root Endpoint

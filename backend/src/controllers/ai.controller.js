@@ -830,3 +830,134 @@ export async function downloadLegacyReportPdf(req, res) {
 export async function downloadLegacyReportJson(req, res) {
   return downloadReportJson(req, res);
 }
+
+// ============================================================
+// COMMIT 20 — TEACHER TOOLS
+// All teacher-tool endpoints require TEACHER, ADMIN, or SUPERADMIN.
+// explain-mistake is also available to students.
+// ============================================================
+
+const TEACHER_ROLES = new Set(["TEACHER", "ADMIN", "SUPERADMIN"]);
+const STUDENT_PLUS_ROLES = new Set(["STUDENT", "TEACHER", "ADMIN", "SUPERADMIN"]);
+
+export async function rewriteQuestion(req, res) {
+  return respondWithJsonProxy(req, res, {
+    feature: "teacher-rewrite-question",
+    endpoint: "POST /api/ai/teacher/rewrite-question",
+    path: "/api/teacher/rewrite-question",
+    allowedRoles: TEACHER_ROLES,
+    buildPayload: (request) => {
+      const body = request.body || {};
+      return {
+        question_text: ensureString(body.question_text, "question_text", { max: 2000 }),
+        action: ensureString(body.action, "action"),
+        subject: body.subject ? String(body.subject) : "General",
+        grade_level: body.grade_level ? String(body.grade_level) : "High School",
+        language: body.language ? String(body.language) : "English",
+        options: Array.isArray(body.options) ? body.options.slice(0, 4).map(String) : [],
+        correct_answer: body.correct_answer ? String(body.correct_answer) : "",
+      };
+    },
+  });
+}
+
+export async function generateDistractors(req, res) {
+  return respondWithJsonProxy(req, res, {
+    feature: "teacher-distractors",
+    endpoint: "POST /api/ai/teacher/distractors",
+    path: "/api/teacher/distractors",
+    allowedRoles: TEACHER_ROLES,
+    buildPayload: (request) => {
+      const body = request.body || {};
+      return {
+        question_text: ensureString(body.question_text, "question_text", { max: 2000 }),
+        correct_answer: ensureString(body.correct_answer, "correct_answer"),
+        subject: body.subject ? String(body.subject) : "General",
+        grade_level: body.grade_level ? String(body.grade_level) : "High School",
+        existing_distractors: Array.isArray(body.existing_distractors)
+          ? body.existing_distractors.slice(0, 4).map(String)
+          : [],
+      };
+    },
+  });
+}
+
+export async function draftFeedback(req, res) {
+  return respondWithJsonProxy(req, res, {
+    feature: "teacher-draft-feedback",
+    endpoint: "POST /api/ai/teacher/draft-feedback",
+    path: "/api/teacher/draft-feedback",
+    allowedRoles: TEACHER_ROLES,
+    buildPayload: (request) => {
+      const body = request.body || {};
+      return {
+        question_text: ensureString(body.question_text, "question_text", { max: 2000 }),
+        student_answer: ensureString(body.student_answer, "student_answer", { max: 10000 }),
+        rubric: body.rubric ? String(body.rubric) : "",
+        score: body.score !== undefined ? Number(body.score) : 0,
+        max_score: body.max_score !== undefined ? Number(body.max_score) : 10,
+        subject: body.subject ? String(body.subject) : "General",
+        grade_level: body.grade_level ? String(body.grade_level) : "High School",
+        assignment_name: body.assignment_name ? String(body.assignment_name) : "Assignment",
+      };
+    },
+  });
+}
+
+export async function draftAnnouncement(req, res) {
+  return respondWithJsonProxy(req, res, {
+    feature: "teacher-announcement-draft",
+    endpoint: "POST /api/ai/teacher/announcement-draft",
+    path: "/api/teacher/announcement-draft",
+    allowedRoles: TEACHER_ROLES,
+    buildPayload: (request) => {
+      const body = request.body || {};
+      return {
+        action: ensureString(body.action, "action"),
+        context: body.context ? String(body.context).slice(0, 800) : "",
+        current_text: body.current_text ? String(body.current_text).slice(0, 800) : "",
+        language: body.language ? String(body.language) : "English",
+      };
+    },
+  });
+}
+
+export async function lessonSummary(req, res) {
+  return respondWithJsonProxy(req, res, {
+    feature: "teacher-lesson-summary",
+    endpoint: "POST /api/ai/teacher/lesson-summary",
+    path: "/api/teacher/lesson-summary",
+    allowedRoles: TEACHER_ROLES,
+    buildPayload: (request) => {
+      const body = request.body || {};
+      return {
+        lesson_text: ensureString(body.lesson_text, "lesson_text", { max: 8000 }),
+        output_type: body.output_type ? String(body.output_type) : "summary",
+        subject: body.subject ? String(body.subject) : "General",
+        grade_level: body.grade_level ? String(body.grade_level) : "High School",
+        language: body.language ? String(body.language) : "English",
+      };
+    },
+  });
+}
+
+export async function explainMistake(req, res) {
+  return respondWithJsonProxy(req, res, {
+    feature: "student-explain-mistake",
+    endpoint: "POST /api/ai/teacher/explain-mistake",
+    path: "/api/teacher/explain-mistake",
+    allowedRoles: STUDENT_PLUS_ROLES,
+    buildPayload: (request) => {
+      const body = request.body || {};
+      return {
+        question_text: ensureString(body.question_text, "question_text", { max: 2000 }),
+        correct_answer: ensureString(body.correct_answer, "correct_answer", { required: false, max: 2000 }),
+        student_answer: ensureString(body.student_answer, "student_answer", { required: false, max: 5000 }),
+        question_type: body.question_type ? String(body.question_type) : "multiple_choice",
+        subject: body.subject ? String(body.subject) : "General",
+        grade_level: body.grade_level ? String(body.grade_level) : "High School",
+        explanation: body.explanation ? String(body.explanation).slice(0, 500) : "",
+      };
+    },
+  });
+}

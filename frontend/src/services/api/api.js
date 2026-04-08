@@ -708,6 +708,33 @@ export const api = {
       safe(apiClient.post("/api/ai/sentiment", { messages })),
     detectAnomalies: (activityData) =>
       safe(apiClient.post("/api/ai/detect-anomalies", activityData)),
+
+    // -------------------------------------------------------
+    // Commit 20: Teacher copilot tools
+    // -------------------------------------------------------
+    /** Rewrite a question: easier|harder|more_conceptual|more_applied|arabic|english */
+    rewriteQuestion: (payload, config) =>
+      safe(apiClient.post("/api/ai/teacher/rewrite-question", payload, config)),
+
+    /** Generate 3 MCQ distractors for a question */
+    generateDistractors: (payload, config) =>
+      safe(apiClient.post("/api/ai/teacher/distractors", payload, config)),
+
+    /** Draft teacher feedback for a student submission (teacher reviews before sending) */
+    draftFeedback: (payload, config) =>
+      safe(apiClient.post("/api/ai/teacher/draft-feedback", payload, config)),
+
+    /** Draft or rewrite an announcement: draft_from_context|rewrite_tone|simplify|shorten|translate */
+    draftAnnouncement: (payload, config) =>
+      safe(apiClient.post("/api/ai/teacher/announcement-draft", payload, config)),
+
+    /** Transform lesson text: summary|flashcards|key_concepts|revision_sheet|glossary|homework_draft */
+    lessonSummary: (payload, config) =>
+      safe(apiClient.post("/api/ai/teacher/lesson-summary", payload, config)),
+
+    /** Explain a student's mistake after quiz/assignment. Available to students too. */
+    explainMistake: (payload, config) =>
+      safe(apiClient.post("/api/ai/teacher/explain-mistake", payload, config)),
   },
 
   // =======================================================

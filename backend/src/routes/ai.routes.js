@@ -28,6 +28,13 @@ import {
   getReportDashboard,
   downloadLegacyReportPdf,
   downloadLegacyReportJson,
+  // Commit 20: teacher copilot tools
+  rewriteQuestion,
+  generateDistractors,
+  draftFeedback,
+  draftAnnouncement,
+  lessonSummary,
+  explainMistake,
 } from "../controllers/ai.controller.js";
 import { requireAuth, requireRole } from "../middleware/authMiddleware.js";
 
@@ -92,5 +99,17 @@ router.get("/reports/dashboard/:userIdentifier", getReportDashboard);
 
 router.get("/download-report/:reportId", downloadLegacyReportPdf);
 router.get("/report/:reportId", downloadLegacyReportJson);
+
+// ----------------------------------------------------------------
+// Commit 20: Teacher copilot tools
+// teacher/* routes require TEACHER, ADMIN, or SUPERADMIN (enforced in controller)
+// explain-mistake is also available to STUDENT
+// ----------------------------------------------------------------
+router.post("/teacher/rewrite-question", rewriteQuestion);
+router.post("/teacher/distractors", generateDistractors);
+router.post("/teacher/draft-feedback", draftFeedback);
+router.post("/teacher/announcement-draft", draftAnnouncement);
+router.post("/teacher/lesson-summary", lessonSummary);
+router.post("/teacher/explain-mistake", explainMistake);
 
 export default router;

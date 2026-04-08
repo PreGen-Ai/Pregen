@@ -179,7 +179,10 @@ export default function TeacherQuiz() {
     questionType: "multiple_choice",
     difficulty: "medium",
     numQuestions: 5,
+    bloomLevel: "understand",    // Commit 20: Bloom taxonomy level
+    courseContext: "",           // Commit 20: lesson/module text for grounding
   });
+  const [rewritingIndex, setRewritingIndex] = useState(null); // which question is being rewritten
   const [generating, setGenerating] = useState(false);
   const [assignMode, setAssignMode] = useState("course"); // "course" | "class" | "students"
   const [warming, setWarming] = useState(false);
@@ -474,6 +477,8 @@ export default function TeacherQuiz() {
         question_type: aiConfig.questionType,
         difficulty: aiConfig.difficulty,
         curriculum: aiConfig.curriculum,
+        bloom_level: aiConfig.bloomLevel || "understand",      // Commit 20
+        course_context: aiConfig.courseContext.trim() || "",   // Commit 20
         exam_focus: "practice",
       });
 
@@ -529,6 +534,42 @@ export default function TeacherQuiz() {
     }));
     setAiPreview(null);
     toast.success("Questions inserted into form");
+  };
+
+  // Commit 20: rewrite a single question in the form
+  const rewriteQuestion = async (index, action) => {
+    const q = form.questions[index];
+    if (!q?.questionText?.trim()) {
+      toast.error("Question text is empty");
+      return;
+    }
+    setRewritingIndex(index);
+    try {
+      const result = await api.ai.rewriteQuestion({
+        question_text: q.questionText,
+        action,
+        subject: form.subject || aiConfig.subject || "General",
+        grade_level: form.gradeLevel || aiConfig.gradeLevel || "High School",
+        language: action === "arabic" ? "Arabic" : "English",
+        options: q.options?.length ? q.options : [],
+        correct_answer: q.correctAnswer || "",
+      });
+      if (!result?.rewritten_question) {
+        toast.error("Rewrite failed — no result returned");
+        return;
+      }
+      updateQuestion(index, {
+        questionText: result.rewritten_question,
+        ...(result.options?.length ? { options: result.options } : {}),
+        ...(result.correct_answer ? { correctAnswer: result.correct_answer } : {}),
+        explanation: result.explanation || q.explanation,
+      });
+      toast.success(`Question rewritten: ${action.replace(/_/g, " ")}`);
+    } catch (error) {
+      toast.error(error?.message || "Failed to rewrite question");
+    } finally {
+      setRewritingIndex(null);
+    }
   };
 
   const loadResults = async (quizId) => {
@@ -637,6 +678,36 @@ export default function TeacherQuiz() {
                 <input className="form-control" placeholder="e.g. 10" value={aiConfig.gradeLevel}
                   onChange={e => setAiConfig(p => ({ ...p, gradeLevel: e.target.value }))} />
               </div>
+              <div className="col-8">
+                <label className="form-label fw-semibold">Bloom level</label>
+                <select className="form-select" value={aiConfig.bloomLevel} onChange={e => setAiConfig(p => ({ ...p, bloomLevel: e.target.value }))}>
+                  <option value="remember">Remember — recall facts</option>
+                  <option value="understand">Understand — explain concepts</option>
+                  <option value="apply">Apply — use in new context</option>
+                  <option value="analyze">Analyze — break down</option>
+                  <option value="evaluate">Evaluate — judge / argue</option>
+                  <option value="create">Create — produce / design</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mb-3">
+              <label className="form-label fw-semibold">
+                Course material context <span className="text-muted fw-normal">(optional — paste lesson notes to ground questions)</span>
+              </label>
+              <textarea
+                className="form-control"
+                rows={3}
+                placeholder="Paste relevant lesson text here to generate questions grounded in your course content…"
+                value={aiConfig.courseContext}
+                onChange={e => setAiConfig(p => ({ ...p, courseContext: e.target.value }))}
+                style={{ fontSize: "0.875rem" }}
+              />
+              {aiConfig.courseContext.trim() && (
+                <small className="text-success">
+                  ✓ Questions will be grounded in your course content
+                </small>
+              )}
             </div>
 
             <button
@@ -873,6 +944,34 @@ export default function TeacherQuiz() {
                         <option value="true">True</option>
                         <option value="false">False</option>
                       </select>
+                    </div>
+                  )}
+
+                  {/* Commit 20: Rewrite question actions */}
+                  {question.questionText?.trim() && (
+                    <div className="mt-2 pt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                      <small className="text-muted d-block mb-1">Rewrite with AI:</small>
+                      <div className="d-flex flex-wrap gap-1">
+                        {[
+                          { action: "easier", label: "Easier" },
+                          { action: "harder", label: "Harder" },
+                          { action: "more_conceptual", label: "Conceptual" },
+                          { action: "more_applied", label: "Applied" },
+                          { action: "arabic", label: "Arabic" },
+                          { action: "english", label: "English" },
+                        ].map(({ action, label }) => (
+                          <button
+                            key={action}
+                            type="button"
+                            className="btn btn-outline-secondary"
+                            style={{ fontSize: "0.7rem", padding: "2px 8px" }}
+                            disabled={rewritingIndex === index}
+                            onClick={() => rewriteQuestion(index, action)}
+                          >
+                            {rewritingIndex === index ? "…" : label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

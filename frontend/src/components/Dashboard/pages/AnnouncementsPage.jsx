@@ -63,6 +63,14 @@ export default function AnnouncementsPage() {
   const [classrooms, setClassrooms] = useState([]);
   const [form, setForm] = useState(() => createEmptyForm(canCreateTenantScope));
 
+  // AI Writing Assistant state
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [aiAction, setAiAction] = useState("draft");
+  const [aiContext, setAiContext] = useState("");
+  const [aiLanguage, setAiLanguage] = useState("English");
+  const [aiDraftLoading, setAiDraftLoading] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState("");
+
   // Superadmin: tenant selector
   const [tenants, setTenants] = useState([]);
   const [selectedTenantId, setSelectedTenantId] = useState("");
@@ -219,6 +227,32 @@ export default function AnnouncementsPage() {
       toast.error(error?.message || "Failed to delete announcement");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleAiDraft = async () => {
+    if (aiAction === "draft" && !aiContext.trim()) {
+      toast.error("Enter a context describing what to announce");
+      return;
+    }
+    if ((aiAction === "rewrite" || aiAction === "simplify" || aiAction === "translate") && !form.message.trim()) {
+      toast.error("Write a message first before using rewrite/simplify/translate");
+      return;
+    }
+    setAiDraftLoading(true);
+    setAiSuggestion("");
+    try {
+      const result = await api.ai.draftAnnouncement({
+        action: aiAction,
+        context: aiContext || `Category: ${form.category}. Title: ${form.title}`,
+        current_text: form.message,
+        language: aiLanguage,
+      });
+      setAiSuggestion(result.draft || result.text || result.announcement || "");
+    } catch (err) {
+      toast.error("AI draft failed. Please try again.");
+    } finally {
+      setAiDraftLoading(false);
     }
   };
 
@@ -385,6 +419,112 @@ export default function AnnouncementsPage() {
               />
             </div>
           </div>
+          {/* AI Writing Assistant */}
+          <div className="mt-3 border rounded p-3" style={{ borderColor: "var(--border-muted, #2a3345)" }}>
+            <div className="d-flex align-items-center gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                onClick={() => { setAiPanelOpen((o) => !o); setAiSuggestion(""); }}
+              >
+                {aiPanelOpen ? "Hide AI Assistant" : "AI Writing Assistant"}
+              </button>
+              {aiPanelOpen && (
+                <small className="text-muted">Draft, rewrite, simplify, or translate your message with AI</small>
+              )}
+            </div>
+            {aiPanelOpen && (
+              <div className="mt-3 row g-2">
+                <div className="col-md-3">
+                  <select
+                    className="form-select form-select-sm"
+                    value={aiAction}
+                    onChange={(e) => { setAiAction(e.target.value); setAiSuggestion(""); }}
+                  >
+                    <option value="draft">Draft from context</option>
+                    <option value="rewrite">Rewrite</option>
+                    <option value="simplify">Simplify</option>
+                    <option value="translate">Translate</option>
+                  </select>
+                </div>
+                {aiAction === "translate" && (
+                  <div className="col-md-3">
+                    <select
+                      className="form-select form-select-sm"
+                      value={aiLanguage}
+                      onChange={(e) => setAiLanguage(e.target.value)}
+                    >
+                      <option value="English">English</option>
+                      <option value="Arabic">Arabic</option>
+                      <option value="French">French</option>
+                      <option value="Spanish">Spanish</option>
+                    </select>
+                  </div>
+                )}
+                {aiAction === "draft" && (
+                  <div className="col-12">
+                    <textarea
+                      className="form-control form-control-sm"
+                      rows={2}
+                      placeholder="Describe what you want to announce (e.g., exam on Thursday covering chapters 3–5)"
+                      value={aiContext}
+                      onChange={(e) => setAiContext(e.target.value)}
+                    />
+                  </div>
+                )}
+                <div className="col-auto">
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={handleAiDraft}
+                    disabled={aiDraftLoading}
+                  >
+                    {aiDraftLoading ? "Generating…" : "Generate Draft"}
+                  </button>
+                </div>
+                {aiSuggestion && (
+                  <div className="col-12">
+                    <div
+                      className="p-2 rounded"
+                      style={{
+                        border: "1px solid var(--accent-cyan, #06B6D4)",
+                        fontSize: "0.875em",
+                      }}
+                    >
+                      <p className="mb-2" style={{ whiteSpace: "pre-wrap" }}>
+                        {aiSuggestion}
+                      </p>
+                      <div className="d-flex gap-2">
+                        <button
+                          className="btn btn-sm btn-outline-primary"
+                          onClick={() => {
+                            setForm((f) => ({ ...f, message: aiSuggestion }));
+                            setAiPanelOpen(false);
+                            setAiSuggestion("");
+                          }}
+                        >
+                          Use this
+                        </button>
+                        <button
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={() => setAiSuggestion("")}
+                        >
+                          Discard
+                        </button>
+                        <button
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={handleAiDraft}
+                          disabled={aiDraftLoading}
+                        >
+                          Regenerate
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="mt-3">
             <button
               className="btn btn-primary"

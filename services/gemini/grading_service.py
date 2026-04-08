@@ -200,10 +200,23 @@ class GradingService(BaseGeminiClient):
         # Decide correctness
         is_correct = bool(student_letter and correct_letter and student_letter == correct_letter)
 
+        # Commit 20: enrich feedback with explanation from question data
+        explanation = _normalize_ws(str(q.get("explanation") or "")).strip()
+        if is_correct:
+            feedback = f"Correct! The answer is {correct_letter}."
+            if explanation:
+                feedback += f" {explanation}"
+        else:
+            chosen = student_letter or student[:40] or "no answer"
+            feedback = f"Incorrect. You chose {chosen}; the correct answer is {correct_letter}."
+            if explanation:
+                feedback += f" {explanation}"
+
         return {
             "score": 1 if is_correct else 0,
             "max_score": 1,
-            "feedback": "Correct!" if is_correct else "Incorrect.",
+            "feedback": feedback,
+            "correct_letter": correct_letter,
         }
 
     # ==========================================================
@@ -224,10 +237,23 @@ class GradingService(BaseGeminiClient):
 
         is_correct = (norm_tf(correct) == norm_tf(student))
 
+        # Commit 20: include explanation in feedback
+        explanation = _normalize_ws(str(q.get("explanation") or "")).strip()
+        correct_display = correct_raw.strip().capitalize() if _normalize_ws(str(correct_raw)).strip() else "True"
+        if is_correct:
+            feedback = f"Correct! The statement is {correct_display}."
+            if explanation:
+                feedback += f" {explanation}"
+        else:
+            student_display = student_answer.strip().capitalize() if student_answer.strip() else "no answer"
+            feedback = f"Incorrect. You answered {student_display}; the correct answer is {correct_display}."
+            if explanation:
+                feedback += f" {explanation}"
+
         return {
             "score": 1 if is_correct else 0,
             "max_score": 1,
-            "feedback": "Correct!" if is_correct else "Incorrect.",
+            "feedback": feedback,
         }
 
     # ==========================================================
@@ -288,10 +314,23 @@ class GradingService(BaseGeminiClient):
             if len(student_text.split()) >= 25 and score < max_score:
                 score = min(max_score, score + 1)
 
+            # Commit 20: more informative feedback
+            if score == max_score:
+                feedback = f"Excellent — all {len(facts)} key points addressed."
+            elif hit >= len(facts) * 0.7:
+                missed = len(facts) - hit
+                feedback = f"Good answer. {hit}/{len(facts)} key points addressed. {missed} point(s) need more detail."
+            elif hit > 0:
+                feedback = f"Partial answer. {hit}/{len(facts)} key points addressed. Review the solution steps and expand your explanation."
+            else:
+                feedback = "Key points not clearly addressed. Review the expected answer and rewrite with specific steps."
+
             return {
                 "score": score,
                 "max_score": max_score,
-                "feedback": f"Covered {hit}/{len(facts)} key points.",
+                "feedback": feedback,
+                "key_points_hit": hit,
+                "key_points_total": len(facts),
             }
 
         # If no facts at all: do a reasonable fallback

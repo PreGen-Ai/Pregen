@@ -353,6 +353,15 @@ class ChatService(BaseGeminiClient):
         subject = _safe_str(getattr(data, "subject", "")) or "General"
         curriculum = _normalize_curriculum(_safe_str(getattr(data, "curriculum", "")))
 
+        # Commit 20: study mode support
+        _valid_study_modes = {
+            "explain_simply", "explain_deeply", "give_example",
+            "quiz_me", "summarize", "general",
+        }
+        study_mode = _safe_str(getattr(data, "study_mode", "")) or "general"
+        if study_mode not in _valid_study_modes:
+            study_mode = "general"
+
         original_message = _cap(_safe_str(getattr(data, "message", "")) or "No message provided.", 2500)
 
         # math-safe reduction
@@ -407,42 +416,34 @@ class ChatService(BaseGeminiClient):
             except RuntimeError:
                 pass
 
-        # Prompt building: prefer builder if available, otherwise fallback to format
+        # Prompt building via TUTOR_PROMPT (Commit 20: includes study_mode + grounding fallback)
         prompt = ""
-        if hasattr(Prompts, "build_tutor_prompt") and callable(getattr(Prompts, "build_tutor_prompt")):
-            prompt = Prompts.build_tutor_prompt(
-                language=language,
-                tone=tone,
-                curriculum=curriculum or "Unknown",
-                subject=subject,
-                message=reduced_message,
-                max_words=max_words,
-                curriculum_guidelines=guidelines_out,
-                context=context_out,
-                material=material_out,
-            )
-        elif hasattr(Prompts, "TUTOR_PROMPT"):
+        if hasattr(Prompts, "TUTOR_PROMPT"):
             prompt = Prompts.TUTOR_PROMPT.format(
                 tone=tone,
                 language=language,
                 curriculum=curriculum or "Unknown",
                 subject=subject,
+                study_mode=study_mode,
                 curriculum_guidelines=guidelines_out or "None",
-                context=context_out or "No context",
-                material=material_out or "None",
+                context=context_out or "No prior context",
+                material=material_out or "No course material uploaded for this session.",
                 message=reduced_message,
                 max_words=max_words,
             )
         else:
-            # last-resort minimal prompt
+            # fallback if TUTOR_PROMPT not available
             prompt = (
                 f"You are a tutor. Reply in {language} with a {tone} tone.\n"
                 f"Curriculum: {curriculum or 'Unknown'} | Subject: {subject}\n"
+                f"Study mode: {study_mode}\n"
                 f"Guidelines:\n{guidelines_out}\n\n"
                 f"Context:\n{context_out}\n\n"
                 f"Material:\n{material_out}\n\n"
                 f"Student message:\n{reduced_message}\n\n"
-                f"Constraints: <= {max_words} words."
+                f"Constraints: <= {max_words} words. "
+                f"If material is provided, base answers on it. "
+                f"If not found in material, say so before giving general answer."
             )
 
         result = await self._call_gemini_with_retry(

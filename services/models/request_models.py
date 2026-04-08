@@ -74,6 +74,7 @@ class QuizRequest(BaseModel):
     """
     Request model for quiz generation.
     Fields are intentionally permissive; `.normalized()` ensures backend-safe values.
+    Commit 20: added bloom_level and course_context for grounded generation.
     """
     topic: str = Field(..., description="Topic of the quiz")
     num_questions: conint(gt=0, le=50) = 5
@@ -82,14 +83,18 @@ class QuizRequest(BaseModel):
     grade_level: Optional[str] = "High School"
     language: Optional[str] = "English"
     curriculum: Optional[str] = None   # allow empty (frontend may omit)
+    bloom_level: Optional[str] = "understand"  # remember|understand|apply|analyze|evaluate|create
+    course_context: Optional[str] = None       # lesson/module text for grounded generation
+    subject: Optional[str] = None
 
     def normalized(self) -> dict:
         """Return fully normalized structure for QuizService."""
-        # Defensive trimming and defaults
         topic = (self.topic or "").strip()
         grade_level = (self.grade_level or "High School").strip()
         language = (self.language or "English").strip()
         curriculum = (self.curriculum or "").strip()
+        bloom = (self.bloom_level or "understand").strip().lower()
+        course_ctx = (self.course_context or "").strip()
 
         return {
             "topic": topic,
@@ -99,6 +104,9 @@ class QuizRequest(BaseModel):
             "grade_level": grade_level,
             "language": language,
             "curriculum": curriculum,
+            "bloom_level": bloom,
+            "course_context": course_ctx,
+            **({"subject": self.subject.strip()} if self.subject else {}),
         }
 
 
@@ -111,15 +119,15 @@ class AssignmentRequest(BaseModel):
     subject: Optional[str] = "General"
     num_questions: conint(gt=0, le=30) = 5
     language: Optional[str] = "English"
-    # ✅ ADD THESE NEW REQUIRED FIELDS:
     question_type: Optional[str] = "mixed"
     difficulty: Optional[str] = "medium"
     assignment_type: Optional[str] = "homework"
-    curriculum: Optional[str] = "American"  # Required by assignment service
+    curriculum: Optional[str] = "American"
     instructions: Optional[str] = None
     learning_objectives: Optional[List[str]] = None
     total_points: Optional[int] = Field(default=100, ge=1, le=1000)
     estimated_time: Optional[str] = None
+    course_context: Optional[str] = None  # Commit 20: lesson text for grounded generation
 
     def normalized(self) -> dict:
         """Normalized structure to match AssignmentService inputs."""
@@ -129,15 +137,15 @@ class AssignmentRequest(BaseModel):
             "subject": (self.subject or "General").strip(),
             "num_questions": int(self.num_questions),
             "language": (self.language or "English").strip(),
-            # ✅ ADD THESE TO MATCH ASSIGNMENT SERVICE EXPECTATIONS:
             "question_type": (self.question_type or "mixed").strip(),
             "difficulty": (self.difficulty or "medium").strip(),
             "assignment_type": (self.assignment_type or "homework").strip(),
-            "curriculum": (self.curriculum or "American").strip(),  # Critical field!
+            "curriculum": (self.curriculum or "American").strip(),
             "instructions": (self.instructions or "").strip(),
             "learning_objectives": self.learning_objectives or [],
             "total_points": int(self.total_points or 100),
             "estimated_time": (self.estimated_time or "").strip(),
+            "course_context": (self.course_context or "").strip(),
         }
 # ==========================================================
 # CHAT REQUEST MODEL
@@ -148,6 +156,9 @@ class ChatRequest(BaseModel):
     subject: Optional[str] = "General"
     tone: Optional[Tone] = Tone.supportive
     language: Optional[str] = "English"
+    curriculum: Optional[str] = "General"
+    # Commit 20: study mode — explain_simply|explain_deeply|give_example|quiz_me|summarize|general
+    study_mode: Optional[str] = "general"
     user_profile: Optional[Dict[str, Any]] = Field(
         default=None, description="Optional personalization info (age, grade, etc.)"
     )
@@ -159,6 +170,8 @@ class ChatRequest(BaseModel):
             "subject": (self.subject or "General").strip(),
             "tone": (self.tone or Tone.supportive).value if isinstance(self.tone, Tone) else str(self.tone),
             "language": (self.language or "English").strip(),
+            "curriculum": (self.curriculum or "General").strip(),
+            "study_mode": (self.study_mode or "general").strip(),
             "user_profile": self.user_profile or {},
         }
 

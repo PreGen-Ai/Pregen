@@ -145,6 +145,8 @@ class QuizResponse(BaseModel):
     difficulty: str
     grade_level: str
     confidence: float = 1.0
+    bloom_level: Optional[str] = "understand"
+    grounded: bool = False  # True when course_context was supplied
 
     total_mcq: Optional[int] = None
     total_essay: Optional[int] = None

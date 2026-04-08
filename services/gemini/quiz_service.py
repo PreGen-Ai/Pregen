@@ -283,6 +283,17 @@ class QuizService(BaseGeminiClient):
         language = _safe_strip(_get(data, "language", "English")) or "English"
         subject = _safe_strip(_get(data, "subject", topic)).title() if _safe_strip(_get(data, "subject", "")) else (topic.title() if topic else "")
 
+        # Commit 20: Bloom taxonomy level and course-material grounding
+        bloom_level = _safe_strip(_get(data, "bloom_level", "")).lower()
+        _valid_bloom = {"remember", "understand", "apply", "analyze", "evaluate", "create"}
+        if bloom_level not in _valid_bloom:
+            bloom_level = "understand"
+
+        course_context = _safe_strip(_get(data, "course_context", ""))
+        # Cap at 2000 chars to avoid massive token waste
+        if len(course_context) > 2000:
+            course_context = course_context[:2000].rstrip() + "..."
+
         curriculum = _resolve_curriculum(curriculum_in)
 
         logger.info(f"Available curricula: {list(CURRICULUM_GUIDELINES.keys())}")
@@ -334,6 +345,11 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
     - explanation: string
 """
 
+        course_context_block = (
+            f"Course material context (base your questions on this content where possible):\n{course_context}"
+            if course_context else ""
+        )
+
         base_prompt = Prompts.QUIZ_PROMPT.format(
             num_questions=num_questions,
             question_type=requested_type,
@@ -344,6 +360,8 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
             subject=subject,
             subject_directive=subject_directive,
             difficulty=difficulty,
+            bloom_level=bloom_level,
+            course_context_block=course_context_block,
             curriculum_guidelines=curriculum_guidelines_short,
         ).strip()
 
@@ -442,6 +460,8 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
                 subject=subject,
                 difficulty=difficulty,
                 grade_level=grade_level,
+                bloom_level=bloom_level,
+                grounded=bool(course_context),
                 confidence=1.0,
             )
 

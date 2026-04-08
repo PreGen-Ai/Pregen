@@ -145,6 +145,11 @@ class AssignmentService(BaseGeminiClient):
         instructions = _safe_strip(_get(data, "instructions"))
         learning_objectives = _get(data, "learning_objectives") or []
 
+        # Commit 20: course_context for grounded generation
+        course_context = _safe_strip(_get(data, "course_context", ""))
+        if len(course_context) > 2000:
+            course_context = course_context[:2000].rstrip() + "..."
+
         curriculum = _safe_strip(_get(data, "curriculum", ""))
         if not curriculum or curriculum not in CURRICULUM_GUIDELINES:
             curriculum = self._infer_curriculum(grade_level, curriculum)
@@ -171,6 +176,7 @@ class AssignmentService(BaseGeminiClient):
             difficulty=difficulty,
             total_points=total_points,
             estimated_time=estimated_time,
+            course_context=course_context,
         )
 
         # -------------------------------------
@@ -269,6 +275,24 @@ class AssignmentService(BaseGeminiClient):
     # STRICT JSON PROMPT
     # ---------------------------------------------------------
     def _build_strict_prompt(self, **kw):
+        # Format learning objectives as a numbered list if provided
+        raw_objectives = kw.get("learning_objectives") or []
+        if isinstance(raw_objectives, list) and raw_objectives:
+            objectives_block = "Learning objectives (align questions to these):\n" + "\n".join(
+                f"  {i+1}. {obj}" for i, obj in enumerate(raw_objectives) if _safe_strip(obj)
+            )
+        else:
+            objectives_block = ""
+
+        # Course context for grounded generation
+        course_ctx = _safe_strip(kw.get("course_context", ""))
+        course_context_block = (
+            f"\nCourse material context (base questions on this content where possible):\n{course_ctx}\n"
+            if course_ctx else ""
+        )
+
+        instructions = _safe_strip(kw.get("instructions", "")) or "None"
+
         return f"""
 You MUST output strictly valid JSON. Nothing outside JSON.
 
@@ -297,16 +321,18 @@ Parameters:
 - Curriculum: {kw['curriculum']}
 - Subject: {kw['subject']}
 - Difficulty: {kw['difficulty']}
-- Instructions: {kw['instructions']}
-- Learning objectives: {kw['learning_objectives']}
+- Instructions: {instructions}
 - Total points: {kw['total_points']}
-- Estimated time: {kw['estimated_time']}
-
+- Estimated time: {kw.get('estimated_time', '') or 'Not specified'}
+{objectives_block}
+{course_context_block}
 Rules:
 - NO markdown, NO code fences.
 - MCQ MUST have exactly 4 options starting with A. B. C. D.
 - correct_answer MUST be the full text of the correct option.
 - Essay questions MUST include expected_answer and rubric.
+- If learning objectives are listed, ensure every question maps to at least one objective.
+- If course material context is provided, ground questions in that content.
 """
 
     # ---------------------------------------------------------

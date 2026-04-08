@@ -1,6 +1,8 @@
 """
-AI Regression Check — Commit 19
+AI Regression Check — Commit 20
 Validates contract and logic correctness without live Gemini/Mongo calls.
+S01–S16: Commit 19 baseline checks
+S17–S26: Commit 20 AI output quality and prompt hardening
 """
 import asyncio
 import inspect
@@ -191,6 +193,135 @@ async def main():
         ok("S16 Practice lab: /api/grade/health route exists")
     except Exception as e:
         fail("S16 Practice lab: health route", str(e))
+
+    # ======== Commit 20: AI output quality and prompt hardening ========
+
+    # -------- S17: QuizRequest has bloom_level defaulting to "understand" --------
+    try:
+        from models.request_models import QuizRequest
+        r = QuizRequest(topic="Newton's laws", num_questions=3)
+        n = r.normalized()
+        assert n.get("bloom_level") == "understand", f"Expected 'understand', got {n.get('bloom_level')}"
+        assert "course_context" in n
+        ok("S17 Commit 20: QuizRequest has bloom_level='understand' default")
+    except Exception as e:
+        fail("S17 Commit 20: QuizRequest bloom_level default", str(e))
+
+    # -------- S18: QuizResponse has bloom_level and grounded fields --------
+    try:
+        from models.response_models import QuizResponse
+        import inspect as _inspect
+        fields = QuizResponse.model_fields
+        assert "bloom_level" in fields, "bloom_level field missing from QuizResponse"
+        assert "grounded" in fields, "grounded field missing from QuizResponse"
+        ok("S18 Commit 20: QuizResponse has bloom_level and grounded fields")
+    except Exception as e:
+        fail("S18 Commit 20: QuizResponse bloom_level/grounded", str(e))
+
+    # -------- S19: ChatRequest has study_mode and curriculum fields --------
+    try:
+        from models.request_models import ChatRequest
+        r = ChatRequest(session_id="s1", message="hello")
+        n = r.normalized()
+        assert "study_mode" in n, "study_mode missing from ChatRequest.normalized()"
+        assert "curriculum" in n, "curriculum missing from ChatRequest.normalized()"
+        assert n["study_mode"] == "general"
+        ok("S19 Commit 20: ChatRequest has study_mode='general' and curriculum defaults")
+    except Exception as e:
+        fail("S19 Commit 20: ChatRequest study_mode/curriculum", str(e))
+
+    # -------- S20: Teacher tools routes exist --------
+    try:
+        from endpoints.teacher_tools_endpoints import router as teacher_router
+        routes = [r.path for r in teacher_router.routes]
+        assert "/api/teacher/rewrite-question" in routes
+        assert "/api/teacher/distractors" in routes
+        assert "/api/teacher/draft-feedback" in routes
+        assert "/api/teacher/announcement-draft" in routes
+        assert "/api/teacher/lesson-summary" in routes
+        assert "/api/teacher/explain-mistake" in routes
+        ok("S20 Commit 20: All 6 teacher copilot routes registered")
+    except Exception as e:
+        fail("S20 Commit 20: teacher tools routes", str(e))
+
+    # -------- S21: TeacherToolsService has all 6 async methods --------
+    try:
+        from gemini.teacher_tools_service import TeacherToolsService
+        for method in ("rewrite_question", "generate_distractors", "draft_feedback",
+                       "draft_announcement", "lesson_summary", "explain_mistake"):
+            assert hasattr(TeacherToolsService, method), f"Missing method: {method}"
+            assert inspect.iscoroutinefunction(getattr(TeacherToolsService, method)), \
+                f"{method} must be async"
+        ok("S21 Commit 20: TeacherToolsService has all 6 async methods")
+    except Exception as e:
+        fail("S21 Commit 20: TeacherToolsService methods", str(e))
+
+    # -------- S22: Prompt templates for teacher copilot exist in prompts.py --------
+    try:
+        prompts_src = read("gemini/prompts.py")
+        assert "QUESTION_REWRITE_PROMPT" in prompts_src
+        assert "DISTRACTOR_GENERATION_PROMPT" in prompts_src
+        assert "MISTAKE_EXPLANATION_PROMPT" in prompts_src
+        assert "DRAFT_FEEDBACK_PROMPT" in prompts_src
+        assert "ANNOUNCEMENT_DRAFT_PROMPT" in prompts_src
+        assert "LESSON_SUMMARY_PROMPT" in prompts_src
+        ok("S22 Commit 20: All 6 teacher copilot prompt templates present in prompts.py")
+    except Exception as e:
+        fail("S22 Commit 20: teacher prompts existence", str(e))
+
+    # -------- S23: draft_feedback returns teacher_must_review=True --------
+    try:
+        svc_src = read("gemini/teacher_tools_service.py")
+        # The draft_feedback method must explicitly set teacher_must_review: True
+        idx = svc_src.index("async def draft_feedback")
+        block = svc_src[idx: idx + 4000]
+        assert "teacher_must_review" in block, "teacher_must_review not returned by draft_feedback"
+        assert "True" in block[block.index("teacher_must_review"):block.index("teacher_must_review") + 30]
+        ok("S23 Commit 20: draft_feedback returns teacher_must_review=True")
+    except Exception as e:
+        fail("S23 Commit 20: draft_feedback teacher_must_review", str(e))
+
+    # -------- S24: TUTOR_PROMPT references study_mode and grounding fallback --------
+    try:
+        prompts_src = read("gemini/prompts.py")
+        assert "{study_mode}" in prompts_src, "{study_mode} placeholder missing from TUTOR_PROMPT"
+        assert "couldn't find" in prompts_src or "not found in" in prompts_src, \
+            "Grounding fallback phrase missing from TUTOR_PROMPT"
+        ok("S24 Commit 20: TUTOR_PROMPT has study_mode placeholder and grounding fallback")
+    except Exception as e:
+        fail("S24 Commit 20: TUTOR_PROMPT study_mode/grounding", str(e))
+
+    # -------- S25: AssignmentRequest has course_context field --------
+    try:
+        from models.request_models import AssignmentRequest
+        r = AssignmentRequest(topic="Algebra", num_questions=5, course_context="Chapter 4 notes")
+        n = r.normalized()
+        assert n.get("course_context") == "Chapter 4 notes"
+        ok("S25 Commit 20: AssignmentRequest accepts course_context and normalizes it")
+    except Exception as e:
+        fail("S25 Commit 20: AssignmentRequest course_context", str(e))
+
+    # -------- S26: MCQ feedback enrichment includes correct answer --------
+    try:
+        q_mcq = {
+            "id": "1",
+            "type": "multiple_choice",
+            "options": ["A. Paris", "B. London", "C. Berlin", "D. Madrid"],
+            "correct_answer": "A. Paris",
+            "explanation": "Paris is the capital of France.",
+        }
+        correct_result = gs._score_mcq(q_mcq, "A. Paris")
+        wrong_result = gs._score_mcq(q_mcq, "B. London")
+        # Feedback should be richer than just "Correct!" / "Incorrect."
+        assert correct_result["score"] == 1
+        assert wrong_result["score"] == 0
+        # If explanation is present, it should appear in feedback
+        if "explanation" in q_mcq and q_mcq["explanation"]:
+            assert "Paris" in correct_result["feedback"] or "Paris" in wrong_result["feedback"], \
+                "Explanation not reflected in enriched MCQ feedback"
+        ok("S26 Commit 20: MCQ feedback enrichment includes explanation text")
+    except Exception as e:
+        fail("S26 Commit 20: MCQ feedback enrichment", str(e))
 
     # -------- Print results --------
     print()
