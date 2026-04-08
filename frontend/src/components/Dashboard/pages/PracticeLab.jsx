@@ -106,10 +106,13 @@ export default function PracticeLab() {
   const [selectedCourseId, setSelectedCourseId] = useState("");
   const [courseModules, setCourseModules] = useState([]);
   const [selectedMaterialId, setSelectedMaterialId] = useState("");
+  const [warming, setWarming] = useState(false);
+  const [warmingCountdown, setWarmingCountdown] = useState(0);
 
   // Refs
   const dragRef = useRef({ dragging: false, offsetX: 0, offsetY: 0 });
   const abortRef = useRef(null);
+  const warmingTimerRef = useRef(null);
 
   const selectedCourse = useMemo(
     () => courses.find((course) => course._id === selectedCourseId) || null,
@@ -145,6 +148,7 @@ export default function PracticeLab() {
     return () => {
       live = false;
       if (abortRef.current) abortRef.current.abort();
+      if (warmingTimerRef.current) clearInterval(warmingTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -801,13 +805,32 @@ export default function PracticeLab() {
     } catch (err) {
       console.error("❌ Practice generation failed:", err);
       const status = err?.status || err?.response?.status;
-      if (status === 422)
+      if (status === 422) {
         setAlertMessage("❌ Invalid request format. Please check your inputs.");
-      else if (status === 500)
+      } else if (status === 500) {
         setAlertMessage("❌ Server error. Please try again later.");
-      else if (String(err?.message || "").includes("timeout"))
+      } else if (status === 502 || status === 503) {
+        // Render free-tier cold start — service is waking up, auto-retry
+        setAlertMessage("");
+        if (warmingTimerRef.current) clearInterval(warmingTimerRef.current);
+        setWarming(true);
+        let countdown = 30;
+        setWarmingCountdown(countdown);
+        warmingTimerRef.current = setInterval(() => {
+          countdown -= 1;
+          setWarmingCountdown(countdown);
+          if (countdown <= 0) {
+            clearInterval(warmingTimerRef.current);
+            warmingTimerRef.current = null;
+            setWarming(false);
+            generatePractice();
+          }
+        }, 1000);
+      } else if (String(err?.message || "").includes("timeout")) {
         setAlertMessage("❌ Request timeout. Please check your connection.");
-      else setAlertMessage(`❌ Failed to generate practice: ${sanitizeApiError(err.message)}`);
+      } else {
+        setAlertMessage(`❌ Failed to generate practice: ${sanitizeApiError(err.message)}`);
+      }
     } finally {
       setLoading(false);
       abortRef.current = null;
@@ -1157,6 +1180,48 @@ export default function PracticeLab() {
               }`}
             >
               {alertMessage}
+            </div>
+          )}
+
+          {/* Warmup / cold-start retry banner */}
+          {warming && (
+            <div
+              className="alert alert-warning d-flex align-items-center gap-2 flex-wrap"
+              role="status"
+            >
+              <span
+                className="spinner-border spinner-border-sm flex-shrink-0"
+                aria-hidden="true"
+              />
+              <span className="flex-grow-1">
+                ⏳ AI service is warming up (Render free tier)&hellip; auto-retrying
+                in&nbsp;<strong>{warmingCountdown}s</strong>
+              </span>
+              <button
+                className="btn btn-sm btn-outline-warning ms-auto"
+                onClick={() => {
+                  if (warmingTimerRef.current) {
+                    clearInterval(warmingTimerRef.current);
+                    warmingTimerRef.current = null;
+                  }
+                  setWarming(false);
+                  generatePractice();
+                }}
+              >
+                Retry Now
+              </button>
+              <button
+                className="btn btn-sm btn-outline-secondary"
+                onClick={() => {
+                  if (warmingTimerRef.current) {
+                    clearInterval(warmingTimerRef.current);
+                    warmingTimerRef.current = null;
+                  }
+                  setWarming(false);
+                }}
+              >
+                Cancel
+              </button>
             </div>
           )}
 

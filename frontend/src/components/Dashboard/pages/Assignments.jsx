@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import {
@@ -674,6 +674,9 @@ function TeacherAssignmentsView() {
   const [generating, setGenerating] = useState(false);
   const [aiGenerated, setAiGenerated] = useState(null); // holds generated assignment data
   const [assignMode, setAssignMode] = useState("course"); // "course" | "class" | "students"
+  const [warming, setWarming] = useState(false);
+  const [warmingCountdown, setWarmingCountdown] = useState(0);
+  const warmingTimerRef = useRef(null);
 
   const [form, setForm] = useState({
     title: "",
@@ -924,7 +927,25 @@ function TeacherAssignmentsView() {
       }));
       toast.success(`Assignment generated — review and assign below`);
     } catch (error) {
-      toast.error(error?.message || "AI generation failed");
+      const status = error?.status || error?.response?.status;
+      if (status === 502 || status === 503) {
+        if (warmingTimerRef.current) clearInterval(warmingTimerRef.current);
+        setWarming(true);
+        let countdown = 30;
+        setWarmingCountdown(countdown);
+        warmingTimerRef.current = setInterval(() => {
+          countdown -= 1;
+          setWarmingCountdown(countdown);
+          if (countdown <= 0) {
+            clearInterval(warmingTimerRef.current);
+            warmingTimerRef.current = null;
+            setWarming(false);
+            generateDraft();
+          }
+        }, 1000);
+      } else {
+        toast.error(error?.message || "AI generation failed");
+      }
     } finally {
       setGenerating(false);
     }
@@ -1049,6 +1070,32 @@ function TeacherAssignmentsView() {
               {generating ? "Generating…" : "Generate with AI"}
             </button>
           </div>
+
+          {/* Warmup banner — Render free-tier cold start */}
+          {warming && (
+            <div className="alert alert-warning d-flex align-items-center gap-2 flex-wrap mb-3">
+              <span className="spinner-border spinner-border-sm flex-shrink-0" aria-hidden="true" />
+              <span className="flex-grow-1">
+                ⏳ AI service warming up (Render free tier)&hellip; auto-retrying in&nbsp;
+                <strong>{warmingCountdown}s</strong>
+              </span>
+              <button
+                className="btn btn-sm btn-outline-warning ms-auto"
+                onClick={() => {
+                  if (warmingTimerRef.current) { clearInterval(warmingTimerRef.current); warmingTimerRef.current = null; }
+                  setWarming(false);
+                  generateDraft();
+                }}
+              >Retry Now</button>
+              <button
+                className="btn btn-sm btn-outline-secondary"
+                onClick={() => {
+                  if (warmingTimerRef.current) { clearInterval(warmingTimerRef.current); warmingTimerRef.current = null; }
+                  setWarming(false);
+                }}
+              >Cancel</button>
+            </div>
+          )}
 
           {/* ── AI Preview ───────────────────────────────────── */}
           {aiGenerated && (
