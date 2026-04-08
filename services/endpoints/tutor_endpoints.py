@@ -79,10 +79,12 @@ async def upload_material(
         if not raw_text.strip():
             raise HTTPException(status_code=422, detail="No text extracted (scanned PDF maybe).")
 
-        # store reduced material
-        gemini.set_material(session_id, raw_text, reduce_to_sentences=12)
+        user_id = ctx.get("user_id") or "anon"
 
-        reduced = gemini.get_material(session_id) if hasattr(gemini, "get_material") else ""
+        # store reduced material (async — must be awaited)
+        await gemini.set_material(session_id, raw_text, reduce_to_sentences=12, user_id=user_id)
+
+        reduced = gemini.get_material(session_id, user_id=user_id) if hasattr(gemini, "get_material") else ""
         return {
             "session_id": session_id,
             "status": "material_saved",

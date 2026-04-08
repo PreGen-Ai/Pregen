@@ -90,7 +90,7 @@ def get_gemini_service() -> GeminiService:
         try:
             logger.info("Initializing GeminiService (singleton)")
             _gemini_instance = GeminiService(
-                api_key=GEMINI_API_CODE if False else GEMINI_API_KEY,  # keeps static analyzers calm
+                api_key=GEMINI_API_KEY,
                 report_storage=report_storage,
             )
             logger.info("GeminiService ready")

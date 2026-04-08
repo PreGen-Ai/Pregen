@@ -134,7 +134,8 @@ class GeminiService:
             assignment_name="Single Question",
         )
 
-        return result["results"]["questions"][0]
+        graded = result.get("graded_questions", [])
+        return graded[0] if graded else {}
 
     # ============================================================
     # GRADING - MCQ (single question)
@@ -169,7 +170,8 @@ class GeminiService:
             assignment_name="Single MCQ",
         )
 
-        return result["results"]["questions"][0]
+        graded = result.get("graded_questions", [])
+        return graded[0] if graded else {}
 
     # ============================================================
     # GRADING - FULL ASSIGNMENT
@@ -227,23 +229,23 @@ class GeminiService:
     # TUTOR MATERIAL (UPLOAD SUPPORT)
     # ============================================================
 
-    def set_material(self, session_id: str, raw_text: str, reduce_to_sentences: int = 12):
+    async def set_material(self, session_id: str, raw_text: str, reduce_to_sentences: int = 12, user_id: str = "anon"):
         """
         Store reduced study material for a tutor session.
-        Delegates to ChatService.
+        Delegates to ChatService (async).
         """
         if not hasattr(self.chat_service, "set_material"):
             raise HTTPException(status_code=500, detail="ChatService missing set_material()")
-        return self.chat_service.set_material(session_id, raw_text, reduce_to_sentences)
+        await self.chat_service.set_material(session_id, raw_text, reduce_to_sentences, user_id=user_id)
 
-    def get_material(self, session_id: str) -> str:
+    def get_material(self, session_id: str, user_id: str = "anon") -> str:
         """
         Get reduced study material for a tutor session.
         Delegates to ChatService.
         """
         if not hasattr(self.chat_service, "get_material"):
             return ""
-        return self.chat_service.get_material(session_id)
+        return self.chat_service.get_material(session_id, user_id=user_id)
 
     # ============================================================
     # CHAT

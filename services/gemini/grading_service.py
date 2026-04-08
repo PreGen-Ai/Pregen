@@ -309,6 +309,67 @@ class GradingService(BaseGeminiClient):
         return {"score": score, "max_score": max_score, "feedback": fb}
 
     # ==========================================================
+    # PUBLIC: Grade a single essay question
+    # ==========================================================
+    async def grade_essay(
+        self,
+        question_text: str,
+        expected_answer: str = "",
+        rubric: str = "",
+        solution_steps=None,
+        student_answer: str = "",
+        subject: str = "General",
+        grade_level: str = "High School",
+    ) -> Dict[str, Any]:
+        """
+        Public wrapper around _score_essay for single-question essay grading.
+        Returns dict with: is_correct, score, max_score, feedback
+        """
+        q = {
+            "question": question_text,
+            "expected_answer": expected_answer,
+            "rubric": rubric,
+            "solution_steps": solution_steps or [],
+        }
+        result = await self._score_essay(q, student_answer, max_score=10, subject=subject)
+        is_correct = result.get("score", 0) >= result.get("max_score", 10)
+        return {
+            "is_correct": is_correct,
+            "score": result.get("score", 0),
+            "max_score": result.get("max_score", 10),
+            "feedback": result.get("feedback", ""),
+        }
+
+    # ==========================================================
+    # PUBLIC: Grade a single problem-solving question
+    # ==========================================================
+    async def grade_problem_solving(
+        self,
+        question_text: str,
+        solution_steps=None,
+        student_answer: str = "",
+        subject: str = "General",
+    ) -> Dict[str, Any]:
+        """
+        Public wrapper for problem-solving grading.
+        Delegates to _score_essay since both are open-ended with step-based scoring.
+        Returns dict with: is_correct, score, max_score, feedback
+        """
+        q = {
+            "question": question_text,
+            "expected_answer": "",
+            "solution_steps": solution_steps or [],
+        }
+        result = await self._score_essay(q, student_answer, max_score=10, subject=subject)
+        is_correct = result.get("score", 0) >= result.get("max_score", 10)
+        return {
+            "is_correct": is_correct,
+            "score": result.get("score", 0),
+            "max_score": result.get("max_score", 10),
+            "feedback": result.get("feedback", ""),
+        }
+
+    # ==========================================================
     # Summary recommendations (simple)
     # ==========================================================
     def _build_summary_recommendations(self, weak_concepts: Dict[str, int]) -> List[str]:

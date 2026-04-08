@@ -341,25 +341,21 @@ async def upload_assignment_file(
 @log_route
 async def assignment_health_check(gemini=Depends(get_gemini_service)):
     try:
-        test_request = AssignmentRequest(topic="Math", num_questions=2)
-        result = await gemini.assignment_service.generate_assignment(test_request)
-
-        data = result.get("data", {})
-        questions = data.get("assignment", [])
-
-        ok = len(questions) > 0
-
+        service_ready = (
+            gemini is not None
+            and hasattr(gemini, "assignment_service")
+            and gemini.assignment_service is not None
+        )
         return {
-            "status": "healthy" if ok else "degraded",
-            "questions_generated": len(questions),
-            "timestamp": datetime.utcnow().isoformat()
+            "status": "healthy" if service_ready else "degraded",
+            "assignment_service_ready": service_ready,
+            "timestamp": datetime.utcnow().isoformat(),
         }
-
     except Exception as e:
         return {
             "status": "unhealthy",
             "details": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
         }
 
 
@@ -579,50 +575,49 @@ async def grade_assignment(
     }
 
 # =============================================================================
-# 📌 7–12 MISC CRUD (unchanged)
+# 📌 7–11 CRUD — Not implemented (assignments are generated per-request, not persisted here)
 # =============================================================================
 
 @router.get("/assignments/{assignment_id}")
 @log_route
 async def get_assignment(assignment_id: str):
-    return {
-        "success": True,
-        "assignment": {
-            "id": assignment_id,
-            "title": f"Assignment {assignment_id}",
-            "questions": []
-        }
-    }
+    raise HTTPException(
+        status_code=404,
+        detail="Assignment storage is not implemented. Assignments are generated on demand."
+    )
 
 
 @router.get("/assignments")
 @log_route
 async def list_assignments(limit: int = 10, offset: int = 0):
-    return {
-        "success": True,
-        "assignments": [],
-        "pagination": {"limit": limit, "offset": offset}
-    }
+    raise HTTPException(
+        status_code=501,
+        detail="Assignment listing is not implemented. Assignments are generated on demand."
+    )
 
 
 @router.delete("/assignments/{assignment_id}")
 @log_route
 async def delete_assignment(assignment_id: str):
-    return {"success": True, "deleted": assignment_id}
+    raise HTTPException(
+        status_code=501,
+        detail="Assignment deletion is not implemented."
+    )
 
 
 @router.put("/assignments/{assignment_id}")
 @log_route
 async def update_assignment(assignment_id: str, updates: dict):
-    return {
-        "success": True,
-        "updated_id": assignment_id,
-        "updates": updates
-    }
+    raise HTTPException(
+        status_code=501,
+        detail="Assignment update is not implemented."
+    )
 
 
 @router.post("/assignments/{assignment_id}/duplicate")
 @log_route
 async def duplicate_assignment(assignment_id: str):
-    new_id = f"{assignment_id}_copy_{int(datetime.utcnow().timestamp())}"
-    return {"success": True, "new_id": new_id}
+    raise HTTPException(
+        status_code=501,
+        detail="Assignment duplication is not implemented."
+    )

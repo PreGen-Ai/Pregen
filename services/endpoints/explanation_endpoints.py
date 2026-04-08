@@ -6,6 +6,7 @@ the new ExplanationService architecture, and all backend behavior.
 """
 
 import logging
+from datetime import datetime
 from typing import List, Any, Dict
 from uuid import uuid4
 

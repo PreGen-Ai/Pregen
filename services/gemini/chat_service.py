@@ -329,6 +329,10 @@ class ChatService(BaseGeminiClient):
         if mongo_db is not None:
             await self._mongo_set_material(mongo_db, user_id, session_id, reduced)
 
+    def get_material(self, session_id: str, user_id: str = "anon") -> str:
+        """Return the in-memory reduced material for a session (empty string if not set)."""
+        return self.session_material.get(self._key(user_id, session_id), "")
+
     # -------------------------------------------------------------
     # Main chat
     # -------------------------------------------------------------
@@ -447,15 +451,13 @@ class ChatService(BaseGeminiClient):
             max_prompt_chars=self.MAX_PROMPT_CHARS,
             temperature=temperature,
             top_p=0.9,
-            max_output_tokens=max_output_tokens,  # ✅ must apply
+            max_output_tokens=max_output_tokens,
             user_id=user_id,
             session_id=session_id,
             request_id=ctx.get("request_id"),
             endpoint=ctx.get("endpoint"),
             feature=ctx.get("feature") or "tutor-chat",
             mongo_db=mongo_db,
-            use_cache=False, 
-
         )
 
         reply_text = ""
