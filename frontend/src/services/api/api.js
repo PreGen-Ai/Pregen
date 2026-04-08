@@ -81,7 +81,11 @@ async function safe(promise) {
     if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") {
       throw err;
     }
-    throw new Error(normalizeApiError(err));
+    const apiErr = new Error(normalizeApiError(err));
+    // Preserve the HTTP status code as a property so catch blocks can branch on it
+    const httpStatus = err?.response?.status;
+    if (httpStatus) apiErr.status = httpStatus;
+    throw apiErr;
   }
 }
 
@@ -96,7 +100,10 @@ async function safeBlob(promise) {
     if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") {
       throw err;
     }
-    throw new Error(normalizeApiError(err));
+    const apiErr = new Error(normalizeApiError(err));
+    const httpStatus = err?.response?.status;
+    if (httpStatus) apiErr.status = httpStatus;
+    throw apiErr;
   }
 }
 
