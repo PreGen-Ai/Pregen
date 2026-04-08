@@ -621,7 +621,7 @@ Output type rules:
 - key_concepts: 6–12 key concepts with brief definitions. label = term, text = definition + example.
 - revision_sheet: Structured notes with headings and bullet points. label = section heading.
 - glossary: Alphabetical key terms. label = term, text = definition.
-- homework_draft: 3–5 homework questions based on the lesson. label = "Q{n}", text = question + answer key.
+- homework_draft: 3–5 homework questions based on the lesson. label = "Q{{n}}", text = question + answer key.
 
 Rules:
 - Only use content from the lesson text. Do not hallucinate facts.
