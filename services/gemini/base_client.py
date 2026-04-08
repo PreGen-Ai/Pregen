@@ -515,9 +515,23 @@ class BaseGeminiClient:
 
                 parsed = self._parse_response(response, expect_json=expect_json)
 
+                # Empty JSON {} after a 503-recovery or degraded model state: treat as retryable.
+                # An empty object is technically valid JSON but semantically useless for structured AI tasks.
+                if expect_json and isinstance(parsed, dict) and not parsed and attempt < (self.max_retries - 1):
+                    delay = self._backoff(attempt)
+                    logger.warning(
+                        f"Gemini returned empty JSON {{}}. Model may be degraded after overload. "
+                        f"Retrying in {delay:.1f}s (attempt {attempt + 1}/{self.max_retries})"
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+
                 # cache only ok outcomes
                 cacheable = True
                 if isinstance(parsed, dict) and parsed.get("error"):
+                    cacheable = False
+                # do not cache empty JSON — it represents a degraded state
+                if expect_json and isinstance(parsed, dict) and not parsed:
                     cacheable = False
 
                 if cacheable:

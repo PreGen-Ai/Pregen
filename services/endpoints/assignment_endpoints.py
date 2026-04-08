@@ -185,6 +185,8 @@ async def generate_assignment(
 
         return response
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("❌ Assignment generation failed")
         raise HTTPException(status_code=500, detail=str(e))

@@ -215,8 +215,17 @@ class AssignmentService(BaseGeminiClient):
 
         if not json_data or "assignment" not in json_data:
             raw = json_data if json_data else {}
-            logger.error(f"Gemini JSON missing 'assignment' key. Top-level keys: {list(raw.keys()) if isinstance(raw, dict) else type(raw)}")
-            raise HTTPException(status_code=500, detail="Invalid JSON format returned from Gemini")
+            top_keys = list(raw.keys()) if isinstance(raw, dict) else type(raw)
+            logger.error(f"Gemini JSON missing 'assignment' key. Top-level keys: {top_keys}")
+            if not json_data:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Gemini returned an empty response. The model may be temporarily overloaded. Please try again in a moment."
+                )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Gemini returned unexpected JSON structure (keys: {top_keys}). Please try again."
+            )
 
         raw_assignment = json_data["assignment"]
 
