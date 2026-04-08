@@ -59,8 +59,13 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:unit": "react-scripts test --watchAll=false --coverage",
+    "test:ci": "CI=true react-scripts test --watchAll=false",
     "eject": "react-scripts eject",
-    "analyze": "npm run build && source-map-explorer 'build/static/js/*.js'"
+    "analyze": "npm run build && source-map-explorer 'build/static/js/*.js'",
+    "cy:open": "cypress open --config-file cypress/cypress.config.js",
+    "cy:run": "cypress run --config-file cypress/cypress.config.js",
+    "cy:run:headless": "cypress run --headless --config-file cypress/cypress.config.js"
   },
   "eslintConfig": {
     "extends": [
@@ -81,6 +86,7 @@
     ]
   },
   "devDependencies": {
-    "source-map-explorer": "^2.5.3"
+    "source-map-explorer": "^2.5.3",
+    "cypress": "^13.10.0"
   }
 }
