@@ -13,6 +13,12 @@ import {
   updateAssignment,
   updateQuiz,
 } from "../controllers/teacherController.js";
+import {
+  approveQuizAttempt,
+  approveSubmission,
+  reviewQuizAttempt,
+  reviewSubmission,
+} from "../controllers/gradebook.controller.js";
 import { auth, authorizeRoles } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -30,10 +36,14 @@ router.get("/assignments", listTeacherAssignments);
 router.post("/assignments", createAssignment);
 router.patch("/assignments/:assignmentId", updateAssignment);
 router.get("/assignments/:assignmentId/submissions", getAssignmentSubmissions);
+router.patch("/assignments/submissions/:submissionId/review", reviewSubmission);
+router.post("/assignments/submissions/:submissionId/approve", approveSubmission);
 
 router.get("/quizzes", listTeacherQuizzes);
 router.post("/quizzes", createQuiz);
 router.patch("/quizzes/:quizId", updateQuiz);
 router.get("/quizzes/:quizId/results", getQuizResults);
+router.patch("/quizzes/attempts/:attemptId/review", reviewQuizAttempt);
+router.post("/quizzes/attempts/:attemptId/approve", approveQuizAttempt);
 
 export default router;
