@@ -62,6 +62,13 @@ router.get("/", ...requireAdmin, listAiUsage);
 router.get("/summary", ...requireAdmin, getAiUsageSummary);
 
 /**
+ * Bulk delete (SuperAdmin only)
+ * Keep / as legacy, add /bulk as explicit safer endpoint
+ */
+router.delete("/bulk", ...requireSuperAdmin, bulkDeleteAiUsage);
+router.delete("/", ...requireSuperAdmin, bulkDeleteAiUsage);
+
+/**
  * Item routes (Admin/SuperAdmin)
  */
 router.get(
@@ -77,12 +84,5 @@ router.delete(
   validateObjectIdParam("id"),
   deleteAiUsageById,
 );
-
-/**
- * Bulk delete (SuperAdmin only)
- * Keep / as legacy, add /bulk as explicit safer endpoint
- */
-router.delete("/bulk", ...requireSuperAdmin, bulkDeleteAiUsage);
-router.delete("/", ...requireSuperAdmin, bulkDeleteAiUsage);
 
 export default router;
