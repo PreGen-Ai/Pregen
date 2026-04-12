@@ -24,7 +24,10 @@ import {
   requireAdmin,
   requireSuperAdmin,
   requireParent,
+  getTenantId,
+  normalizeRole,
 } from "../middleware/authMiddleware.js";
+import { writeAuditLog } from "../services/auditLogService.js";
 
 const router = express.Router();
 
@@ -137,8 +140,42 @@ router.put("/toggle-block/:id", ...requireAdmin, async (req, res) => {
     const user = await User.findById(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
 
+     const actorRole = normalizeRole(req.user?.role);
+     const tenantId = getTenantId(req);
+     const targetBelongsToTenant =
+       !tenantId ||
+       String(user.tenantId || "") === String(tenantId) ||
+       (Array.isArray(user.tenantIds) &&
+         user.tenantIds.map(String).includes(String(tenantId)));
+
+     if (actorRole !== "SUPERADMIN" && !targetBelongsToTenant) {
+       await writeAuditLog({
+         tenantId,
+         level: "security",
+         type: "USER_STATUS_DENIED",
+         actor: req.user?._id || "system",
+         message: "Blocked cross-tenant toggle-block attempt",
+         meta: {
+           targetUserId: user._id,
+           actorRole,
+         },
+       });
+       return res.status(403).json({ message: "Cross-tenant access denied" });
+     }
+
     user.blocked = !user.blocked;
     await user.save();
+
+    await writeAuditLog({
+      tenantId: tenantId || user.tenantId || null,
+      type: "USER_STATUS_UPDATED",
+      actor: req.user?._id || "system",
+      message: `${user.blocked ? "Blocked" : "Unblocked"} user ${user.email}`,
+      meta: {
+        targetUserId: user._id,
+        blocked: user.blocked,
+      },
+    });
 
     res.json({ success: true, blocked: user.blocked });
   } catch {
