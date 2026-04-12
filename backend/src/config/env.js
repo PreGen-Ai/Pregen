@@ -201,6 +201,14 @@ export const AI_SERVICE_URL_SOURCE =
 export const AI_SERVICE_URL =
   aiServiceEntry?.value ||
   (IS_PROD ? "https://pregen-xce4.onrender.com" : "http://localhost:8000");
+const aiSharedSecretEntry = findEnvEntry([
+  "AI_SERVICE_SHARED_SECRET",
+  "FASTAPI_INTERNAL_API_KEY",
+  "INTERNAL_API_SECRET",
+]);
+export const AI_SERVICE_SHARED_SECRET =
+  aiSharedSecretEntry?.value ||
+  (!IS_PROD ? "dev-ai-service-secret" : undefined);
 
 export function getRuntimeConfigWarnings() {
   const warnings = [];
