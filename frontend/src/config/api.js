@@ -1,9 +1,10 @@
-// API Configuration
-// Change this URL based on your setup:
+const apiFromEnv =
+  (typeof process !== "undefined" &&
+    process.env &&
+    process.env.REACT_APP_API_BASE_URL) ||
+  "";
 
-// - Production: your production URL
-
-export const API_BASE_URL = 'http://localhost/backend';
+export const API_BASE_URL = apiFromEnv || "https://pregen.onrender.com";
 
 // Helper function for API calls
 export const apiCall = async (endpoint, options = {}) => {
