@@ -21,6 +21,7 @@ module.exports = async function globalSetup() {
   process.env.NODE_ENV = "test";
   process.env.CLIENT_URL = "http://localhost:3000";
   process.env.AI_SERVICE_URL = "http://localhost:8000";
+  process.env.AI_SERVICE_SHARED_SECRET = "test-ai-service-secret";
   process.env.PORT = "5001";
 
   // Persist the mongod instance ID for teardown
