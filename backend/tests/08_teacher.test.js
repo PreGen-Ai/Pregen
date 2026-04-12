@@ -135,13 +135,16 @@ describe("Teacher Routes — Quizzes", () => {
   });
 
   test("POST /api/teachers/quizzes TEACHER can create quiz", async () => {
-    const { token } = await createTeacher();
+    const { user: teacher, token } = await createTeacher();
+    const course = await createCourse(teacher);
     const res = await request(app)
       .post("/api/teachers/quizzes")
       .set(authHeader(token))
       .send({
         title: "Chapter 1 Quiz",
         description: "Basics of biology",
+        subject: "Biology",
+        workspaceId: course._id.toString(),
         questions: [
           {
             questionText: "What is photosynthesis?",
