@@ -1,0 +1,98 @@
+name: E2E Cypress
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  cypress:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qa-orchestrator
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: qa-orchestrator/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Cypress suite
+        id: cypress
+        continue-on-error: true
+        env:
+          E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
+        run: |
+          mkdir -p cypress/results
+          npx cypress run --config-file cypress.config.ts --reporter junit --reporter-options "mochaFile=cypress/results/junit-[hash].xml,toConsole=true"
+
+      - name: Upload Cypress artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-artifacts
+          path: |
+            qa-orchestrator/cypress/results
+            qa-orchestrator/cypress/screenshots
+            qa-orchestrator/cypress/videos
+          if-no-files-found: warn
+
+      - name: Notify orchestrator about Cypress failure
+        if: steps.cypress.outcome == 'failure'
+        env:
+          FASTAPI_WEBHOOK_URL: ${{ secrets.FASTAPI_WEBHOOK_URL }}
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib import request
+
+          github_context = json.loads(os.environ["GITHUB_CONTEXT"])
+          screenshots = sorted(str(path) for path in Path("cypress/screenshots").rglob("*") if path.is_file())
+          videos = sorted(str(path) for path in Path("cypress/videos").rglob("*") if path.is_file())
+          results = sorted(str(path) for path in Path("cypress/results").rglob("*.xml"))
+
+          payload = {
+              "source": "github-actions",
+              "framework": "cypress",
+              "repo": github_context["repository"],
+              "branch": github_context["ref_name"],
+              "commit": github_context["sha"],
+              "run_id": github_context["run_id"],
+              "run_number": github_context["run_number"],
+              "workflow": github_context["workflow"],
+              "actor": github_context["actor"],
+              "event_name": github_context["event_name"],
+              "artifacts": {
+                  "screenshots": screenshots,
+                  "videos": videos,
+                  "results": results,
+              },
+          }
+
+          endpoint = os.environ["FASTAPI_WEBHOOK_URL"].rstrip("/") + "/webhooks/github/test-failure"
+          req = request.Request(
+              endpoint,
+              data=json.dumps(payload).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with request.urlopen(req) as response:
+              print(response.read().decode("utf-8"))
+          PY
+
+      - name: Fail workflow if Cypress tests failed
+        if: steps.cypress.outcome == 'failure'
+        run: exit 1
