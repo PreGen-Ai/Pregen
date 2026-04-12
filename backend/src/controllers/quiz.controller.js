@@ -2,6 +2,10 @@ import Quiz from "../models/quiz.js";
 import QuizAssignment from "../models/QuizAssignment.js";
 import QuizAttempt from "../models/QuizAttempt.js";
 import {
+  buildActorFromRequest,
+  emitRealtimeEvent,
+} from "../socket/emitter.js";
+import {
   buildTenantMatch,
   computeQuizAttemptExpiry,
   getRequestTenantId,
@@ -13,6 +17,17 @@ import {
   serializeQuiz,
   toId,
 } from "../utils/academicContract.js";
+
+const requestIdFromReq = (req) =>
+  req.get?.("x-request-id") || req.headers?.["x-request-id"] || null;
+
+const quizNeedsTeacherReview = (quiz) =>
+  Array.isArray(quiz?.questions) &&
+  quiz.questions.some((question) =>
+    ["essay", "short_answer", "file_upload"].includes(
+      String(question?.questionType || question?.type || "").trim().toLowerCase(),
+    ),
+  );
 
 const targetMatchesStudent = ({ target, studentId, classroomIds, courseIds }) => {
   if (!target) return false;
@@ -459,6 +474,7 @@ export const submitQuizAttempt = async (req, res) => {
   try {
     const studentId = req.user._id;
     const attemptId = req.params.attemptId;
+    const requestId = requestIdFromReq(req);
 
     if (!isValidObjectId(attemptId)) {
       return res.status(400).json({ success: false, message: "Invalid attemptId" });
@@ -486,13 +502,41 @@ export const submitQuizAttempt = async (req, res) => {
       quiz,
       req.body.answers || attempt.answers || {},
     );
+    const requiresManualReview = quizNeedsTeacherReview(quiz);
+    const courseId = toId(attempt.workspaceId || quiz.workspace);
+    const classroomId = toId(quiz.class);
+    const teacherUserId = toId(quiz.teacher);
+
+    emitRealtimeEvent({
+      type: "grading",
+      status: "started",
+      requestId,
+      entityType: "quiz_attempt",
+      entityId: attempt._id,
+      message: requiresManualReview
+        ? "Quiz submission received. Teacher review is required."
+        : "Quiz submission received. Grading is in progress.",
+      actor: buildActorFromRequest(req),
+      targets: {
+        userIds: [String(studentId)],
+        studentIds: [String(studentId)],
+        teacherIds: teacherUserId ? [teacherUserId] : [],
+      },
+      meta: {
+        quizId: toId(quiz._id),
+        courseId,
+        classroomId,
+        requiresManualReview,
+      },
+    });
 
     attempt.answers = graded.processedAnswers;
     attempt.pointsEarnedTotal = graded.pointsEarnedTotal;
     attempt.maxScore = graded.totalPoints;
     attempt.score = graded.percentageScore;
     attempt.submittedAt = new Date();
-    attempt.status = "submitted";
+    attempt.status = requiresManualReview ? "submitted" : "graded";
+    attempt.gradedAt = requiresManualReview ? null : new Date();
     attempt.timeSpent = Math.max(
       attempt.timeSpent || 0,
       Math.floor((Date.now() - new Date(attempt.startedAt).getTime()) / 1000),
@@ -501,6 +545,51 @@ export const submitQuizAttempt = async (req, res) => {
 
     await attempt.save();
 
+    if (requiresManualReview) {
+      emitRealtimeEvent({
+        type: "teacher_review",
+        status: "updated",
+        requestId,
+        entityType: "quiz_attempt",
+        entityId: attempt._id,
+        message: "A submitted quiz attempt is waiting for teacher review.",
+        actor: buildActorFromRequest(req),
+        targets: {
+          teacherIds: teacherUserId ? [teacherUserId] : [],
+        },
+        meta: {
+          action: "submitted_for_review",
+          quizId: toId(quiz._id),
+          studentId: toId(studentId),
+          courseId,
+          classroomId,
+          score: graded.percentageScore,
+        },
+      });
+    } else {
+      emitRealtimeEvent({
+        type: "grading",
+        status: "success",
+        requestId,
+        entityType: "quiz_attempt",
+        entityId: attempt._id,
+        message: "Quiz graded successfully.",
+        actor: buildActorFromRequest(req),
+        targets: {
+          userIds: [String(studentId)],
+          studentIds: [String(studentId)],
+          teacherIds: teacherUserId ? [teacherUserId] : [],
+        },
+        meta: {
+          quizId: toId(quiz._id),
+          courseId,
+          classroomId,
+          score: graded.percentageScore,
+          passed: graded.percentageScore >= (quiz.passingScore ?? 60),
+        },
+      });
+    }
+
     return res.json({
       success: true,
       score: graded.percentageScore,
@@ -508,6 +597,22 @@ export const submitQuizAttempt = async (req, res) => {
     });
   } catch (err) {
     console.error("submitQuizAttempt error:", err);
+    emitRealtimeEvent({
+      type: "grading",
+      status: "failed",
+      requestId: requestIdFromReq(req),
+      entityType: "quiz_attempt",
+      entityId: req.params?.attemptId || null,
+      message: "Quiz submission or grading failed. Please try again.",
+      actor: buildActorFromRequest(req),
+      targets: {
+        userIds: req.user?._id ? [String(req.user._id)] : [],
+        studentIds: req.user?._id ? [String(req.user._id)] : [],
+      },
+      meta: {
+        attemptId: req.params?.attemptId || null,
+      },
+    });
     return res
       .status(500)
       .json({ success: false, message: "Failed to submit quiz attempt" });
