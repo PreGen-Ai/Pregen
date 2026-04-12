@@ -13,6 +13,10 @@ import CourseMember from "../models/CourseMember.js";
 import Classroom from "../models/Classroom.js";
 import User from "../models/userModel.js";
 import {
+  buildActorFromRequest,
+  emitRealtimeEvent,
+} from "../socket/emitter.js";
+import {
   buildTargetRows,
   buildTenantMatch,
   canAccessCourse,
@@ -28,6 +32,9 @@ import {
   toId,
   userFields,
 } from "../utils/academicContract.js";
+
+const requestIdFromReq = (req) =>
+  req.get?.("x-request-id") || req.headers?.["x-request-id"] || null;
 
 const STATUS_VALUES = ["draft", "published", "closed"];
 const QUIZ_TYPES = new Set([
@@ -510,6 +517,34 @@ export const createAssignment = async (req, res) => {
       .populate("workspace", "title name code classroomId subjectId")
       .lean();
 
+    if (assignment.status === "published") {
+      const targetStudentIds = await resolveTargetStudentIds({
+        targetRows,
+        courseId,
+        classroomId: isValidObjectId(classroomId) ? classroomId : null,
+      });
+
+      emitRealtimeEvent({
+        type: "assignment_publish",
+        status: "success",
+        requestId: requestIdFromReq(req),
+        entityType: "assignment",
+        entityId: assignment._id,
+        message: `${assignment.title} is now available.`,
+        actor: buildActorFromRequest(req),
+        targets: {
+          studentIds: targetStudentIds,
+        },
+        meta: {
+          action: "assignment_published",
+          assignmentId: toId(assignment._id),
+          courseId: toId(courseId),
+          classroomId: toId(classroomId),
+          dueDate: assignment.dueDate,
+        },
+      });
+    }
+
     return res.status(201).json({
       success: true,
       data: serializeAssignment(output),
@@ -906,6 +941,34 @@ export const createQuiz = async (req, res) => {
       .populate("workspace", "title name code classroomId subjectId")
       .select("+questions.correctAnswer")
       .lean();
+
+    if (quiz.status === "published") {
+      const targetStudentIds = await resolveTargetStudentIds({
+        targetRows,
+        courseId,
+        classroomId: isValidObjectId(classroomId) ? classroomId : null,
+      });
+
+      emitRealtimeEvent({
+        type: "quiz_publish",
+        status: "success",
+        requestId: requestIdFromReq(req),
+        entityType: "quiz",
+        entityId: quiz._id,
+        message: `${quiz.title} is now available.`,
+        actor: buildActorFromRequest(req),
+        targets: {
+          studentIds: targetStudentIds,
+        },
+        meta: {
+          action: "quiz_published",
+          quizId: toId(quiz._id),
+          courseId: toId(courseId),
+          classroomId: toId(classroomId),
+          dueDate: dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate : null,
+        },
+      });
+    }
 
     return res.status(201).json({
       success: true,
