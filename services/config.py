@@ -59,6 +59,12 @@ def _redact_mongo_uri(uri: str) -> str:
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 PORT = int(os.getenv("PORT", 8000))
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
+AI_SERVICE_SHARED_SECRET = (
+    os.getenv("AI_SERVICE_SHARED_SECRET")
+    or os.getenv("FASTAPI_INTERNAL_API_KEY")
+    or os.getenv("INTERNAL_API_SECRET")
+    or ("dev-ai-service-secret" if ENVIRONMENT != "production" else None)
+)
 
 API_TITLE = "E-Learning AI Platform API"
 API_DESCRIPTION = (
