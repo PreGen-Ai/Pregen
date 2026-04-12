@@ -4,6 +4,7 @@ import App from "./App";
 import reportWebVitals from "./reportWebVitals";
 
 import { AuthProvider } from "./context/AuthContext";
+import { RealtimeProvider } from "./context/RealtimeContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { ChatProvider } from "./context/ChatContext";
 import { DashboardProvider } from "./context/DashboardContext";
@@ -21,11 +22,13 @@ root.render(
   <React.StrictMode>
     <AuthProvider>
       <ThemeProvider>
-        <DashboardProvider>
-                <ChatProvider>
-                  <App />
-                </ChatProvider>
-        </DashboardProvider>
+        <RealtimeProvider>
+          <DashboardProvider>
+            <ChatProvider>
+              <App />
+            </ChatProvider>
+          </DashboardProvider>
+        </RealtimeProvider>
       </ThemeProvider>
     </AuthProvider>
   </React.StrictMode>
