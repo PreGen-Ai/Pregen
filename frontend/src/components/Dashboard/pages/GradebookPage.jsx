@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import api from "../../../services/api/api";
+import useRealtimeRefresh from "../../../hooks/useRealtimeRefresh";
+import { withRequestId } from "../../../utils/requestId";
 import { useAuthContext } from "../../../context/AuthContext";
 
 const asCourses = (value) => {
@@ -104,6 +106,21 @@ export default function GradebookPage() {
     load(selectedCourseId);
   }, [load, selectedCourseId]);
 
+  useRealtimeRefresh(
+    () => load(selectedCourseId),
+    {
+      shouldRefresh: (event) => {
+        const eventType = String(event?.type || "");
+        if (!["submission", "grading", "teacher_review", "grade"].includes(eventType)) {
+          return false;
+        }
+
+        const eventCourseId = String(event?.meta?.courseId || "");
+        return !selectedCourseId || !eventCourseId || eventCourseId === selectedCourseId;
+      },
+    },
+  );
+
   const startEdit = (item) => {
     setEditingId(item._id);
     setFeedbackIsAiDraft(false);
@@ -172,15 +189,16 @@ export default function GradebookPage() {
         bulkSelected.map((id) => {
           const item = items.find((i) => i._id === id);
           if (!item) return Promise.resolve();
+          const { config } = withRequestId({}, "gradebook-bulk");
           return item.kind === "assignment"
             ? api.gradebook.updateSubmission(item.sourceId, {
                 grade: parsedScore,
                 feedback: bulkForm.feedback || undefined,
-              })
+              }, config)
             : api.gradebook.updateQuizAttempt(item.sourceId, {
                 score: parsedScore,
                 feedback: bulkForm.feedback || undefined,
-              });
+              }, config);
         }),
       );
       toast.success(`${bulkSelected.length} item(s) updated`);
@@ -223,16 +241,17 @@ export default function GradebookPage() {
 
     try {
       setSaving(true);
+      const { config } = withRequestId({}, "gradebook-update");
       if (editingItem.kind === "assignment") {
         await api.gradebook.updateSubmission(editingItem.sourceId, {
           grade: parsedScore,
           feedback: gradeForm.feedback,
-        });
+        }, config);
       } else {
         await api.gradebook.updateQuizAttempt(editingItem.sourceId, {
           score: parsedScore,
           feedback: gradeForm.feedback,
-        });
+        }, config);
       }
       toast.success("Grade updated");
       setEditingId("");
