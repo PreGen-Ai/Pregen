@@ -8,3 +8,4 @@ playwright-report/
 cypress/screenshots/
 cypress/videos/
 cypress/results/
+qa-orchestrator/package-lock.json
