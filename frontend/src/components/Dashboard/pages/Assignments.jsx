@@ -8,6 +8,8 @@ import {
   FaUpload,
 } from "react-icons/fa";
 import api from "../../../services/api/api";
+import useRealtimeRefresh from "../../../hooks/useRealtimeRefresh";
+import { withRequestId } from "../../../utils/requestId";
 import { useAuthContext } from "../../../context/AuthContext";
 import "../../styles/dashboard.css";
 
@@ -211,6 +213,17 @@ function StudentAssignmentsView() {
     load();
   }, []);
 
+  useRealtimeRefresh(load, {
+    shouldRefresh: (event) =>
+      [
+        "submission",
+        "teacher_review",
+        "grade",
+        "assignment_publish",
+        "quiz_publish",
+      ].includes(String(event?.type || "")),
+  });
+
   const summary = useMemo(() => {
     const submitted = items.filter((item) => item?.submission).length;
     const overdue = items.filter(
@@ -277,7 +290,8 @@ function StudentAssignmentsView() {
     }
 
     try {
-      await api.students.submitAssignment(formData);
+      const { config } = withRequestId({}, "assignment-submit");
+      await api.students.submitAssignment(formData, config);
       toast.success("Assignment submitted");
       setActiveId(null);
       setSubmissionState((prev) => ({
@@ -903,6 +917,7 @@ function TeacherAssignmentsView() {
     if (!aiConfig.topic.trim()) return toast.error("Enter a topic first");
     setGenerating(true);
     try {
+      const { config } = withRequestId({}, "assignment-generation");
       const response = await api.ai.generateAssignment({
         topic: aiConfig.topic.trim(),
         subject: aiConfig.subject,
@@ -913,7 +928,7 @@ function TeacherAssignmentsView() {
         assignment_type: aiConfig.assignmentType,
         curriculum: aiConfig.curriculum,
         exam_focus: "practice",
-      });
+      }, config);
 
       const generated = response?.data || response?.assignment || response || {};
       const questions = generated?.assignment || generated?.questions || [];
@@ -950,6 +965,27 @@ function TeacherAssignmentsView() {
       setGenerating(false);
     }
   };
+
+  useRealtimeRefresh(
+    async () => {
+      await load(selectedCourseId);
+
+      if (review?.assignment?._id) {
+        await loadReview(review.assignment._id);
+      }
+    },
+    {
+      shouldRefresh: (event) => {
+        const eventType = String(event?.type || "");
+        if (!["submission", "teacher_review", "grade"].includes(eventType)) {
+          return false;
+        }
+
+        const eventCourseId = String(event?.meta?.courseId || "");
+        return !selectedCourseId || !eventCourseId || eventCourseId === selectedCourseId;
+      },
+    },
+  );
 
   return (
     <div className="quizzes-page">
