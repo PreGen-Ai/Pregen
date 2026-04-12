@@ -4,6 +4,10 @@ import Quiz from "../models/quiz.js";
 import QuizAttempt from "../models/QuizAttempt.js";
 import Submission from "../models/Submission.js";
 import {
+  buildActorFromRequest,
+  emitRealtimeEvent,
+} from "../socket/emitter.js";
+import {
   canAccessCourse,
   getAccessibleCourseIdsForUser,
   getRequestTenantId,
@@ -14,6 +18,9 @@ import {
   toId,
   userFields,
 } from "../utils/academicContract.js";
+
+const requestIdFromReq = (req) =>
+  req.get?.("x-request-id") || req.headers?.["x-request-id"] || null;
 
 function sortByLatest(a, b) {
   return new Date(b.updatedAt || b.submittedAt || 0) - new Date(a.updatedAt || a.submittedAt || 0);
@@ -246,6 +253,13 @@ export async function updateSubmissionGrade(req, res) {
     const nextGrade = hasGrade
       ? Number(req.body.grade)
       : Number(submission.grade ?? submission.score ?? 0);
+    const previousGrade =
+      submission.grade !== null && submission.grade !== undefined
+        ? Number(submission.grade)
+        : submission.score !== null && submission.score !== undefined
+          ? Number(submission.score)
+          : null;
+    const requestId = requestIdFromReq(req);
 
     if (Number.isNaN(nextGrade) || nextGrade < 0 || nextGrade > 100) {
       return res.status(400).json({ message: "grade must be between 0 and 100" });
@@ -264,6 +278,56 @@ export async function updateSubmissionGrade(req, res) {
       .populate("studentId", userFields)
       .populate("workspaceId", "title")
       .lean();
+
+    const studentUserId = toId(submission.studentId);
+    const teacherUserId = toId(req.user?._id);
+    const courseId = toId(assignment.workspace);
+
+    emitRealtimeEvent({
+      type: "teacher_review",
+      status: "updated",
+      requestId,
+      entityType: "submission",
+      entityId: submission._id,
+      message: "Teacher review completed for an assignment submission.",
+      actor: buildActorFromRequest(req),
+      targets: {
+        userIds: [studentUserId, teacherUserId].filter(Boolean),
+        studentIds: studentUserId ? [studentUserId] : [],
+        teacherIds: teacherUserId ? [teacherUserId] : [],
+      },
+      meta: {
+        action: previousGrade === null ? "graded" : "updated",
+        assignmentId: toId(submission.assignmentId),
+        courseId,
+        previousGrade,
+        nextGrade,
+      },
+    });
+
+    if (previousGrade !== nextGrade) {
+      emitRealtimeEvent({
+        type: "grade",
+        status: "adjusted",
+        requestId,
+        entityType: "submission",
+        entityId: submission._id,
+        message: "Final assignment result updated.",
+        actor: buildActorFromRequest(req),
+        targets: {
+          userIds: [studentUserId, teacherUserId].filter(Boolean),
+          studentIds: studentUserId ? [studentUserId] : [],
+          teacherIds: teacherUserId ? [teacherUserId] : [],
+        },
+        meta: {
+          assignmentId: toId(submission.assignmentId),
+          courseId,
+          previousGrade,
+          nextGrade,
+          feedback,
+        },
+      });
+    }
 
     return res.json({
       message: "Submission grade updated",
@@ -313,6 +377,11 @@ export async function updateQuizAttemptGrade(req, res) {
     const hasScore =
       req.body.score !== undefined && req.body.score !== null && req.body.score !== "";
     const nextScore = hasScore ? Number(req.body.score) : Number(attempt.score ?? 0);
+    const previousScore =
+      attempt.score !== null && attempt.score !== undefined
+        ? Number(attempt.score)
+        : null;
+    const requestId = requestIdFromReq(req);
 
     if (Number.isNaN(nextScore) || nextScore < 0 || nextScore > 100) {
       return res.status(400).json({ message: "score must be between 0 and 100" });
@@ -330,6 +399,56 @@ export async function updateQuizAttemptGrade(req, res) {
       .populate("studentId", userFields)
       .populate("workspaceId", "title")
       .lean();
+
+    const studentUserId = toId(attempt.studentId);
+    const teacherUserId = toId(req.user?._id);
+    const courseId = toId(quiz.workspace);
+
+    emitRealtimeEvent({
+      type: "teacher_review",
+      status: "updated",
+      requestId,
+      entityType: "quiz_attempt",
+      entityId: attempt._id,
+      message: "Teacher review completed for a quiz attempt.",
+      actor: buildActorFromRequest(req),
+      targets: {
+        userIds: [studentUserId, teacherUserId].filter(Boolean),
+        studentIds: studentUserId ? [studentUserId] : [],
+        teacherIds: teacherUserId ? [teacherUserId] : [],
+      },
+      meta: {
+        action: previousScore === null ? "graded" : "updated",
+        quizId: toId(attempt.quizId),
+        courseId,
+        previousScore,
+        nextScore,
+      },
+    });
+
+    if (previousScore !== nextScore) {
+      emitRealtimeEvent({
+        type: "grade",
+        status: "adjusted",
+        requestId,
+        entityType: "quiz_attempt",
+        entityId: attempt._id,
+        message: "Final quiz result updated.",
+        actor: buildActorFromRequest(req),
+        targets: {
+          userIds: [studentUserId, teacherUserId].filter(Boolean),
+          studentIds: studentUserId ? [studentUserId] : [],
+          teacherIds: teacherUserId ? [teacherUserId] : [],
+        },
+        meta: {
+          quizId: toId(attempt.quizId),
+          courseId,
+          previousScore,
+          nextScore,
+          feedback,
+        },
+      });
+    }
 
     return res.json({
       message: "Quiz attempt updated",
