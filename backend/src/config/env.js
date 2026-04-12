@@ -121,14 +121,22 @@ export const PORT = readIntEnv("PORT", 5000);
 
 export const APP_NAME =
   cleanEnvValue(process.env.APP_NAME) || "PreGen Backend";
+export const APP_BACKEND_URL =
+  cleanEnvValue(process.env.APP_BACKEND_URL) ||
+  (IS_PROD ? "https://pregen.onrender.com" : null);
 export const CLIENT_URL = requireEnv(
-  "CLIENT_URL",
-  !IS_PROD ? "http://localhost:3000" : undefined,
+  ["CLIENT_URL", "CORS_ORIGIN_2", "CORS_ORIGIN_1"],
+  !IS_PROD ? "http://localhost:3000" : "https://pregen.netlify.app",
 );
 
 export const CORS_ALLOWED_ORIGINS = [
   ...new Set(
     [CLIENT_URL]
+      .concat([
+        cleanEnvValue(process.env.CORS_ORIGIN_1),
+        cleanEnvValue(process.env.CORS_ORIGIN_2),
+        APP_BACKEND_URL,
+      ])
       .concat(splitEnvList(process.env.CORS_ORIGIN))
       .concat(splitEnvList(process.env.CORS_ALLOWED_ORIGINS))
       .map((origin) => normalizeOrigin(origin))
@@ -254,6 +262,7 @@ export function getRuntimeConfigSummary() {
     nodeEnv: NODE_ENV,
     port: PORT,
     clientOrigin: normalizeOrigin(CLIENT_URL),
+    appBackendUrl: normalizeOrigin(APP_BACKEND_URL),
     corsOrigins: CORS_ALLOWED_ORIGINS,
     sessionSecretSource: SESSION_SECRET_SOURCE || "(not configured)",
     aiServiceUrl: AI_SERVICE_URL,
