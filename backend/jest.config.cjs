@@ -2,13 +2,11 @@
 module.exports = {
   testEnvironment: "node",
   testMatch: ["**/tests/**/*.test.js"],
-  transform: {
-    "^.+\\.js$": ["babel-jest", { configFile: "./babel.config.cjs" }],
-  },
+  transform: {},
   moduleFileExtensions: ["js", "json"],
   globalSetup: "./tests/helpers/globalSetup.cjs",
   globalTeardown: "./tests/helpers/globalTeardown.cjs",
-  setupFilesAfterFramework: ["./tests/helpers/setup.js"],
+  setupFilesAfterEnv: ["./tests/helpers/setup.js"],
   testTimeout: 30000,
   forceExit: true,
   clearMocks: true,
