@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { toast } from "react-toastify";
 import { FaBookOpen, FaMagic, FaPlus, FaTrash } from "react-icons/fa";
 import api from "../../../services/api/api";
+import useRealtimeRefresh from "../../../hooks/useRealtimeRefresh";
+import { withRequestId } from "../../../utils/requestId";
 import "../../styles/dashboard.css";
 
 const STATUS_OPTIONS = ["draft", "published", "closed"];
@@ -469,6 +471,7 @@ export default function TeacherQuiz() {
     }
     setGenerating(true);
     try {
+      const { config } = withRequestId({}, "quiz-generation");
       const response = await api.ai.generateQuiz({
         topic: aiConfig.topic.trim() || aiConfig.subject.trim(),
         subject: aiConfig.subject.trim() || "General",
@@ -480,7 +483,7 @@ export default function TeacherQuiz() {
         bloom_level: aiConfig.bloomLevel || "understand",      // Commit 20
         course_context: aiConfig.courseContext.trim() || "",   // Commit 20
         exam_focus: "practice",
-      });
+      }, config);
 
       const questions = extractGeneratedQuestions(response);
       if (!questions.length) {
@@ -580,6 +583,27 @@ export default function TeacherQuiz() {
       toast.error(error?.message || "Failed to load quiz results");
     }
   };
+
+  useRealtimeRefresh(
+    async () => {
+      await load(selectedCourseId);
+
+      if (results?.quiz?._id) {
+        await loadResults(results.quiz._id);
+      }
+    },
+    {
+      shouldRefresh: (event) => {
+        const eventType = String(event?.type || "");
+        if (!["grading", "teacher_review", "grade"].includes(eventType)) {
+          return false;
+        }
+
+        const eventCourseId = String(event?.meta?.courseId || "");
+        return !selectedCourseId || !eventCourseId || eventCourseId === selectedCourseId;
+      },
+    },
+  );
 
   return (
     <div className="quizzes-page">
