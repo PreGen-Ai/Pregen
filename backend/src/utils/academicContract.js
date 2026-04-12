@@ -2,6 +2,14 @@ import mongoose from "mongoose";
 import Course from "../models/CourseModel.js";
 import CourseMember from "../models/CourseMember.js";
 import Classroom from "../models/Classroom.js";
+import {
+  ATTEMPT_STATUS,
+  getCurrentFeedback,
+  getCurrentScore,
+  GRADING_STATUS,
+  isFinalized,
+  normalizeReviewStatus,
+} from "../services/gradingLifecycle.js";
 
 export const userFields = "firstName lastName username email role user_code";
 
@@ -42,9 +50,7 @@ export const getRequestTenantId = (req) =>
 
 export const buildTenantMatch = (tenantId) => {
   if (!tenantId) return {};
-  return {
-    $or: [{ tenantId }, { tenantId: null }, { tenantId: { $exists: false } }],
-  };
+  return { tenantId };
 };
 
 export const makePagination = (page = 1, limit = 20) => {
@@ -290,11 +296,20 @@ export function serializeSubmission(submission, extras = {}) {
     ? submission.toObject({ virtuals: true })
     : { ...(submission || {}) };
 
+  const gradingStatus = normalizeReviewStatus(
+    plain.gradingStatus,
+    GRADING_STATUS.SUBMITTED,
+  );
+
   return {
     ...plain,
     courseId: toId(plain.courseId || plain.workspaceId),
     classroomId: toId(plain.classroomId),
     tenantId: plain.tenantId || null,
+    gradingStatus,
+    released: isFinalized(plain, "gradingStatus"),
+    score: getCurrentScore(plain),
+    feedback: getCurrentFeedback(plain),
     ...extras,
   };
 }
@@ -482,11 +497,16 @@ export function answersInputToAttemptArray(quiz, answersInput) {
 }
 
 export function toUiAttemptStatus(status) {
-  const normalized = String(status || "").trim().toLowerCase();
+  const normalized = normalizeReviewStatus(
+    status,
+    ATTEMPT_STATUS.SUBMITTED,
+  );
   if (normalized === "in_progress") return "InProgress";
   if (normalized === "submitted") return "Submitted";
-  if (normalized === "graded") return "Graded";
-  if (normalized === "grading") return "Grading";
+  if (normalized === "ai_graded") return "AiGraded";
+  if (normalized === "pending_teacher_review") return "PendingTeacherReview";
+  if (normalized === "grading_delayed") return "GradingDelayed";
+  if (normalized === "final") return "Final";
   if (normalized === "failed") return "Failed";
   return "Scheduled";
 }
@@ -497,12 +517,23 @@ export function serializeAttemptForUi(attempt) {
   const plain = attempt?.toObject
     ? attempt.toObject({ virtuals: true })
     : { ...(attempt || {}) };
+  const gradingStatus = normalizeReviewStatus(
+    plain.gradingStatus || plain.status,
+    ATTEMPT_STATUS.SUBMITTED,
+  );
 
   return {
     ...plain,
     courseId: toId(plain.courseId || plain.workspaceId),
     tenantId: plain.tenantId || null,
-    status: toUiAttemptStatus(plain.status),
+    gradingStatus,
+    status: toUiAttemptStatus(gradingStatus),
+    released: isFinalized(
+      { ...plain, status: gradingStatus },
+      "status",
+    ),
+    score: getCurrentScore(plain),
+    feedback: getCurrentFeedback(plain),
     answers: attemptAnswersToMap(plain.answers),
   };
 }
