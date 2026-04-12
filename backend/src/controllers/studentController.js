@@ -7,6 +7,21 @@ import QuizAttempt from "../models/QuizAttempt.js";
 import Leaderboard from "../models/leaderboardModel.js";
 import Course from "../models/CourseModel.js";
 import {
+  gradeAssignmentSubmissionWithAi,
+  gradeQuizAttemptWithAi,
+} from "../services/ai/assessmentGradingService.js";
+import {
+  applyAiReviewState,
+  applyFinalApprovalState,
+  applyGradingDelayState,
+  ATTEMPT_STATUS,
+  getCurrentFeedback,
+  getCurrentScore,
+  GRADING_STATUS,
+  isFinalized,
+  normalizeReviewStatus,
+} from "../services/gradingLifecycle.js";
+import {
   buildActorFromRequest,
   emitRealtimeEvent,
 } from "../socket/emitter.js";
@@ -119,6 +134,36 @@ const pickPreferredTarget = (rows) => {
   return byOwner;
 };
 
+const buildStudentFacingSubmission = (submission) => {
+  const serialized = serializeSubmission(submission);
+  if (serialized.released) return serialized;
+
+  return {
+    ...serialized,
+    score: null,
+    feedback: "",
+    aiScore: null,
+    aiFeedback: "",
+    teacherAdjustedScore: null,
+    teacherAdjustedFeedback: "",
+  };
+};
+
+const buildStudentFacingAttempt = (attempt) => {
+  const serialized = serializeAttemptForUi(attempt);
+  if (serialized.released) return serialized;
+
+  return {
+    ...serialized,
+    score: null,
+    feedback: "",
+    aiScore: null,
+    aiFeedback: "",
+    teacherAdjustedScore: null,
+    teacherAdjustedFeedback: "",
+  };
+};
+
 export const getAssignments = async (req, res) => {
   try {
     const studentId = req.user._id;
@@ -210,7 +255,7 @@ export const getAssignments = async (req, res) => {
           dueDate: target?.dueDate || assignment.dueDate,
           assignedAt: target?.assignedAt || assignment.createdAt,
           targetId: target?._id || null,
-          submission: submission ? serializeSubmission(submission) : null,
+          submission: submission ? buildStudentFacingSubmission(submission) : null,
         });
       }),
       cursor: { next: makeNextCursor(assignments, limit) },
@@ -290,6 +335,19 @@ export const submitAssignment = async (req, res) => {
       });
     }
 
+    const existingSubmission = await Submission.findOne({
+      assignmentId: assignment._id,
+      studentId,
+      workspaceId: courseId,
+      deleted: false,
+    });
+    if (existingSubmission) {
+      return res.status(409).json({
+        success: false,
+        error: "Assignment has already been submitted",
+      });
+    }
+
     const submittedFiles = files.map((file) => ({
       name: file.originalname,
       path: file.path,
@@ -297,40 +355,65 @@ export const submitAssignment = async (req, res) => {
       size: file.size,
     }));
 
-    const submission = await Submission.findOneAndUpdate(
-      {
-        assignmentId: assignment._id,
-        studentId,
-        workspaceId: courseId,
-      },
-      {
-        $set: {
-          tenantId: tenantId || assignment.tenantId || null,
+    const submission = await Submission.create({
+      tenantId: tenantId || assignment.tenantId || null,
+      assignmentId: assignment._id,
+      workspaceId: courseId,
+      studentId,
+      teacherId: assignment.teacher || null,
+      classroomId: assignment.class || null,
+      files: submittedFiles,
+      answers: req.body.answers ?? null,
+      textSubmission: String(req.body.textSubmission || "").trim(),
+      submittedAt: new Date(),
+      gradingStatus: "submitted",
+      gradedBy: "NONE",
+      deleted: false,
+      deletedAt: null,
+      grade: null,
+      score: 0,
+    });
+
+    let responseStatus = 202;
+    let responseMessage =
+      "Assignment submitted successfully. Teacher review is pending.";
+
+    try {
+      const aiResult = await gradeAssignmentSubmissionWithAi({
+        assignment,
+        submission,
+        tenantId: tenantId || assignment.tenantId || null,
+        actorUserId: req.user?._id || studentId,
+      });
+
+      applyAiReviewState(submission, {
+        statusField: "gradingStatus",
+        score: aiResult.score,
+        feedback: aiResult.feedback,
+        metadata: {
           assignmentId: assignment._id,
-          workspaceId: courseId,
-          studentId,
-          teacherId: assignment.teacher || null,
-          classroomId: assignment.class || null,
-          files: submittedFiles,
-          answers: req.body.answers ?? null,
-          textSubmission: String(req.body.textSubmission || "").trim(),
-          submittedAt: new Date(),
-          gradingStatus: "submitted",
-          gradedBy: "NONE",
-          deleted: false,
-          deletedAt: null,
+          gradedQuestions: aiResult.gradedQuestions.length,
         },
-        $setOnInsert: {
-          grade: null,
-          score: 0,
+        reportId: aiResult.reportId,
+      });
+      await submission.save();
+      responseMessage =
+        "Assignment submitted successfully. AI review is awaiting teacher approval.";
+    } catch (error) {
+      applyGradingDelayState(submission, {
+        statusField: "gradingStatus",
+        error: error?.message || "AI grading delayed",
+        metadata: {
+          assignmentId: assignment._id,
+          upstreamStatus:
+            error?.upstreamStatus ||
+            (error?.status >= 500 ? error.status : null),
         },
-      },
-      {
-        upsert: true,
-        new: true,
-        setDefaultsOnInsert: true,
-      },
-    );
+      });
+      await submission.save();
+      responseMessage =
+        "Assignment submitted successfully. Grading is delayed and queued for teacher review.";
+    }
 
     const requestId = requestIdFromReq(req);
     const studentUserId = toId(studentId);
@@ -379,10 +462,10 @@ export const submitAssignment = async (req, res) => {
       },
     });
 
-    return res.json({
+    return res.status(responseStatus).json({
       success: true,
-      message: "Assignment submitted successfully",
-      submission: serializeSubmission(submission),
+      message: responseMessage,
+      submission: buildStudentFacingSubmission(submission),
       submissionId: submission._id,
     });
   } catch (err) {
@@ -487,7 +570,7 @@ export const getQuizzes = async (req, res) => {
     }).lean();
 
     const attemptsByQuizId = new Map(
-      attempts.map((attempt) => [String(attempt.quizId), serializeAttemptForUi(attempt)]),
+      attempts.map((attempt) => [String(attempt.quizId), attempt]),
     );
 
     return res.json({
@@ -499,7 +582,9 @@ export const getQuizzes = async (req, res) => {
             dueDate: target?.dueDate || null,
             assignedAt: target?.assignedAt || quiz.createdAt,
             targetId: target?._id || null,
-            attempt: attemptsByQuizId.get(String(quiz._id)) || null,
+            attempt: attemptsByQuizId.get(String(quiz._id))
+              ? buildStudentFacingAttempt(attemptsByQuizId.get(String(quiz._id)))
+              : null,
           },
         });
       }),
@@ -640,13 +725,17 @@ export const submitQuiz = async (req, res) => {
     }
 
     if (attempt.status !== "in_progress") {
+      const released = isFinalized(attempt, "status");
       return res.json({
         success: true,
-        score: attempt.score,
-        passed: attempt.score >= (quiz.passingScore ?? 60),
+        score: released ? getCurrentScore(attempt) : null,
+        passed:
+          released && getCurrentScore(attempt) !== null
+            ? getCurrentScore(attempt) >= (quiz.passingScore ?? 60)
+            : false,
         timeSpent: attempt.timeSpent,
         showResults: quiz.showResults,
-        attempt: serializeAttemptForUi(attempt),
+        attempt: buildStudentFacingAttempt(attempt),
       });
     }
 
@@ -730,23 +819,59 @@ export const submitQuiz = async (req, res) => {
     attempt.answers = processedAnswers;
     attempt.pointsEarnedTotal = pointsEarnedTotal;
     attempt.maxScore = totalPoints;
-    attempt.score = percentageScore;
     attempt.submittedAt = new Date();
-    attempt.status = requiresManualReview ? "submitted" : "graded";
-    attempt.gradedAt = requiresManualReview ? null : new Date();
     attempt.timeSpent = Math.max(
       attempt.timeSpent || 0,
       Math.floor((Date.now() - new Date(attempt.startedAt).getTime()) / 1000),
     );
     attempt.locked = true;
 
-    await attempt.save();
-
-    if (percentageScore >= (quiz.passingScore ?? 60)) {
-      await updateLeaderboard(studentId, percentageScore, courseId);
-    }
+    let responseStatus = 202;
+    let responseMessage =
+      "Quiz submitted successfully. Teacher review is pending.";
+    let responseScore = null;
+    let responsePassed = false;
 
     if (requiresManualReview) {
+      attempt.status = "submitted";
+
+      try {
+        const aiResult = await gradeQuizAttemptWithAi({
+          quiz,
+          attempt,
+          tenantId: tenantId || quiz.tenantId || null,
+          actorUserId: req.user?._id || studentId,
+        });
+
+        applyAiReviewState(attempt, {
+          statusField: "status",
+          score: aiResult.score,
+          feedback: aiResult.feedback,
+          metadata: {
+            quizId: quiz._id,
+            gradedQuestions: aiResult.gradedQuestions.length,
+          },
+          reportId: aiResult.reportId,
+        });
+        responseMessage =
+          "Quiz submitted successfully. AI review is awaiting teacher approval.";
+      } catch (error) {
+        applyGradingDelayState(attempt, {
+          statusField: "status",
+          error: error?.message || "AI grading delayed",
+          metadata: {
+            quizId: quiz._id,
+            upstreamStatus:
+              error?.upstreamStatus ||
+              (error?.status >= 500 ? error.status : null),
+          },
+        });
+        responseMessage =
+          "Quiz submitted successfully. Grading is delayed and queued for teacher review.";
+      }
+
+      await attempt.save();
+
       emitRealtimeEvent({
         type: "teacher_review",
         status: "updated",
@@ -764,10 +889,38 @@ export const submitQuiz = async (req, res) => {
           studentId: toId(studentId),
           courseId,
           classroomId,
-          score: percentageScore,
+          score: getCurrentScore(attempt),
         },
       });
     } else {
+      applyFinalApprovalState(attempt, {
+        actorId: null,
+        actorRole: "SYSTEM",
+        statusField: "status",
+        score: percentageScore,
+        feedback: "Automatically finalized from objective quiz scoring.",
+        metadata: {
+          quizId: quiz._id,
+          scoringMode: "objective_only",
+        },
+        source: "system",
+      });
+      await attempt.save();
+
+      if (percentageScore >= (quiz.passingScore ?? 60)) {
+        await updateLeaderboard(studentId, percentageScore, {
+          tenantId: tenantId || quiz.tenantId || null,
+          courseId,
+          classId: classroomId,
+          subject: quiz.subject || null,
+        });
+      }
+
+      responseStatus = 200;
+      responseMessage = "Quiz graded successfully.";
+      responseScore = percentageScore;
+      responsePassed = percentageScore >= (quiz.passingScore ?? 60);
+
       emitRealtimeEvent({
         type: "grading",
         status: "success",
@@ -791,13 +944,14 @@ export const submitQuiz = async (req, res) => {
       });
     }
 
-    return res.json({
+    return res.status(responseStatus).json({
       success: true,
-      score: percentageScore,
-      passed: percentageScore >= (quiz.passingScore ?? 60),
+      message: responseMessage,
+      score: responseScore,
+      passed: responsePassed,
       timeSpent: attempt.timeSpent,
       showResults: quiz.showResults,
-      attempt: serializeAttemptForUi(attempt),
+      attempt: buildStudentFacingAttempt(attempt),
     });
   } catch (err) {
     console.error("Submit quiz error:", err);
@@ -869,7 +1023,6 @@ export const getResults = async (req, res) => {
         .lean(),
       QuizAttempt.find({
         studentId,
-        status: { $in: ["submitted", "graded"] },
         deleted: false,
         ...buildTenantMatch(tenantId),
       })
@@ -880,26 +1033,50 @@ export const getResults = async (req, res) => {
     ]);
 
     const results = {
-      assignments: submissions.map((submission) => ({
+      assignments: submissions.map((submission) => {
+      const status = normalizeReviewStatus(
+        submission.gradingStatus,
+        GRADING_STATUS.SUBMITTED,
+      );
+      const released = isFinalized(submission, "gradingStatus");
+      return {
         type: "assignment",
         id: submission.assignmentId?._id || submission.assignmentId,
         title: submission.assignmentId?.title || "Assignment",
-        score: submission.grade ?? submission.score ?? null,
-        graded: submission.grade !== null || submission.gradedBy !== "NONE",
+        score: released ? getCurrentScore(submission) : null,
+        feedback: released ? getCurrentFeedback(submission) : "",
+        graded: released,
+        released,
+        status,
         submittedAt: submission.submittedAt || submission.createdAt,
         dueDate: submission.assignmentId?.dueDate || null,
         courseId: toId(submission.assignmentId?.workspace || submission.workspaceId),
-      })),
-      quizzes: attempts.map((attempt) => ({
+      };
+      }),
+      quizzes: attempts.map((attempt) => {
+      const status = normalizeReviewStatus(
+        attempt.status,
+        ATTEMPT_STATUS.SUBMITTED,
+      );
+      const released = isFinalized(attempt, "status");
+      const visibleScore = released ? getCurrentScore(attempt) : null;
+      return {
         type: "quiz",
         id: attempt.quizId?._id || attempt.quizId,
         title: attempt.quizId?.title || "Quiz",
-        score: attempt.score,
-        passed: attempt.score >= (attempt.quizId?.passingScore ?? 60),
+        score: visibleScore,
+        feedback: released ? getCurrentFeedback(attempt) : "",
+        passed:
+          released && visibleScore !== null
+            ? visibleScore >= (attempt.quizId?.passingScore ?? 60)
+            : false,
+        released,
+        status,
         submittedAt: attempt.submittedAt,
         timeSpent: attempt.timeSpent,
         courseId: toId(attempt.quizId?.workspace || attempt.workspaceId),
-      })),
+      };
+      }),
     };
 
     return res.json({ success: true, data: results });
@@ -911,18 +1088,30 @@ export const getResults = async (req, res) => {
   }
 };
 
-const updateLeaderboard = async (studentId, score, courseId) => {
+const updateLeaderboard = async (studentId, score, {
+  tenantId = null,
+  courseId = null,
+  classId = null,
+  subject = null,
+} = {}) => {
   try {
-    const filter = courseId
-      ? { student: studentId, courseId }
-      : { student: studentId };
+    const filter = {
+      tenantId: tenantId || null,
+      studentId,
+      courseId: courseId || null,
+      classId: classId || null,
+      subject: subject || null,
+    };
 
     await Leaderboard.findOneAndUpdate(
       filter,
       {
         $setOnInsert: {
-          student: studentId,
+          tenantId: tenantId || null,
+          studentId,
           courseId: courseId || null,
+          classId: classId || null,
+          subject: subject || null,
         },
         $inc: { points: score },
       },
@@ -937,24 +1126,32 @@ export const getLeaderboard = async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit || "10", 10), 50);
     const courseId = req.query.courseId || null;
+    const tenantId = getRequestTenantId(req);
+    const subject = req.query.subject || null;
+    const className = req.query.className || null;
 
-    const filter = {};
+    const filter = {
+      deleted: false,
+      ...(tenantId ? { tenantId } : {}),
+    };
     if (courseId && isValidObjectId(courseId)) {
       filter.courseId = courseId;
     }
+    if (subject) filter.subject = String(subject).trim();
+    if (className) filter.className = String(className).trim();
 
     const leaderboard = await Leaderboard.find(filter)
-      .populate("student", "firstName lastName email")
+      .populate("studentId", "firstName lastName email")
       .sort({ points: -1, updatedAt: -1 })
       .limit(limit);
 
     return res.json({
       success: true,
       data: leaderboard.map((entry) => ({
-        student: entry.student
-          ? `${entry.student.firstName} ${entry.student.lastName}`.trim()
+        student: entry.studentId
+          ? `${entry.studentId.firstName} ${entry.studentId.lastName}`.trim()
           : "Unknown",
-        email: entry.student?.email || "",
+        email: entry.studentId?.email || "",
         points: entry.points,
       })),
       count: leaderboard.length,
