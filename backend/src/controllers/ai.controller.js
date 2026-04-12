@@ -1,6 +1,10 @@
 import { randomUUID } from "crypto";
 
 import { getTenantId, normalizeRole } from "../middleware/authMiddleware.js";
+import {
+  buildActorFromRequest,
+  emitRealtimeEvent,
+} from "../socket/emitter.js";
 import { logAiBridgeUsage } from "../services/ai/aiUsageLogger.js";
 import {
   AiUpstreamError,
@@ -74,6 +78,61 @@ function buildBridgeError(error, requestId) {
       ...(upstreamDetail ? { detail: upstreamDetail } : {}),
     },
   };
+}
+
+function buildRequestTargets(req) {
+  const userId = req.user?._id ? String(req.user._id) : null;
+  const role = getRole(req);
+
+  return {
+    userIds: userId ? [userId] : [],
+    teacherIds: role === "TEACHER" ? [userId] : [],
+    studentIds: role === "STUDENT" ? [userId] : [],
+  };
+}
+
+function emitAiWorkflowEvent({
+  req,
+  workflow,
+  status,
+  requestId,
+  message,
+  payload,
+  upstream = null,
+  error = null,
+  entityType = "ai_request",
+}) {
+  if (!workflow) return null;
+
+  return emitRealtimeEvent({
+    type: workflow.type,
+    status,
+    requestId,
+    entityType,
+    entityId: workflow.entityId ? workflow.entityId({ req, payload, upstream }) : null,
+    message:
+      typeof message === "function"
+        ? message({ req, payload, upstream, error })
+        : message,
+    actor: buildActorFromRequest(req),
+    targets: buildRequestTargets(req),
+    meta: {
+      feature: workflow.type,
+      topic: payload?.topic || null,
+      subject: payload?.subject || null,
+      difficulty: payload?.difficulty || null,
+      gradeLevel: payload?.grade_level || null,
+      numQuestions: payload?.num_questions || null,
+      assignmentName: payload?.assignment_name || null,
+      studentId: payload?.student_id || null,
+      upstreamRequestId: upstream?.data?.request_id || null,
+      statusCode: upstream?.status || error?.status || null,
+      upstreamStatus: error?.upstreamStatus || null,
+      ...(typeof workflow.meta === "function"
+        ? workflow.meta({ req, payload, upstream, error })
+        : workflow.meta || {}),
+    },
+  });
 }
 
 function createValidationError(message, detail = undefined) {
@@ -184,11 +243,25 @@ function buildMultipartForm(file, fields = {}) {
 async function respondWithJsonProxy(req, res, options) {
   const startedAt = Date.now();
   let requestId = getRequestId(req);
+  let payload;
 
   try {
     requireRoleSet(req, options.allowedRoles || LMS_AI_ROLES);
 
-    const payload = options.buildPayload ? options.buildPayload(req) : req.body;
+    payload = options.buildPayload ? options.buildPayload(req) : req.body;
+
+    if (options.realtime) {
+      emitAiWorkflowEvent({
+        req,
+        workflow: options.realtime,
+        status: "started",
+        requestId,
+        message: options.realtime.startedMessage,
+        payload,
+        entityType: options.realtime.entityType,
+      });
+    }
+
     const upstream = await callAiService({
       method: options.method || "POST",
       path: options.path,
@@ -210,6 +283,19 @@ async function respondWithJsonProxy(req, res, options) {
       responseData: upstream.data,
     });
 
+    if (options.realtime) {
+      emitAiWorkflowEvent({
+        req,
+        workflow: options.realtime,
+        status: "success",
+        requestId,
+        message: options.realtime.successMessage,
+        payload,
+        upstream,
+        entityType: options.realtime.entityType,
+      });
+    }
+
     return res.status(upstream.status).json(upstream.data);
   } catch (error) {
     await logAiBridgeUsage({
@@ -223,6 +309,22 @@ async function respondWithJsonProxy(req, res, options) {
     });
 
     const normalized = buildBridgeError(error, requestId);
+
+    if (options.realtime) {
+      emitAiWorkflowEvent({
+        req,
+        workflow: options.realtime,
+        status: "failed",
+        requestId,
+        message:
+          options.realtime.failureMessage ||
+          (() => normalized.body.message || "AI request failed"),
+        payload,
+        error,
+        entityType: options.realtime.entityType,
+      });
+    }
+
     return res.status(normalized.status).json(normalized.body);
   }
 }
@@ -288,6 +390,16 @@ export async function generateQuiz(req, res) {
     feature: "quiz-generate",
     endpoint: "POST /api/ai/quiz/generate",
     path: "/api/quiz/generate",
+    realtime: {
+      type: "quiz_generation",
+      entityType: "quiz",
+      startedMessage: ({ payload }) =>
+        `Quiz generation started${payload?.topic ? ` for ${payload.topic}` : ""}`,
+      successMessage: ({ payload }) =>
+        `Quiz generated successfully${payload?.topic ? ` for ${payload.topic}` : ""}`,
+      failureMessage: ({ payload, error }) =>
+        `Quiz generation failed${payload?.topic ? ` for ${payload.topic}` : ""}: ${sanitizeMessage(error?.message, "Please try again")}`,
+    },
     buildPayload: (request) => ({
       ...request.body,
       topic: ensureString(request.body?.topic, "topic", { max: 200 }),
@@ -320,6 +432,21 @@ export async function gradeQuiz(req, res) {
     feature: "quiz-grade",
     endpoint: "POST /api/ai/grade-quiz",
     path: "/api/grade-quiz",
+    realtime: {
+      type: "grading",
+      entityType: "quiz_submission",
+      startedMessage: () => "AI quiz grading started",
+      successMessage: () => "AI quiz grading completed successfully",
+      failureMessage: ({ error }) =>
+        `AI quiz grading failed: ${sanitizeMessage(error?.message, "Please retry")}`,
+      meta: ({ payload }) => ({
+        questionCount: Array.isArray(payload?.assignment_data?.questions)
+          ? payload.assignment_data.questions.length
+          : Array.isArray(payload?.quiz_questions)
+            ? payload.quiz_questions.length
+            : null,
+      }),
+    },
     buildPayload: (request) => {
       const payload = {
         ...request.body,
@@ -389,6 +516,16 @@ export async function generateAssignment(req, res) {
     feature: "assignment-generate",
     endpoint: "POST /api/ai/assignments/generate",
     path: "/api/assignments/generate",
+    realtime: {
+      type: "assignment_generation",
+      entityType: "assignment",
+      startedMessage: ({ payload }) =>
+        `Assignment generation started${payload?.topic ? ` for ${payload.topic}` : ""}`,
+      successMessage: ({ payload }) =>
+        `Assignment generated successfully${payload?.topic ? ` for ${payload.topic}` : ""}`,
+      failureMessage: ({ payload, error }) =>
+        `Assignment generation failed${payload?.topic ? ` for ${payload.topic}` : ""}: ${sanitizeMessage(error?.message, "Please try again")}`,
+    },
     buildPayload: (request) => ({
       ...request.body,
       topic: ensureString(request.body?.topic, "topic", { max: 200 }),
@@ -504,6 +641,21 @@ export async function gradeAssignment(req, res) {
     feature: "assignment-grade",
     endpoint: "POST /api/ai/assignments/grade",
     path: "/api/assignments/grade",
+    realtime: {
+      type: "grading",
+      entityType: "assignment_submission",
+      startedMessage: () => "AI assignment grading started",
+      successMessage: () => "AI assignment grading completed successfully",
+      failureMessage: ({ error }) =>
+        `AI assignment grading failed: ${sanitizeMessage(error?.message, "Please retry")}`,
+      meta: ({ payload }) => ({
+        questionCount: Array.isArray(payload?.assignment?.questions)
+          ? payload.assignment.questions.length
+          : Array.isArray(payload?.assignment_data?.questions)
+            ? payload.assignment_data.questions.length
+            : null,
+      }),
+    },
     buildPayload: (request) => {
       ensureObject(request.body?.assignment, "assignment");
       ensureObject(request.body?.student_answers, "student_answers");
