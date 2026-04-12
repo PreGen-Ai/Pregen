@@ -1,5 +1,6 @@
 // backend/src/server.js
 import express from "express";
+import { createServer } from "http";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import multer from "multer";
@@ -16,6 +17,7 @@ import morgan from "morgan";
 import {
   PORT,
   CLIENT_URL,
+  APP_BACKEND_URL,
   CORS_ALLOWED_ORIGINS,
   NODE_ENV,
   IS_PROD,
@@ -28,6 +30,7 @@ import {
 } from "../src/config/env.js";
 import { connectMongo } from "./config/mongo.js";
 import { connectRedis } from "./config/redis.js";
+import { initSocketServer } from "./socket/index.js";
 
 // Routes
 import userRoutes from "./routes/userroutes.js";
@@ -83,12 +86,14 @@ app.use(morgan(IS_PROD ? "combined" : "dev"));
  * ---------- CORS allowlist ----------
  */
 const allowedOrigins = [
+  // Optional local development origins.
   "http://localhost:3000",
   "http://127.0.0.1:3000",
-  "http://localhost:3001",    // React dev server alternate port
+  "http://localhost:3001",
   "http://127.0.0.1:3001",
   "https://preprod-pregen.netlify.app",
   "https://pregen.netlify.app",
+  APP_BACKEND_URL,
   CLIENT_URL,
   ...CORS_ALLOWED_ORIGINS,
 ]
@@ -128,6 +133,9 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions));
+
+const httpServer = createServer(app);
+const io = initSocketServer(httpServer, { corsOptions });
 
 /**
  * ---------- Rate limiting ----------
@@ -270,11 +278,14 @@ async function start() {
     await connectMongo();
     await connectRedis();
 
-    app.listen(PORT, () => {
+    httpServer.listen(PORT, () => {
       console.log("PreGen Backend running");
       console.log(`Port: ${PORT}`);
       console.log(`Environment: ${NODE_ENV}`);
       console.log(`Client: ${CLIENT_URL}`);
+      console.log(
+        `[startup] realtime transports=websocket,polling backend=${APP_BACKEND_URL || "(not set)"}`,
+      );
     });
   } catch (e) {
     console.error("[startup] failed:", e?.message || e);
@@ -298,3 +309,4 @@ async function start() {
 start();
 
 export default app;
+export { httpServer, io };
