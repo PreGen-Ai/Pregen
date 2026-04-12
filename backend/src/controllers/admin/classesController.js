@@ -1,6 +1,25 @@
 import Classroom from "../../models/Classroom.js";
 import User from "../../models/userModel.js";
 import { getTenantId } from "../../middleware/authMiddleware.js";
+import { writeAuditLog } from "../../services/auditLogService.js";
+
+async function writeClassAudit(req, {
+  tenantId = null,
+  type,
+  message,
+  meta = {},
+}) {
+  return writeAuditLog({
+    tenantId,
+    type,
+    actor: req.user?._id || "system",
+    message,
+    meta: {
+      actorRole: req.userRole || req.user?.role || "",
+      ...meta,
+    },
+  });
+}
 
 export async function listClasses(req, res) {
   try {
@@ -35,6 +54,13 @@ export async function createClass(req, res) {
       deletedAt: null,
     });
 
+    await writeClassAudit(req, {
+      tenantId,
+      type: "CLASS_CREATED",
+      message: `Created class ${doc.name}`,
+      meta: { classId: doc._id, grade, section },
+    });
+
     return res.status(201).json({ message: "Created", class: doc });
   } catch (e) {
     return res
@@ -63,7 +89,7 @@ export async function assignTeacher(req, res) {
     if (!teacher) {
       return res.status(404).json({ message: "Teacher not found" });
     }
-    if (teacher.role !== "TEACHER") {
+    if (String(teacher.role || "").toUpperCase() !== "TEACHER") {
       return res
         .status(400)
         .json({ message: "User is not a teacher. Only users with role TEACHER can be assigned." });
@@ -87,6 +113,13 @@ export async function assignTeacher(req, res) {
       { $addToSet: { tenantIds: tenantId } },
     );
 
+    await writeClassAudit(req, {
+      tenantId,
+      type: "CLASS_TEACHER_ASSIGNED",
+      message: `Assigned teacher ${teacher.email} to class ${doc.name}`,
+      meta: { classId: doc._id, teacherId: teacher._id },
+    });
+
     return res.json({ message: "Teacher assigned", class: doc });
   } catch (e) {
     return res
@@ -104,7 +137,7 @@ export async function enrollStudents(req, res) {
     const { id } = req.params;
     const { studentIds } = req.body;
     if (!Array.isArray(studentIds) || !studentIds.length) {
-      return res.status(400).json({ message: "studentIds[] is required" });
+      return res.status(400).json({ message: "studentIds must be non-empty array" });
     }
 
     // Validate all students exist, are STUDENT role, and belong to this tenant
@@ -146,6 +179,13 @@ export async function enrollStudents(req, res) {
     );
     if (!doc) return res.status(404).json({ message: "Class not found" });
 
+    await writeClassAudit(req, {
+      tenantId,
+      type: "CLASS_STUDENTS_ENROLLED",
+      message: `Enrolled ${studentIds.length} student(s) in class ${doc.name}`,
+      meta: { classId: doc._id, studentIds },
+    });
+
     return res.json({ message: "Enrolled", class: doc });
   } catch (e) {
     return res
@@ -176,6 +216,13 @@ export async function unenrollStudents(req, res) {
       { new: true },
     );
     if (!doc) return res.status(404).json({ message: "Class not found" });
+
+    await writeClassAudit(req, {
+      tenantId,
+      type: "CLASS_STUDENTS_UNENROLLED",
+      message: `Removed ${studentIds.length} student(s) from class ${doc.name}`,
+      meta: { classId: doc._id, studentIds },
+    });
 
     return res.json({ message: "Students removed", class: doc });
   } catch (e) {
