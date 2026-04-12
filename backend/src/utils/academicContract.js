@@ -484,7 +484,8 @@ export function answersInputToAttemptArray(quiz, answersInput) {
 export function toUiAttemptStatus(status) {
   const normalized = String(status || "").trim().toLowerCase();
   if (normalized === "in_progress") return "InProgress";
-  if (normalized === "submitted" || normalized === "graded") return "Submitted";
+  if (normalized === "submitted") return "Submitted";
+  if (normalized === "graded") return "Graded";
   if (normalized === "grading") return "Grading";
   if (normalized === "failed") return "Failed";
   return "Scheduled";
