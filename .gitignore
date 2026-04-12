@@ -162,3 +162,4 @@ pids
 
 
 docs
+!qa-orchestrator/package-lock.json
