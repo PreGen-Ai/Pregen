@@ -38,13 +38,17 @@ export function normalizeRole(role) {
   return up; // STUDENT, TEACHER, ADMIN, PARENT, etc
 }
 
-function extractBearer(req) {
-  const h = req.get("Authorization") || "";
+export function extractBearerToken(value) {
+  const h = String(value || "");
   const m = h.match(/^Bearer\s+(.+)$/i);
   return m ? m[1] : null;
 }
 
-function extractToken(req) {
+export function extractBearer(req) {
+  return extractBearerToken(req.get("Authorization"));
+}
+
+export function extractToken(req) {
   return extractBearer(req) || req.cookies?.token || null;
 }
 
@@ -63,6 +67,19 @@ function attachUser(req, user, token) {
   if (token) req.token = token;
 }
 
+export function verifyAccessToken(token) {
+  return jwt.verify(token, JWT_SECRET);
+}
+
+export function resolveUserIdFromToken(token) {
+  const decoded = verifyAccessToken(token);
+  return decoded.id || decoded._id || decoded.userId || decoded.sub || null;
+}
+
+export async function getAuthenticatedUserById(userId) {
+  return User.findById(userId).select("-password");
+}
+
 /**
  * requireAuth
  * - accepts Bearer token OR cookie token OR session (fallback)
@@ -77,8 +94,7 @@ export async function requireAuth(req, res, next) {
     let userId = null;
 
     if (token) {
-      const decoded = jwt.verify(token, JWT_SECRET);
-      userId = decoded.id || decoded._id || decoded.userId || decoded.sub;
+      userId = resolveUserIdFromToken(token);
       req.token = token;
     } else {
       userId = extractSessionUserId(req);
@@ -103,7 +119,7 @@ export async function requireAuth(req, res, next) {
         .json({ success: false, message: "Authentication required" });
     }
 
-    const user = await User.findById(userId).select("-password");
+    const user = await getAuthenticatedUserById(userId);
     if (!user) {
       return res
         .status(401)
