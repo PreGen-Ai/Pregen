@@ -15,6 +15,7 @@ from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field, conint
 
 from dependencies import get_gemini_service, get_report_storage
+from security import require_internal_service_auth
 from utils.decorators import log_route
 from models.response_models import AssignmentQuestion
 from config import mongo_db
@@ -404,6 +405,7 @@ async def generate_assignment_report(
 async def grade_assignment(
     request: AssignmentGradeRequest,
     gemini=Depends(get_gemini_service),
+    _internal=Depends(require_internal_service_auth),
 ):
     """
     Accepts assignment as either:
