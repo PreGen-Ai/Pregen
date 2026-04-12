@@ -1,31 +1,38 @@
-// models/Submission.js
 import mongoose from "mongoose";
 
 const { Schema } = mongoose;
 
-/**
- * ✅ Merged Submission schema (simple analytics fields + full assignment submission model)
- * - Keeps old fields: tenantId, teacherId, score, gradedBy, timeSavedSeconds
- * - Keeps full fields: assignmentId, workspaceId, files, feedback, gradingStatus, aiRunId, soft delete, indexes
- * - Hot-reload safe export
- */
-
 const fileSchema = new Schema(
   {
     name: { type: String, default: "", trim: true, maxlength: 255 },
-    path: { type: String, default: "", trim: true }, // prefer key/signed URL in prod
+    path: { type: String, default: "", trim: true },
     mimetype: { type: String, default: "", trim: true, maxlength: 120 },
     size: { type: Number, default: 0, min: 0 },
   },
   { _id: false },
 );
 
+const gradingAuditEntrySchema = new Schema(
+  {
+    action: { type: String, default: "updated", trim: true, maxlength: 80 },
+    actorId: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    actorRole: { type: String, default: "", trim: true, maxlength: 40 },
+    source: { type: String, default: "teacher", trim: true, maxlength: 40 },
+    statusFrom: { type: String, default: "submitted", trim: true, maxlength: 40 },
+    statusTo: { type: String, default: "submitted", trim: true, maxlength: 40 },
+    score: { type: Number, default: null, min: 0, max: 100 },
+    feedback: { type: String, default: "", maxlength: 10000 },
+    error: { type: String, default: "", maxlength: 2000 },
+    metadata: { type: Schema.Types.Mixed, default: {} },
+    at: { type: Date, default: Date.now },
+  },
+  { _id: false },
+);
+
 const SubmissionSchema = new Schema(
   {
-    // -------- Multi-tenant (old) --------
     tenantId: { type: String, index: true, required: false, default: null },
 
-    // -------- Core relations --------
     workspaceId: {
       type: Schema.Types.ObjectId,
       ref: "Course",
@@ -50,7 +57,7 @@ const SubmissionSchema = new Schema(
       ref: "User",
       default: null,
       index: true,
-    }, // from old schema
+    },
     classroomId: {
       type: Schema.Types.ObjectId,
       ref: "Classroom",
@@ -58,19 +65,13 @@ const SubmissionSchema = new Schema(
       index: true,
     },
 
-    // -------- Submission payload --------
     files: { type: [fileSchema], default: [] },
     answers: { type: Schema.Types.Mixed, default: null },
     textSubmission: { type: String, default: "", maxlength: 50000 },
-
     submittedAt: { type: Date, default: Date.now, index: true },
 
-    // -------- Grading (merged) --------
-    // old: score (0..100) + gradedBy
-    // new: grade + feedback + gradingStatus
-    score: { type: Number, default: 0, min: 0, max: 100, index: true }, // legacy
-    grade: { type: Number, default: null, min: 0, max: 100, index: true }, // preferred
-
+    score: { type: Number, default: 0, min: 0, max: 100, index: true },
+    grade: { type: Number, default: null, min: 0, max: 100, index: true },
     gradedBy: {
       type: String,
       enum: ["AI", "TEACHER", "NONE"],
@@ -79,26 +80,53 @@ const SubmissionSchema = new Schema(
     },
     gradingStatus: {
       type: String,
-      enum: ["pending", "submitted", "grading", "graded", "failed"],
+      enum: [
+        "submitted",
+        "ai_graded",
+        "pending_teacher_review",
+        "grading_delayed",
+        "final",
+        "failed",
+      ],
       default: "submitted",
       index: true,
     },
     gradedAt: { type: Date, default: null, index: true },
-
     feedback: { type: String, default: "", maxlength: 10000 },
 
-    // -------- AI pipeline hooks --------
+    aiScore: { type: Number, default: null, min: 0, max: 100 },
+    aiFeedback: { type: String, default: "", maxlength: 10000 },
+    aiGradedAt: { type: Date, default: null, index: true },
+    aiReportId: { type: String, default: "", trim: true, maxlength: 255 },
+
+    teacherAdjustedScore: { type: Number, default: null, min: 0, max: 100 },
+    teacherAdjustedFeedback: {
+      type: String,
+      default: "",
+      maxlength: 10000,
+    },
+    finalScore: { type: Number, default: null, min: 0, max: 100, index: true },
+    finalFeedback: { type: String, default: "", maxlength: 10000 },
+    adjustedByTeacher: { type: Boolean, default: false, index: true },
+    teacherAdjustedAt: { type: Date, default: null },
+    teacherApprovedAt: { type: Date, default: null, index: true },
+    teacherApprovedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
+    latestGradingError: { type: String, default: "", maxlength: 2000 },
+    gradingAudit: { type: [gradingAuditEntrySchema], default: [] },
+
     aiRunId: {
       type: Schema.Types.ObjectId,
       ref: "AiRun",
       default: null,
       index: true,
     },
-
-    // old: time saved if AI graded
     timeSavedSeconds: { type: Number, default: 0, min: 0 },
 
-    // -------- Soft delete --------
     deleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
   },
@@ -108,30 +136,48 @@ const SubmissionSchema = new Schema(
 SubmissionSchema.set("toJSON", { virtuals: true });
 SubmissionSchema.set("toObject", { virtuals: true });
 
-/* -------------------------
- * Compatibility normalization
- * ------------------------ */
 SubmissionSchema.pre("validate", function (next) {
-  // Keep score <-> grade consistent
-  const hasGrade = this.grade !== null && this.grade !== undefined;
-  const hasScore = this.score !== null && this.score !== undefined;
+  const hasFinalScore =
+    this.finalScore !== null && this.finalScore !== undefined;
+  const hasTeacherAdjustedScore =
+    this.teacherAdjustedScore !== null &&
+    this.teacherAdjustedScore !== undefined;
+  const hasAiScore = this.aiScore !== null && this.aiScore !== undefined;
 
-  // If only grade is provided, mirror to score
-  if (hasGrade && (!hasScore || this.score === 0)) {
-    this.score = Number(this.grade) || 0;
-  }
+  if (hasFinalScore) {
+    this.grade = Number(this.finalScore) || 0;
+    this.score = Number(this.finalScore) || 0;
+    this.feedback =
+      this.finalFeedback ||
+      this.teacherAdjustedFeedback ||
+      this.aiFeedback ||
+      this.feedback;
+    this.gradingStatus = "final";
+    if (!this.gradedAt) {
+      this.gradedAt = this.teacherApprovedAt || this.aiGradedAt || new Date();
+    }
+  } else if (hasTeacherAdjustedScore || hasAiScore) {
+    const workingScore = Number(
+      hasTeacherAdjustedScore ? this.teacherAdjustedScore : this.aiScore,
+    );
+    this.score = Number.isFinite(workingScore) ? workingScore : 0;
+    this.grade = null;
+    this.feedback =
+      this.teacherAdjustedFeedback || this.aiFeedback || this.feedback;
 
-  // If only score is meaningful, mirror to grade (but keep grade null if you want "ungraded")
-  if (!hasGrade && hasScore && this.gradedBy !== "NONE") {
-    this.grade = Number(this.score) || 0;
-  }
-
-  // gradingStatus inference
-  if (this.deleted) {
-    // leave status as-is
-  } else if (this.gradedBy && this.gradedBy !== "NONE") {
-    if (!this.gradedAt) this.gradedAt = this.gradedAt || new Date();
-    this.gradingStatus = "graded";
+    if (
+      ![
+        "submitted",
+        "ai_graded",
+        "pending_teacher_review",
+        "grading_delayed",
+        "failed",
+      ].includes(String(this.gradingStatus || ""))
+    ) {
+      this.gradingStatus = hasAiScore
+        ? "pending_teacher_review"
+        : "submitted";
+    }
   } else if (!this.gradingStatus) {
     this.gradingStatus = "submitted";
   }
@@ -139,34 +185,16 @@ SubmissionSchema.pre("validate", function (next) {
   next();
 });
 
-/** -------------------------
- * Indexes (query-driven)
- * ------------------------ */
-
-// Prevent duplicate submissions by same student for same assignment (per workspace)
 SubmissionSchema.index(
   { workspaceId: 1, assignmentId: 1, studentId: 1 },
   { unique: true },
 );
-
-// Fast listing: all submissions for an assignment (teacher view)
 SubmissionSchema.index({ workspaceId: 1, assignmentId: 1, submittedAt: -1 });
-
-// Fast listing: a student's submissions (student dashboard)
 SubmissionSchema.index({ workspaceId: 1, studentId: 1, submittedAt: -1 });
-
-// Reports/analytics: filter by status/time
 SubmissionSchema.index({ workspaceId: 1, gradingStatus: 1, submittedAt: -1 });
-
-// Soft-delete filters
 SubmissionSchema.index({ workspaceId: 1, deleted: 1, submittedAt: -1 });
-
-// Optional: tenant-based listings
 SubmissionSchema.index({ tenantId: 1, submittedAt: -1 });
 
-/** -------------------------
- * Query helper
- * ------------------------ */
 SubmissionSchema.query.notDeleted = function () {
   return this.where({ deleted: false });
 };
@@ -179,8 +207,13 @@ SubmissionSchema.virtual("courseId")
     this.workspaceId = value;
   });
 
-/**
- * IMPORTANT: nodemon / hot-reload safe export
- */
+SubmissionSchema.virtual("released")
+  .get(function () {
+    return (
+      String(this.gradingStatus || "").toLowerCase() === "final" ||
+      !!this.teacherApprovedAt
+    );
+  });
+
 export default mongoose.models.Submission ||
   mongoose.model("Submission", SubmissionSchema);
