@@ -1,4 +1,7 @@
-import { AI_SERVICE_URL } from "../../config/env.js";
+import {
+  AI_SERVICE_SHARED_SECRET,
+  AI_SERVICE_URL,
+} from "../../config/env.js";
 
 export class AiUpstreamError extends Error {
   constructor({
@@ -132,7 +135,12 @@ export async function callAiService({
   timeoutMs = 45000,
 }) {
   let preparedBody = body;
-  const preparedHeaders = { ...headers };
+  const preparedHeaders = {
+    ...(AI_SERVICE_SHARED_SECRET
+      ? { "x-internal-api-key": AI_SERVICE_SHARED_SECRET }
+      : {}),
+    ...headers,
+  };
 
   if (
     preparedBody &&
