@@ -448,20 +448,32 @@ export async function gradeQuiz(req, res) {
       }),
     },
     buildPayload: (request) => {
+      const assignmentData = ensureObject(
+        request.body?.assignment_data || {},
+        "assignment_data",
+      );
+      const resolvedQuestions = Array.isArray(request.body?.quiz_questions)
+        ? request.body.quiz_questions
+        : assignmentData.questions;
+
+      ensureArray(resolvedQuestions, "quiz_questions", {
+        min: 1,
+        max: 100,
+      });
+      ensureObject(request.body?.student_answers, "student_answers");
+
       const payload = {
         ...request.body,
+        assignment_data: {
+          ...assignmentData,
+          questions: resolvedQuestions,
+        },
+        quiz_questions: resolvedQuestions,
         student_id: resolveScopedUserIdentifier(
           request,
           request.body?.student_id,
         ),
       };
-
-      ensureObject(payload.assignment_data, "assignment_data");
-      ensureArray(payload.assignment_data.questions, "assignment_data.questions", {
-        min: 1,
-        max: 100,
-      });
-      ensureObject(payload.student_answers, "student_answers");
 
       return payload;
     },
