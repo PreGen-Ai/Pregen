@@ -1,7 +1,12 @@
 // backend/src/controllers/admin/usersAdmin.controller.js
 import bcrypt from "bcryptjs";
-import { getTenantId } from "../../middleware/authMiddleware.js";
+import {
+  getTenantId,
+  normalizeRole,
+} from "../../middleware/authMiddleware.js";
+import Tenant from "../../models/Tenant.js";
 import User from "../../models/userModel.js";
+import { writeAuditLog } from "../../services/auditLogService.js";
 
 function roleOf(req) {
   return String(req.userRole || req.user?.role || "").toUpperCase();
@@ -43,6 +48,62 @@ function normalizeEmail(email) {
   return String(email || "")
     .trim()
     .toLowerCase();
+}
+
+function buildTenantMembershipFilter(tenantId) {
+  if (!tenantId) return {};
+
+  return {
+    $or: [{ tenantId }, { tenantIds: tenantId }],
+  };
+}
+
+function mergeFilter(...filters) {
+  const normalized = filters.filter(Boolean);
+  if (!normalized.length) return {};
+  if (normalized.length === 1) return normalized[0];
+  return { $and: normalized };
+}
+
+async function writeAdminAudit(req, {
+  tenantId = null,
+  level = "info",
+  type,
+  message,
+  meta = {},
+}) {
+  return writeAuditLog({
+    tenantId,
+    level,
+    type,
+    actor: req.user?._id || "system",
+    message,
+    meta: {
+      actorRole: roleOf(req),
+      ...meta,
+    },
+  });
+}
+
+async function ensureTenantStudentCapacity(tenantId) {
+  if (!tenantId) return null;
+
+  const tenant = await Tenant.findOne({ tenantId }).lean();
+  const studentLimit = Number(tenant?.limits?.studentLimit || 0);
+
+  if (!studentLimit || studentLimit < 1) return null;
+
+  const studentCount = await User.countDocuments({
+    tenantId,
+    role: "STUDENT",
+    ...baseNotDeletedFilter(),
+  });
+
+  if (studentCount >= studentLimit) {
+    return `Tenant student limit reached (${studentLimit}).`;
+  }
+
+  return null;
 }
 
 /**
@@ -94,10 +155,10 @@ export async function listUsers(req, res) {
 
     const { q = "", role: roleFilter = "", status = "" } = req.query;
 
-    const filter = {
-      ...baseNotDeletedFilter(),
-      ...(tenantId ? { tenantId } : {}),
-    };
+    const filter = mergeFilter(
+      baseNotDeletedFilter(),
+      tenantId ? buildTenantMembershipFilter(tenantId) : {},
+    );
 
     const queryText = String(q || "").trim();
     if (queryText) {
@@ -111,7 +172,7 @@ export async function listUsers(req, res) {
       ];
     }
 
-    if (roleFilter) filter.role = roleFilter.toUpperCase();
+    if (roleFilter) filter.role = normalizeRole(roleFilter);
 
     if (status === "enabled") filter.disabled = { $ne: true };
     if (status === "disabled") filter.disabled = true;
@@ -167,12 +228,34 @@ export async function createUser(req, res) {
     }
 
     const emailLower = normalizeEmail(email);
-    const upperRole = String(role || "STUDENT").toUpperCase();
-    const allowedRoles = ["STUDENT", "TEACHER", "ADMIN"];
+    const upperRole = normalizeRole(role || "STUDENT");
+    const allowedRoles = isSuperAdmin(req)
+      ? ["STUDENT", "TEACHER", "ADMIN", "SUPERADMIN", "PARENT"]
+      : ["STUDENT", "TEACHER", "ADMIN", "PARENT"];
     if (!allowedRoles.includes(upperRole)) {
       return res.status(400).json({
         message: `Invalid role. Allowed roles for admin creation: ${allowedRoles.join(", ")}`,
       });
+    }
+
+    if (upperRole === "SUPERADMIN" && !isSuperAdmin(req)) {
+      await writeAdminAudit(req, {
+        tenantId,
+        level: "security",
+        type: "USER_ROLE_CHANGE_DENIED",
+        message: "Blocked attempt to create a SUPERADMIN user from a tenant-scoped admin account",
+        meta: { attemptedRole: upperRole, email: emailLower },
+      });
+      return res.status(403).json({
+        message: "Only superadmins can assign the SUPERADMIN role",
+      });
+    }
+
+    if (upperRole === "STUDENT") {
+      const capacityError = await ensureTenantStudentCapacity(tenantId);
+      if (capacityError) {
+        return res.status(409).json({ message: capacityError });
+      }
     }
 
     // For TEACHER: if user already exists globally, add this tenant to their tenantIds
@@ -194,6 +277,12 @@ export async function createUser(req, res) {
           { _id: existingTeacher._id },
           { $addToSet: { tenantIds: tenantId } },
         );
+        await writeAdminAudit(req, {
+          tenantId,
+          type: "USER_TENANT_MEMBERSHIP_ADDED",
+          message: `Teacher ${existingTeacher.email} added to tenant ${tenantId}`,
+          meta: { userId: existingTeacher._id, role: existingTeacher.role },
+        });
         return res.status(200).json({
           success: true,
           message: "Teacher added to tenant",
@@ -220,11 +309,11 @@ export async function createUser(req, res) {
     }
 
     // Check duplicate in same tenant
-    const existing = await User.findOne({
-      tenantId,
-      email: emailLower,
-      ...baseNotDeletedFilter(),
-    }).lean();
+    const existing = await User.findOne(
+      mergeFilter(baseNotDeletedFilter(), buildTenantMembershipFilter(tenantId), {
+        email: emailLower,
+      }),
+    ).lean();
     if (existing) {
       return res
         .status(409)
@@ -256,6 +345,17 @@ export async function createUser(req, res) {
       lastName,
       gender,
       role: upperRole,
+    });
+
+    await writeAdminAudit(req, {
+      tenantId,
+      type: "USER_CREATED",
+      message: `Created ${upperRole} user ${newUser.email}`,
+      meta: {
+        userId: newUser._id,
+        email: newUser.email,
+        role: newUser.role,
+      },
     });
 
     return res.status(201).json({
@@ -341,6 +441,17 @@ export async function createAdmin(req, res) {
       tenantIds: [tenantId],
     });
 
+    await writeAdminAudit(req, {
+      tenantId,
+      type: "USER_CREATED",
+      message: `Created ADMIN user ${newAdmin.email}`,
+      meta: {
+        userId: newAdmin._id,
+        email: newAdmin.email,
+        role: newAdmin.role,
+      },
+    });
+
     return res.status(201).json({
       success: true,
       message: "Admin account created successfully",
@@ -417,7 +528,79 @@ export async function inviteUser(req, res) {
     }
 
     const emailLower = normalizeEmail(email);
-    const upperRole = String(role || "STUDENT").toUpperCase();
+    const upperRole = normalizeRole(role || "STUDENT");
+    const allowedRoles = isSuperAdmin(req)
+      ? ["STUDENT", "TEACHER", "ADMIN", "SUPERADMIN", "PARENT"]
+      : ["STUDENT", "TEACHER", "ADMIN", "PARENT"];
+
+    if (!allowedRoles.includes(upperRole)) {
+      return res.status(400).json({
+        message: `Invalid role. Allowed roles for admin invite: ${allowedRoles.join(", ")}`,
+      });
+    }
+
+    if (upperRole === "SUPERADMIN" && !isSuperAdmin(req)) {
+      await writeAdminAudit(req, {
+        tenantId,
+        level: "security",
+        type: "USER_ROLE_CHANGE_DENIED",
+        message: "Blocked attempt to invite a SUPERADMIN from a tenant-scoped admin account",
+        meta: { attemptedRole: upperRole, email: emailLower },
+      });
+      return res.status(403).json({
+        message: "Only superadmins can assign the SUPERADMIN role",
+      });
+    }
+
+    if (upperRole === "STUDENT") {
+      const capacityError = await ensureTenantStudentCapacity(tenantId);
+      if (capacityError) return res.status(409).json({ message: capacityError });
+    }
+
+    if (upperRole === "TEACHER") {
+      const existingTeacher = await User.findOne({
+        email: emailLower,
+        role: "TEACHER",
+        ...baseNotDeletedFilter(),
+      }).lean();
+
+      if (existingTeacher) {
+        if (
+          existingTeacher.tenantId === tenantId ||
+          (existingTeacher.tenantIds || []).includes(tenantId)
+        ) {
+          return res.status(409).json({
+            message: "Teacher is already a member of this tenant.",
+          });
+        }
+
+        await User.updateOne(
+          { _id: existingTeacher._id },
+          { $addToSet: { tenantIds: tenantId } },
+        );
+        await writeAdminAudit(req, {
+          tenantId,
+          type: "USER_TENANT_MEMBERSHIP_ADDED",
+          message: `Teacher ${existingTeacher.email} added to tenant ${tenantId}`,
+          meta: { userId: existingTeacher._id, role: existingTeacher.role },
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: "Teacher added to tenant",
+          userId: existingTeacher._id,
+          user: {
+            id: existingTeacher._id,
+            email: existingTeacher.email,
+            username: existingTeacher.username,
+            role: existingTeacher.role,
+            tenantId: existingTeacher.tenantId,
+            tenantIds: [...(existingTeacher.tenantIds || []), tenantId],
+            user_code: existingTeacher.user_code,
+          },
+        });
+      }
+    }
 
     // Single-tenant constraint for ADMIN and STUDENT
     const tenantConflict = await enforceSingleTenant(
@@ -460,6 +643,18 @@ export async function inviteUser(req, res) {
       password: passwordHash,
     });
 
+    await writeAdminAudit(req, {
+      tenantId,
+      type: "USER_CREATED",
+      message: `Created ${user.role} user ${user.email}`,
+      meta: {
+        userId: user._id,
+        email: user.email,
+        role: user.role,
+        invited: true,
+      },
+    });
+
     return res.status(201).json({
       success: true,
       message: "User created",
@@ -497,16 +692,34 @@ export async function setUserStatus(req, res) {
     const tenantId = resolveTenantId(req, { allowSuperadminOverride: true });
     if (!tenantId) return res.status(400).json({ message: "Missing tenantId" });
 
-    const { enabled } = req.body;
+    const enabled =
+      req.body?.enabled !== undefined
+        ? Boolean(req.body.enabled)
+        : req.body?.disabled !== undefined
+          ? !Boolean(req.body.disabled)
+          : req.body?.blocked !== undefined
+            ? !Boolean(req.body.blocked)
+            : true;
     const { id } = req.params;
 
     const user = await User.findOneAndUpdate(
-      { _id: id, tenantId, ...baseNotDeletedFilter() },
+      mergeFilter(
+        { _id: id },
+        baseNotDeletedFilter(),
+        buildTenantMembershipFilter(tenantId),
+      ),
       { disabled: !enabled, blocked: !enabled },
       { new: true },
     ).select("-password");
 
     if (!user) return res.status(404).json({ message: "User not found" });
+
+    await writeAdminAudit(req, {
+      tenantId,
+      type: "USER_STATUS_UPDATED",
+      message: `${enabled ? "Enabled" : "Disabled"} user ${user.email}`,
+      meta: { userId: user._id, enabled },
+    });
 
     return res.json({ message: "Updated", user });
   } catch (e) {
@@ -525,18 +738,71 @@ export async function setUserRole(req, res) {
     const tenantId = resolveTenantId(req, { allowSuperadminOverride: true });
     if (!tenantId) return res.status(400).json({ message: "Missing tenantId" });
 
-    const { role } = req.body;
+    const nextRole = normalizeRole(req.body?.role);
     const { id } = req.params;
 
-    if (!role) return res.status(400).json({ message: "Role is required" });
+    if (!nextRole) return res.status(400).json({ message: "Role is required" });
 
-    const user = await User.findOneAndUpdate(
-      { _id: id, tenantId, ...baseNotDeletedFilter() },
-      { role: role.toUpperCase() },
-      { new: true },
+    const allowedRoles = isSuperAdmin(req)
+      ? ["STUDENT", "TEACHER", "ADMIN", "SUPERADMIN", "PARENT"]
+      : ["STUDENT", "TEACHER", "ADMIN", "PARENT"];
+
+    if (nextRole === "SUPERADMIN" && !isSuperAdmin(req)) {
+      await writeAdminAudit(req, {
+        tenantId,
+        level: "security",
+        type: "USER_ROLE_CHANGE_DENIED",
+        message: "Blocked attempt to promote a user to SUPERADMIN",
+        meta: { userId: id, attemptedRole: nextRole },
+      });
+      return res.status(403).json({
+        message: "Only superadmins can assign the SUPERADMIN role",
+      });
+    }
+
+    if (!allowedRoles.includes(nextRole)) {
+      return res.status(400).json({
+        message: `Invalid role. Allowed roles: ${allowedRoles.join(", ")}`,
+      });
+    }
+
+    const user = await User.findOne(
+      mergeFilter(
+        { _id: id },
+        baseNotDeletedFilter(),
+        buildTenantMembershipFilter(tenantId),
+      ),
     ).select("-password");
 
     if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (normalizeRole(user.role) === "SUPERADMIN" && !isSuperAdmin(req)) {
+      await writeAdminAudit(req, {
+        tenantId,
+        level: "security",
+        type: "USER_ROLE_CHANGE_DENIED",
+        message: "Blocked attempt to mutate a SUPERADMIN account from a tenant-scoped admin account",
+        meta: { userId: id, currentRole: user.role, attemptedRole: nextRole },
+      });
+      return res.status(403).json({
+        message: "Only superadmins can modify SUPERADMIN accounts",
+      });
+    }
+
+    const previousRole = user.role;
+    user.role = nextRole;
+    await user.save();
+
+    await writeAdminAudit(req, {
+      tenantId,
+      type: "USER_ROLE_UPDATED",
+      message: `Changed role for ${user.email} from ${previousRole} to ${user.role}`,
+      meta: {
+        userId: user._id,
+        previousRole,
+        nextRole: user.role,
+      },
+    });
 
     return res.json({ message: "Updated", user });
   } catch (e) {
@@ -562,12 +828,23 @@ export async function resetPassword(req, res) {
     const passwordHash = await bcrypt.hash(plainPassword, 10);
 
     const user = await User.findOneAndUpdate(
-      { _id: id, tenantId, ...baseNotDeletedFilter() },
+      mergeFilter(
+        { _id: id },
+        baseNotDeletedFilter(),
+        buildTenantMembershipFilter(tenantId),
+      ),
       { password: passwordHash },
       { new: true },
     ).select("-password");
 
     if (!user) return res.status(404).json({ message: "User not found" });
+
+    await writeAdminAudit(req, {
+      tenantId,
+      type: "USER_PASSWORD_RESET",
+      message: `Reset password for ${user.email}`,
+      meta: { userId: user._id },
+    });
 
     return res.json({
       message: "Password reset successfully",
