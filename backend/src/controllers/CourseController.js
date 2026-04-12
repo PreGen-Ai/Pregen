@@ -7,6 +7,10 @@ import AssignmentAssignment from "../models/AssignmentAssignment.js";
 import Submission from "../models/Submission.js";
 import Quiz from "../models/quiz.js";
 import {
+  buildActorFromRequest,
+  emitRealtimeEvent,
+} from "../socket/emitter.js";
+import {
   buildTargetRows,
   buildTenantMatch,
   canAccessCourse,
@@ -24,6 +28,9 @@ import {
   toId,
   userFields,
 } from "../utils/academicContract.js";
+
+const requestIdFromReq = (req) =>
+  req.get?.("x-request-id") || req.headers?.["x-request-id"] || null;
 
 const escapeRegex = (value) =>
   String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -799,12 +806,76 @@ export const submitAssignmentById = async (req, res) => {
       },
     );
 
+    const requestId = requestIdFromReq(req);
+    const studentUserId = toId(req.user._id);
+    const teacherUserId = toId(assignment.teacher);
+    const classroomId = toId(assignment.class);
+
+    emitRealtimeEvent({
+      type: "submission",
+      status: "success",
+      requestId,
+      entityType: "submission",
+      entityId: submission._id,
+      message: "Assignment submission received. Your teacher will review it shortly.",
+      actor: buildActorFromRequest(req),
+      targets: {
+        userIds: [studentUserId],
+        studentIds: [studentUserId],
+        teacherIds: teacherUserId ? [teacherUserId] : [],
+      },
+      meta: {
+        assignmentId: toId(assignment._id),
+        courseId,
+        classroomId,
+        teacherId: teacherUserId,
+        gradingStatus: "submitted",
+      },
+    });
+
+    emitRealtimeEvent({
+      type: "teacher_review",
+      status: "updated",
+      requestId,
+      entityType: "submission",
+      entityId: submission._id,
+      message: "A new assignment submission is ready for teacher review.",
+      actor: buildActorFromRequest(req),
+      targets: {
+        teacherIds: teacherUserId ? [teacherUserId] : [],
+      },
+      meta: {
+        action: "submitted",
+        assignmentId: toId(assignment._id),
+        studentId: studentUserId,
+        courseId,
+        classroomId,
+      },
+    });
+
     return res.json({
       success: true,
       message: "Submission uploaded",
       submission: serializeSubmission(submission),
     });
   } catch (err) {
+    emitRealtimeEvent({
+      type: "submission",
+      status: "failed",
+      requestId: requestIdFromReq(req),
+      entityType: "submission",
+      entityId: req.params?.assignmentId || null,
+      message: "Assignment submission failed. Please try again.",
+      actor: buildActorFromRequest(req),
+      targets: {
+        userIds: req.user?._id ? [String(req.user._id)] : [],
+        studentIds: req.user?._id ? [String(req.user._id)] : [],
+      },
+      meta: {
+        assignmentId: req.params?.assignmentId || null,
+        courseId: req.params?.courseId || req.body?.courseId || null,
+      },
+    });
     return res.status(500).json({
       message: "Failed to upload",
       error: err.message,
