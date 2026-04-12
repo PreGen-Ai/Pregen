@@ -259,18 +259,25 @@ class EnhancedGradingRequest(BaseModel):
     assignment_name: Optional[str] = None
     subject: Optional[str] = "General"
     curriculum: Optional[str] = "General"
-    assignment_data: Dict[str, Any]
+    assignment_data: Optional[Dict[str, Any]] = None
+    quiz_questions: Optional[List[Dict[str, Any]]] = None
     student_answers: Dict[str, Any]
     language: Optional[str] = "English"
 
     def normalized(self) -> dict:
         """Used by CompleteGrading pipeline and ReportStorageService."""
+        assignment_data = self.assignment_data or {}
+        quiz_questions = self.quiz_questions or assignment_data.get("questions") or []
         return {
             "student_id": (self.student_id or "unknown").strip(),
             "assignment_name": (self.assignment_name or "Assignment").strip(),
             "subject": (self.subject or "General").strip(),
             "curriculum": (self.curriculum or "General").strip(),
-            "assignment_data": self.assignment_data or {},
+            "assignment_data": {
+                **assignment_data,
+                "questions": quiz_questions,
+            },
+            "quiz_questions": quiz_questions,
             "student_answers": {str(k): v for k, v in (self.student_answers or {}).items()},
             "language": (self.language or "English").strip(),
         }
