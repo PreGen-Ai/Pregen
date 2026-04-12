@@ -53,6 +53,7 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "socket.io-client": "^4.8.3",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
@@ -86,7 +87,7 @@
     ]
   },
   "devDependencies": {
-    "source-map-explorer": "^2.5.3",
-    "cypress": "^13.10.0"
+    "cypress": "^13.10.0",
+    "source-map-explorer": "^2.5.3"
   }
 }
