@@ -18,10 +18,15 @@ from models.request_models import (
     RubricRequest
 )
 from dependencies import get_gemini_service, get_report_storage
+from security import require_internal_service_auth
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api", tags=["AI Grading"])
+router = APIRouter(
+    prefix="/api",
+    tags=["AI Grading"],
+    dependencies=[Depends(require_internal_service_auth)],
+)
 
 
 # ============================================================
@@ -30,8 +35,15 @@ router = APIRouter(prefix="/api", tags=["AI Grading"])
 
 class GradeQuizRequest(EnhancedGradingRequest):
     """Request model for full quiz grading"""
-    quiz_questions: List[Dict[str, Any]]
+    quiz_questions: List[Dict[str, Any]] | None = None
     student_answers: Dict[str, str]
+
+    def resolved_questions(self) -> List[Dict[str, Any]]:
+        assignment_data = self.assignment_data or {}
+        questions = self.quiz_questions or assignment_data.get("questions") or []
+        if not isinstance(questions, list):
+            return []
+        return questions
 
 
 class GradeQuestionRequest(EnhancedGradingRequest):
@@ -72,11 +84,14 @@ async def grade_quiz(
 
         # Use normalized data for consistency
         normalized_data = payload.normalized()
+        quiz_questions = payload.resolved_questions()
+        if not quiz_questions:
+            raise HTTPException(status_code=400, detail="quiz_questions is required")
         
         # Run Model-A AI Grading pipeline
         result = await gemini.grading_service.grade_quiz(
             student_id=normalized_data["student_id"],
-            quiz_questions=payload.quiz_questions,  # Keep original structure for service
+            quiz_questions=quiz_questions,
             student_answers=payload.student_answers,
             subject=normalized_data["subject"],
             curriculum=normalized_data["curriculum"],
@@ -87,6 +102,7 @@ async def grade_quiz(
             "ok": True,
             "overall_score": result["overall_score"],
             "graded_questions": result["graded_questions"],
+            "graded_question": result["graded_questions"][0] if result["graded_questions"] else None,
             "report_id": result.get("report_id"),
             "pdf_url": result.get("pdf_url"),
             "json_url": result.get("json_url"),
@@ -147,6 +163,8 @@ async def grade_question(
             "ok": True,
             "overall_score": result["overall_score"],
             "graded_questions": result["graded_questions"],
+            "graded_question": result["graded_questions"][0] if result["graded_questions"] else None,
+            "feedback": result["graded_questions"][0]["feedback"] if result["graded_questions"] else "",
             "report_id": result.get("report_id"),
             "pdf_url": result.get("pdf_url"),
             "json_url": result.get("json_url"),
