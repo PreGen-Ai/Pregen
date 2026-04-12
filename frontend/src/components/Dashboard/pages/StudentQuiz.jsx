@@ -7,6 +7,8 @@ import {
   FaPlay,
 } from "react-icons/fa";
 import api from "../../../services/api/api";
+import useRealtimeRefresh from "../../../hooks/useRealtimeRefresh";
+import { withRequestId } from "../../../utils/requestId";
 import "../../styles/dashboard.css";
 
 function formatDate(value, fallback = "Not scheduled") {
@@ -149,6 +151,13 @@ export default function StudentQuiz() {
     return () => clearTimeout(saveTimerRef.current);
   }, []);
 
+  useRealtimeRefresh(loadAssignedQuizzes, {
+    shouldRefresh: (event) =>
+      ["quiz_publish", "grading", "teacher_review", "grade"].includes(
+        String(event?.type || ""),
+      ),
+  });
+
   const mergedAnswers = useMemo(
     () => ({
       ...(attempt?.answers || {}),
@@ -236,9 +245,14 @@ export default function StudentQuiz() {
 
     try {
       setSubmitting(true);
-      const response = await api.quizzes.submitAttempt(attempt._id, {
-        answers: mergedAnswers,
-      });
+      const { config } = withRequestId({}, "quiz-submit");
+      const response = await api.quizzes.submitAttempt(
+        attempt._id,
+        {
+          answers: mergedAnswers,
+        },
+        config,
+      );
       setAttempt(response?.attempt || attempt);
       setStep("review");
       toast.success("Quiz submitted");
