@@ -1,0 +1,98 @@
+name: E2E Playwright
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: qa-orchestrator
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: qa-orchestrator/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run Playwright suite
+        id: playwright
+        continue-on-error: true
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: reports/playwright/results.json
+          PLAYWRIGHT_JUNIT_OUTPUT_NAME: reports/playwright/junit.xml
+          E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
+        run: |
+          mkdir -p reports/playwright
+          npx playwright test --config=playwright.config.ts --reporter=json,junit,html
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            qa-orchestrator/reports/playwright
+            qa-orchestrator/playwright-report
+          if-no-files-found: warn
+
+      - name: Notify orchestrator about Playwright failure
+        if: steps.playwright.outcome == 'failure'
+        env:
+          FASTAPI_WEBHOOK_URL: ${{ secrets.FASTAPI_WEBHOOK_URL }}
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from urllib import request
+
+          report_path = Path("reports/playwright/results.json")
+          report = {}
+          if report_path.exists():
+              report = json.loads(report_path.read_text(encoding="utf-8"))
+
+          github_context = json.loads(os.environ["GITHUB_CONTEXT"])
+          payload = {
+              "source": "github-actions",
+              "framework": "playwright",
+              "repo": github_context["repository"],
+              "branch": github_context["ref_name"],
+              "commit": github_context["sha"],
+              "run_id": github_context["run_id"],
+              "run_number": github_context["run_number"],
+              "workflow": github_context["workflow"],
+              "actor": github_context["actor"],
+              "event_name": github_context["event_name"],
+              "report": report,
+          }
+
+          endpoint = os.environ["FASTAPI_WEBHOOK_URL"].rstrip("/") + "/webhooks/github/test-failure"
+          req = request.Request(
+              endpoint,
+              data=json.dumps(payload).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with request.urlopen(req) as response:
+              print(response.read().decode("utf-8"))
+          PY
+
+      - name: Fail workflow if Playwright tests failed
+        if: steps.playwright.outcome == 'failure'
+        run: exit 1
