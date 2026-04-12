@@ -32,6 +32,7 @@ import {
   toId,
   userFields,
 } from "../utils/academicContract.js";
+import { GRADING_STATUS, normalizeReviewStatus } from "../services/gradingLifecycle.js";
 
 const requestIdFromReq = (req) =>
   req.get?.("x-request-id") || req.headers?.["x-request-id"] || null;
@@ -86,7 +87,9 @@ const ensureTeacherRequest = (req, res) => {
 };
 
 async function ensureCourseAccess({ req, courseId }) {
-  if (!courseId) return { course: null };
+  if (!courseId) {
+    return { error: { status: 400, message: "courseId is required" } };
+  }
 
   if (!isValidObjectId(courseId)) {
     return { error: { status: 400, message: "Invalid courseId" } };
@@ -105,6 +108,115 @@ async function ensureCourseAccess({ req, courseId }) {
   }
 
   return { course };
+}
+
+async function validateTargeting({
+  tenantId,
+  course,
+  classroomId = null,
+  studentIds = [],
+}) {
+  const normalizedStudentIds = Array.from(
+    new Set(
+      (Array.isArray(studentIds) ? studentIds : [])
+        .map((value) => (isValidObjectId(value) ? String(value) : null))
+        .filter(Boolean),
+    ),
+  );
+
+  let classroom = null;
+  if (classroomId) {
+    if (!isValidObjectId(classroomId)) {
+      return { error: { status: 400, message: "Invalid classroomId" } };
+    }
+
+    classroom = await Classroom.findOne({
+      _id: classroomId,
+      tenantId,
+      deletedAt: null,
+    }).lean();
+
+    if (!classroom) {
+      return { error: { status: 404, message: "Classroom not found" } };
+    }
+
+    if (course?.classroomId && String(course.classroomId) !== String(classroomId)) {
+      return {
+        error: {
+          status: 400,
+          message: "Selected classroom does not belong to the target course",
+        },
+      };
+    }
+  }
+
+  if (!normalizedStudentIds.length) {
+    return {
+      classroomId: classroom ? classroom._id : null,
+      studentIds: [],
+      classroom,
+    };
+  }
+
+  const students = await User.find({
+    _id: { $in: normalizedStudentIds },
+    role: "STUDENT",
+    tenantId,
+    deleted: { $ne: true },
+  })
+    .select("_id")
+    .lean();
+
+  if (students.length !== normalizedStudentIds.length) {
+    return {
+      error: {
+        status: 400,
+        message: "One or more targeted students are invalid or outside this tenant",
+      },
+    };
+  }
+
+  const courseMemberships = await CourseMember.find({
+    courseId: course._id,
+    userId: { $in: normalizedStudentIds },
+    role: "student",
+    status: "active",
+  })
+    .select("userId")
+    .lean();
+  const memberIds = new Set(courseMemberships.map((row) => toId(row.userId)));
+
+  if (memberIds.size !== normalizedStudentIds.length) {
+    return {
+      error: {
+        status: 400,
+        message: "All targeted students must be actively enrolled in the selected course",
+      },
+    };
+  }
+
+  if (classroom) {
+    const classroomStudentIds = new Set(
+      (classroom.studentIds || []).map((value) => toId(value)).filter(Boolean),
+    );
+    const outsideClassroom = normalizedStudentIds.filter(
+      (studentId) => !classroomStudentIds.has(studentId),
+    );
+    if (outsideClassroom.length) {
+      return {
+        error: {
+          status: 400,
+          message: "All targeted students must belong to the selected classroom",
+        },
+      };
+    }
+  }
+
+  return {
+    classroomId: classroom ? classroom._id : null,
+    studentIds: normalizedStudentIds,
+    classroom,
+  };
 }
 
 export const getCourseRoster = async (req, res) => {
@@ -316,10 +428,13 @@ function summarizeSubmissionState({ targetStudentIds, studentWork }) {
     targetedStudents: targetStudentIds.length,
     submitted: studentWork.length,
     graded: studentWork.filter(
-      (row) =>
-        String(row.gradingStatus || "").toLowerCase() === "graded" ||
-        String(row.gradedBy || "").toUpperCase() !== "NONE" ||
-        String(row.status || "").toLowerCase() === "graded",
+      (row) => {
+        const status = normalizeReviewStatus(
+          row.gradingStatus || row.status,
+          GRADING_STATUS.SUBMITTED,
+        );
+        return status === GRADING_STATUS.FINAL;
+      },
     ).length,
     missing: Math.max(
       targetStudentIds.length - submittedStudentIds.size,
@@ -441,12 +556,34 @@ export const createAssignment = async (req, res) => {
         message: "title, description, and a valid dueDate are required",
       });
     }
+    if (dueDateValue <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: "dueDate must be in the future",
+      });
+    }
 
     const courseCheck = await ensureCourseAccess({ req, courseId });
     if (courseCheck?.error) {
       return res.status(courseCheck.error.status).json({
         success: false,
         message: courseCheck.error.message,
+      });
+    }
+    const targetValidation = await validateTargeting({
+      tenantId: tenantId || courseCheck.course?.tenantId || null,
+      course: courseCheck.course,
+      classroomId,
+      studentIds:
+        req.body.studentIds ||
+        req.body.assignToStudentIds ||
+        req.body.assignedStudents ||
+        [],
+    });
+    if (targetValidation?.error) {
+      return res.status(targetValidation.error.status).json({
+        success: false,
+        message: targetValidation.error.message,
       });
     }
 
@@ -458,7 +595,7 @@ export const createAssignment = async (req, res) => {
       dueDate: dueDateValue,
       teacher: req.user._id,
       workspace: courseId,
-      class: isValidObjectId(classroomId) ? classroomId : null,
+      class: targetValidation.classroomId,
       type: req.body.type || "text_submission",
       maxScore: toPositiveNumber(req.body.maxScore, 100),
       allowedFileTypes: Array.isArray(req.body.allowedFileTypes)
@@ -474,12 +611,8 @@ export const createAssignment = async (req, res) => {
       key: "assignmentId",
       ownerId: assignment._id,
       courseId,
-      classroomId,
-      studentIds:
-        req.body.studentIds ||
-        req.body.assignToStudentIds ||
-        req.body.assignedStudents ||
-        [],
+      classroomId: targetValidation.classroomId,
+      studentIds: targetValidation.studentIds,
       dueDate: dueDateValue,
       tenantId: tenantId || courseCheck.course?.tenantId || null,
     });
@@ -521,7 +654,7 @@ export const createAssignment = async (req, res) => {
       const targetStudentIds = await resolveTargetStudentIds({
         targetRows,
         courseId,
-        classroomId: isValidObjectId(classroomId) ? classroomId : null,
+        classroomId: targetValidation.classroomId,
       });
 
       emitRealtimeEvent({
@@ -576,12 +709,12 @@ export const updateAssignment = async (req, res) => {
 
     const assignment = found.assignment;
     const nextCourseId =
-      req.body.courseId !== undefined
-        ? req.body.courseId || null
+      req.body.courseId !== undefined || req.body.workspaceId !== undefined
+        ? req.body.courseId || req.body.workspaceId || null
         : toId(assignment.workspace);
     const nextClassroomId =
-      req.body.classroomId !== undefined
-        ? req.body.classroomId || null
+      req.body.classroomId !== undefined || req.body.classId !== undefined
+        ? req.body.classroomId || req.body.classId || null
         : toId(assignment.class);
 
     const courseCheck = await ensureCourseAccess({ req, courseId: nextCourseId });
@@ -607,6 +740,12 @@ export const updateAssignment = async (req, res) => {
           message: "A valid dueDate is required",
         });
       }
+      if (dueDate <= new Date()) {
+        return res.status(400).json({
+          success: false,
+          message: "dueDate must be in the future",
+        });
+      }
       assignment.dueDate = dueDate;
     }
     if (req.body.type !== undefined) assignment.type = req.body.type;
@@ -630,8 +769,24 @@ export const updateAssignment = async (req, res) => {
     if (req.body.status !== undefined) {
       assignment.status = normalizeStatus(req.body.status, assignment.status);
     }
+    const targetValidation = await validateTargeting({
+      tenantId: getRequestTenantId(req) || courseCheck.course?.tenantId || null,
+      course: courseCheck.course,
+      classroomId: nextClassroomId,
+      studentIds:
+        req.body.studentIds ||
+        req.body.assignToStudentIds ||
+        req.body.assignedStudents ||
+        [],
+    });
+    if (targetValidation?.error) {
+      return res.status(targetValidation.error.status).json({
+        success: false,
+        message: targetValidation.error.message,
+      });
+    }
     assignment.workspace = nextCourseId;
-    assignment.class = isValidObjectId(nextClassroomId) ? nextClassroomId : null;
+    assignment.class = targetValidation.classroomId;
     await assignment.save();
 
     const shouldReplaceTargets =
@@ -650,12 +805,8 @@ export const updateAssignment = async (req, res) => {
         key: "assignmentId",
         ownerId: assignment._id,
         courseId: nextCourseId,
-        classroomId: nextClassroomId,
-        studentIds:
-          req.body.studentIds ||
-          req.body.assignToStudentIds ||
-          req.body.assignedStudents ||
-          [],
+        classroomId: targetValidation.classroomId,
+        studentIds: targetValidation.studentIds,
         dueDate: assignment.dueDate,
         tenantId: getRequestTenantId(req) || courseCheck.course?.tenantId || null,
       });
@@ -877,6 +1028,34 @@ export const createQuiz = async (req, res) => {
         message: courseCheck.error.message,
       });
     }
+    if (dueDate && Number.isNaN(dueDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid dueDate is required",
+      });
+    }
+    if (dueDate && dueDate <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: "dueDate must be in the future",
+      });
+    }
+    const targetValidation = await validateTargeting({
+      tenantId: tenantId || courseCheck.course?.tenantId || null,
+      course: courseCheck.course,
+      classroomId,
+      studentIds:
+        req.body.studentIds ||
+        req.body.assignToStudentIds ||
+        req.body.assignedStudents ||
+        [],
+    });
+    if (targetValidation?.error) {
+      return res.status(targetValidation.error.status).json({
+        success: false,
+        message: targetValidation.error.message,
+      });
+    }
 
     const questions = questionsInput.map((question, index) =>
       normalizeQuizQuestion(question, index),
@@ -892,7 +1071,7 @@ export const createQuiz = async (req, res) => {
       curriculum,
       gradeLevel,
       workspace: courseId,
-      class: isValidObjectId(classroomId) ? classroomId : null,
+      class: targetValidation.classroomId,
       questions,
       timeLimit: toPositiveNumber(req.body.timeLimit, 30),
       maxAttempts: Math.max(toPositiveNumber(req.body.maxAttempts, 1), 1),
@@ -910,12 +1089,8 @@ export const createQuiz = async (req, res) => {
       key: "quizId",
       ownerId: quiz._id,
       courseId,
-      classroomId,
-      studentIds:
-        req.body.studentIds ||
-        req.body.assignToStudentIds ||
-        req.body.assignedStudents ||
-        [],
+      classroomId: targetValidation.classroomId,
+      studentIds: targetValidation.studentIds,
       dueDate:
         dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate : null,
       tenantId: tenantId || courseCheck.course?.tenantId || null,
@@ -946,7 +1121,7 @@ export const createQuiz = async (req, res) => {
       const targetStudentIds = await resolveTargetStudentIds({
         targetRows,
         courseId,
-        classroomId: isValidObjectId(classroomId) ? classroomId : null,
+        classroomId: targetValidation.classroomId,
       });
 
       emitRealtimeEvent({
@@ -998,12 +1173,12 @@ export const updateQuiz = async (req, res) => {
 
     const quiz = found.quiz;
     const nextCourseId =
-      req.body.courseId !== undefined
-        ? req.body.courseId || null
+      req.body.courseId !== undefined || req.body.workspaceId !== undefined
+        ? req.body.courseId || req.body.workspaceId || null
         : toId(quiz.workspace);
     const nextClassroomId =
-      req.body.classroomId !== undefined
-        ? req.body.classroomId || null
+      req.body.classroomId !== undefined || req.body.classId !== undefined
+        ? req.body.classroomId || req.body.classId || null
         : toId(quiz.class);
 
     const courseCheck = await ensureCourseAccess({ req, courseId: nextCourseId });
@@ -1046,6 +1221,21 @@ export const updateQuiz = async (req, res) => {
     if (req.body.status !== undefined) {
       quiz.status = normalizeStatus(req.body.status, quiz.status);
     }
+    if (req.body.dueDate !== undefined) {
+      const dueDate = req.body.dueDate ? new Date(req.body.dueDate) : null;
+      if (!dueDate || Number.isNaN(dueDate.getTime())) {
+        return res.status(400).json({
+          success: false,
+          message: "A valid dueDate is required",
+        });
+      }
+      if (dueDate <= new Date()) {
+        return res.status(400).json({
+          success: false,
+          message: "dueDate must be in the future",
+        });
+      }
+    }
     if (req.body.questions !== undefined) {
       const questionsInput = Array.isArray(req.body.questions) ? req.body.questions : [];
       if (!questionsInput.length) {
@@ -1058,8 +1248,24 @@ export const updateQuiz = async (req, res) => {
         normalizeQuizQuestion(question, index),
       );
     }
+    const targetValidation = await validateTargeting({
+      tenantId: getRequestTenantId(req) || courseCheck.course?.tenantId || null,
+      course: courseCheck.course,
+      classroomId: nextClassroomId,
+      studentIds:
+        req.body.studentIds ||
+        req.body.assignToStudentIds ||
+        req.body.assignedStudents ||
+        [],
+    });
+    if (targetValidation?.error) {
+      return res.status(targetValidation.error.status).json({
+        success: false,
+        message: targetValidation.error.message,
+      });
+    }
     quiz.workspace = nextCourseId;
-    quiz.class = isValidObjectId(nextClassroomId) ? nextClassroomId : null;
+    quiz.class = targetValidation.classroomId;
     await quiz.save();
 
     const shouldReplaceTargets =
@@ -1079,12 +1285,8 @@ export const updateQuiz = async (req, res) => {
         key: "quizId",
         ownerId: quiz._id,
         courseId: nextCourseId,
-        classroomId: nextClassroomId,
-        studentIds:
-          req.body.studentIds ||
-          req.body.assignToStudentIds ||
-          req.body.assignedStudents ||
-          [],
+        classroomId: targetValidation.classroomId,
+        studentIds: targetValidation.studentIds,
         dueDate:
           dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate : null,
         tenantId: getRequestTenantId(req) || courseCheck.course?.tenantId || null,
@@ -1293,6 +1495,7 @@ export const getTeacherDashboard = async (req, res) => {
       assignments,
       quizzes,
       pendingSubmissions,
+      pendingQuizAttempts,
       announcements,
       recentMaterials,
     ] = await Promise.all([
@@ -1317,9 +1520,34 @@ export const getTeacherDashboard = async (req, res) => {
       Submission.countDocuments({
         teacherId: req.user._id,
         deleted: false,
-        gradingStatus: { $in: ["submitted", "grading"] },
+        gradingStatus: {
+          $in: [
+            "submitted",
+            "ai_graded",
+            "pending_teacher_review",
+            "grading_delayed",
+          ],
+        },
         ...buildTenantMatch(tenantId),
       }),
+      QuizAttempt.countDocuments({
+        status: {
+          $in: [
+            "submitted",
+            "ai_graded",
+            "pending_teacher_review",
+            "grading_delayed",
+          ],
+        },
+        deleted: false,
+        ...buildTenantMatch(tenantId),
+      }).where("quizId").in(
+        await Quiz.find({
+          teacher: req.user._id,
+          deleted: false,
+          ...buildTenantMatch(tenantId),
+        }).distinct("_id"),
+      ),
       Announcement.find({
         createdBy: req.user._id,
         deleted: false,
@@ -1345,7 +1573,7 @@ export const getTeacherDashboard = async (req, res) => {
         assignments: assignments.length,
         quizzes: quizzes.length,
         accessibleCourses: accessibleCourseIds.length,
-        pendingGrading: pendingSubmissions,
+        pendingGrading: pendingSubmissions + pendingQuizAttempts,
         announcements: announcements.length,
         recentMaterials: recentMaterials.length,
       },
