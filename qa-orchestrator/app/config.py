@@ -34,7 +34,7 @@ class Settings(BaseModel):
     fastapi_base_url: str = Field(default_factory=lambda: os.getenv("FASTAPI_BASE_URL", ""))
 
     gemini_api_key: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
-    gemini_model: str = Field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-2.0-flash"))
+    gemini_model: str = Field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
     gemini_api_url: str = Field(
         default_factory=lambda: os.getenv(
             "GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta/models"

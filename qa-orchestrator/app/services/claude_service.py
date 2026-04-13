@@ -110,13 +110,16 @@ class ClaudeService:
         """Parse a JSON object from Gemini output, tolerating fenced blocks."""
 
         stripped = raw_text.strip()
-        fence_match = re.search(r"```json\s*(\{.*\})\s*```", stripped, flags=re.DOTALL)
-        candidate = fence_match.group(1) if fence_match else stripped
+
+        # Strip markdown code fences (``` or ```json) if the whole response is fenced
+        fence_match = re.match(r"^```(?:json)?\s*([\s\S]*?)\s*```\s*$", stripped)
+        candidate = fence_match.group(1).strip() if fence_match else stripped
 
         try:
             parsed = json.loads(candidate)
         except json.JSONDecodeError:
-            json_match = re.search(r"(\{.*\})", stripped, flags=re.DOTALL)
+            # Last resort: pull the first {...} block out of free-form text
+            json_match = re.search(r"(\{[\s\S]*\})", stripped)
             if not json_match:
                 raise ClaudeServiceError(f"Gemini did not return valid JSON: {raw_text}")
             try:
