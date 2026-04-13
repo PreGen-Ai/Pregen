@@ -10,6 +10,7 @@ import {
   AiUpstreamError,
   callAiService,
 } from "../services/ai/fastapiClient.js";
+import Assignment from "../models/Assignment.js";
 
 const LMS_AI_ROLES = new Set(["STUDENT", "TEACHER", "ADMIN", "SUPERADMIN"]);
 
@@ -688,28 +689,52 @@ export async function getAssignmentById(req, res) {
 }
 
 export async function listAssignments(req, res) {
-  return respondWithJsonProxy(req, res, {
-    feature: "assignment-list",
-    endpoint: "GET /api/ai/assignments",
-    path: "/api/assignments",
-    method: "GET",
-    query: (request) => ({
-      limit:
-        request.query?.limit !== undefined
-          ? ensureInteger(request.query.limit, "limit", {
-              min: 1,
-              max: 100,
-            })
-          : undefined,
-      offset:
-        request.query?.offset !== undefined
-          ? ensureInteger(request.query.offset, "offset", {
-              min: 0,
-              max: 10000,
-            })
-          : undefined,
-    }),
-  });
+  try {
+    requireRoleSet(req, LMS_AI_ROLES);
+
+    const tenantId = getTenantId(req);
+    const role = getRole(req);
+    const userId = req.user?._id;
+
+    const limit = req.query?.limit !== undefined
+      ? ensureInteger(req.query.limit, "limit", { min: 1, max: 100 })
+      : 20;
+    const offset = req.query?.offset !== undefined
+      ? ensureInteger(req.query.offset, "offset", { min: 0, max: 10000 })
+      : 0;
+
+    const filter = {};
+    if (tenantId) filter.tenantId = String(tenantId);
+
+    // Students only see published assignments for their courses
+    if (role === "STUDENT") {
+      filter.status = "published";
+    } else if (role === "TEACHER") {
+      // Teachers see assignments they created or all in the tenant
+      filter.$or = [{ createdBy: userId }, { tenantId: String(tenantId) }];
+    }
+
+    const [assignments, total] = await Promise.all([
+      Assignment.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(offset)
+        .limit(limit)
+        .lean(),
+      Assignment.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      assignments,
+      total,
+      limit,
+      offset,
+    });
+  } catch (error) {
+    const requestId = getRequestId(req);
+    return res.status(error.status || 500).json(
+      buildBridgeError(error, requestId),
+    );
+  }
 }
 
 export async function getAssignmentsHealth(req, res) {
