@@ -660,6 +660,14 @@ export const exportPDF = async (req, res) => {
       });
     }
 
+    if (!process.env.API2PDF_KEY) {
+      return res.status(503).json({
+        success: false,
+        fallbackToBrowser: true,
+        error: "PDF service not configured — use client-side fallback",
+      });
+    }
+
     // API2PDF v2 response: { FileUrl: "https://...", Success: true, ... }
     // inlinePdf:false → FileUrl is a remote URL; we fetch it and stream back to client.
     const result = await axios.post(
