@@ -1,4 +1,4 @@
-"""Anthropic Claude integration for structured outputs."""
+"""Gemini AI integration for structured outputs."""
 
 from __future__ import annotations
 
@@ -57,54 +57,57 @@ Rules:
 
 
 class ClaudeServiceError(RuntimeError):
-    """Raised when the Claude API fails or returns unusable output."""
+    """Raised when the Gemini API fails or returns unusable output."""
 
 
 class ClaudeService:
-    """Minimal Anthropic Messages API client using httpx."""
+    """Gemini GenerateContent API client using httpx."""
 
     def __init__(self) -> None:
         self.settings = get_settings()
 
     async def ask_claude_json(self, user_input: str, system_prompt: str) -> dict[str, Any]:
-        """Ask Claude for a strict JSON object and return the parsed payload."""
+        """Ask Gemini for a strict JSON object and return the parsed payload."""
 
-        if not self.settings.anthropic_api_key:
-            raise ClaudeServiceError("ANTHROPIC_API_KEY is not configured.")
+        if not self.settings.gemini_api_key:
+            raise ClaudeServiceError("GEMINI_API_KEY is not configured.")
 
-        headers = {
-            "x-api-key": self.settings.anthropic_api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        }
+        url = (
+            f"{self.settings.gemini_api_url}"
+            f"/{self.settings.gemini_model}:generateContent"
+            f"?key={self.settings.gemini_api_key}"
+        )
         payload = {
-            "model": self.settings.anthropic_model,
-            "max_tokens": self.settings.anthropic_max_tokens,
-            "system": system_prompt,
-            "temperature": 0,
-            "messages": [{"role": "user", "content": user_input}],
+            "system_instruction": {"parts": [{"text": system_prompt}]},
+            "contents": [{"role": "user", "parts": [{"text": user_input}]}],
+            "generationConfig": {
+                "temperature": 0,
+                "maxOutputTokens": self.settings.gemini_max_tokens,
+            },
         }
 
-        async with httpx.AsyncClient(timeout=self.settings.anthropic_timeout_seconds) as client:
-            response = await client.post(self.settings.anthropic_api_url, headers=headers, json=payload)
+        async with httpx.AsyncClient(timeout=self.settings.gemini_timeout_seconds) as client:
+            response = await client.post(url, json=payload)
 
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             raise ClaudeServiceError(
-                f"Claude API request failed with status {exc.response.status_code}: {exc.response.text}"
+                f"Gemini API request failed with status {exc.response.status_code}: {exc.response.text}"
             ) from exc
 
         response_body = response.json()
-        content = response_body.get("content", [])
-        text_chunks = [block.get("text", "") for block in content if block.get("type") == "text"]
-        if not text_chunks:
-            raise ClaudeServiceError("Claude response did not contain a text block.")
+        try:
+            raw_text = response_body["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError) as exc:
+            raise ClaudeServiceError(
+                f"Gemini response missing expected text field: {response_body}"
+            ) from exc
 
-        return self._extract_json("".join(text_chunks))
+        return self._extract_json(raw_text)
 
     def _extract_json(self, raw_text: str) -> dict[str, Any]:
-        """Parse a JSON object from Claude output, tolerating fenced blocks."""
+        """Parse a JSON object from Gemini output, tolerating fenced blocks."""
 
         stripped = raw_text.strip()
         fence_match = re.search(r"```json\s*(\{.*\})\s*```", stripped, flags=re.DOTALL)
@@ -115,13 +118,13 @@ class ClaudeService:
         except json.JSONDecodeError:
             json_match = re.search(r"(\{.*\})", stripped, flags=re.DOTALL)
             if not json_match:
-                raise ClaudeServiceError(f"Claude did not return valid JSON: {raw_text}")
+                raise ClaudeServiceError(f"Gemini did not return valid JSON: {raw_text}")
             try:
                 parsed = json.loads(json_match.group(1))
             except json.JSONDecodeError as exc:
-                raise ClaudeServiceError(f"Claude returned malformed JSON: {raw_text}") from exc
+                raise ClaudeServiceError(f"Gemini returned malformed JSON: {raw_text}") from exc
 
         if not isinstance(parsed, dict):
-            raise ClaudeServiceError("Claude returned JSON, but it was not an object.")
+            raise ClaudeServiceError("Gemini returned JSON, but it was not an object.")
 
         return parsed

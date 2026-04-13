@@ -33,15 +33,17 @@ class Settings(BaseModel):
     app_version: str = Field(default_factory=lambda: os.getenv("APP_VERSION", "1.0.0"))
     fastapi_base_url: str = Field(default_factory=lambda: os.getenv("FASTAPI_BASE_URL", ""))
 
-    anthropic_api_key: str = Field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
-    anthropic_model: str = Field(default_factory=lambda: os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-0"))
-    anthropic_api_url: str = Field(
-        default_factory=lambda: os.getenv("ANTHROPIC_API_URL", "https://api.anthropic.com/v1/messages")
+    gemini_api_key: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
+    gemini_model: str = Field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-2.0-flash"))
+    gemini_api_url: str = Field(
+        default_factory=lambda: os.getenv(
+            "GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta/models"
+        )
     )
-    anthropic_timeout_seconds: float = Field(
-        default_factory=lambda: float(os.getenv("ANTHROPIC_TIMEOUT_SECONDS", "45"))
+    gemini_timeout_seconds: float = Field(
+        default_factory=lambda: float(os.getenv("GEMINI_TIMEOUT_SECONDS", "45"))
     )
-    anthropic_max_tokens: int = Field(default_factory=lambda: int(os.getenv("ANTHROPIC_MAX_TOKENS", "2000")))
+    gemini_max_tokens: int = Field(default_factory=lambda: int(os.getenv("GEMINI_MAX_TOKENS", "2000")))
 
     clickup_api_token: str = Field(default_factory=lambda: os.getenv("CLICKUP_API_TOKEN", ""))
     clickup_api_base_url: str = Field(
