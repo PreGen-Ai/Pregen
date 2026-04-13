@@ -22,10 +22,15 @@ import requests
 from models.request_models import StudentReportsRequest, ProgressRequest
 from dependencies import get_report_storage
 from report_storage_service import ReportStorageService
+from security import require_internal_service_auth
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/reports", tags=["Reports & Analytics"])
+router = APIRouter(
+    prefix="/api/reports",
+    tags=["Reports & Analytics"],
+    dependencies=[Depends(require_internal_service_auth)],
+)
 
 
 # -----------------------

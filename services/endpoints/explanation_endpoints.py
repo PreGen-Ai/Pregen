@@ -18,13 +18,18 @@ from models.request_models import ExplanationRequest
 from models.response_models import ExplanationResponse
 from gemini.explanation_service import ExplanationService
 from dependencies import get_explanation_service
+from security import require_internal_service_auth
 
 from config import mongo_db
 from analytics.ai_request_logger import log_ai_request_start
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/learning", tags=["Explanations"])
+router = APIRouter(
+    prefix="/api/learning",
+    tags=["Explanations"],
+    dependencies=[Depends(require_internal_service_auth)],
+)
 
 
 def build_ctx(http_req: Request, *, endpoint: str, feature: str, session_id: str | None = None) -> dict:

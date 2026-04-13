@@ -21,10 +21,15 @@ from pydantic import BaseModel, Field
 
 from gemini.teacher_tools_service import TeacherToolsService
 from dependencies import get_gemini_service
+from security import require_internal_service_auth
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/teacher", tags=["Teacher Tools"])
+router = APIRouter(
+    prefix="/api/teacher",
+    tags=["Teacher Tools"],
+    dependencies=[Depends(require_internal_service_auth)],
+)
 
 # ----------------------------------------------------------------
 # Singleton lazy-init (same pattern as other services)
