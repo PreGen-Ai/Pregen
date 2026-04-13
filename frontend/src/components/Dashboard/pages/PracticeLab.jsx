@@ -642,18 +642,60 @@ export default function PracticeLab() {
         preview.document.close();
       }
 
-      // Generate server PDF and download
+      // Generate PDF — try server first, fall back to client-side jspdf/html2canvas
       const filename = `Practice_Report_${safeFileName(currentPractice.topic)}.pdf`;
-      const blob = await apiService.generatePDF({ html: pdfContent, filename });
+      let downloaded = false;
 
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      try {
+        const serverRes = await apiService.generatePDF({ html: pdfContent, filename });
+        if (serverRes) {
+          const blob = serverRes instanceof Blob ? serverRes : new Blob([serverRes], { type: "application/pdf" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = filename;
+          a.click();
+          URL.revokeObjectURL(url);
+          downloaded = true;
+        }
+      } catch (serverErr) {
+        const isFallback = serverErr?.response?.data?.fallbackToBrowser || serverErr?.status === 503;
+        console.warn("Server PDF unavailable, using client fallback:", serverErr?.message);
+        if (!isFallback) console.error("Server PDF error detail:", serverErr);
+      }
 
-      setAlertMessage("✅ PDF report generated and downloaded!");
+      if (!downloaded) {
+        // Client-side fallback using html2canvas + jspdf
+        const { default: jsPDF } = await import("jspdf");
+        const { default: html2canvas } = await import("html2canvas");
+
+        const container = document.createElement("div");
+        container.style.cssText = "position:fixed;left:-9999px;top:0;width:800px;background:#fff;";
+        container.innerHTML = pdfContent;
+        document.body.appendChild(container);
+
+        try {
+          const canvas = await html2canvas(container, { scale: 1.5, useCORS: true });
+          const imgData = canvas.toDataURL("image/png");
+          const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const imgWidth = pageWidth;
+          const imgHeight = (canvas.height * pageWidth) / canvas.width;
+          let y = 0;
+          const pageHeight = pdf.internal.pageSize.getHeight();
+          while (y < imgHeight) {
+            pdf.addImage(imgData, "PNG", 0, -y, imgWidth, imgHeight);
+            y += pageHeight;
+            if (y < imgHeight) pdf.addPage();
+          }
+          pdf.save(filename);
+          downloaded = true;
+        } finally {
+          document.body.removeChild(container);
+        }
+      }
+
+      setAlertMessage(downloaded ? "✅ PDF report generated and downloaded!" : "❌ Failed to generate PDF report");
     } catch (error) {
       console.error("❌ PDF generation error:", error);
       setAlertMessage("❌ Failed to generate PDF report");
