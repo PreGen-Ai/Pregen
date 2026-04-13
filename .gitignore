@@ -162,3 +162,10 @@ pids
 
 
 docs
+qwenft
+qwenft/data_out
+qwenft/data_out/*
+qwenft/data_out/.gitkeep
+qwenft/dataset100l.json
+qwenft/dataset100l.jsonl
+qwenft/train.json
