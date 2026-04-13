@@ -126,6 +126,7 @@ export function AuthProvider({ children }) {
       if (existingToken) setAuthToken(existingToken);
 
       const res = await apiClient.get("/api/users/checkAuth", {
+        timeout: 60000, // Render cold start can take 30-45s; override global 25s default
         headers: {
           "Cache-Control": "no-store",
           Pragma: "no-cache",
