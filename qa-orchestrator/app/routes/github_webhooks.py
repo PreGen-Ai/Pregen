@@ -11,7 +11,7 @@ from app.config import get_settings
 from app.schemas.bug_report import BugReportEnvelope, BugReportResponse
 from app.schemas.clickup_payloads import ClickUpTaskResponse
 from app.schemas.generated_tests import GeneratedTestCasesResponse, GenerateTestsRequest, GitHubFailurePayload
-from app.services.claude_service import BUG_SCHEMA_PROMPT, TEST_SCHEMA_PROMPT, ClaudeService
+from app.services.claude_service import BUG_SCHEMA_PROMPT, TEST_SCHEMA_PROMPT, ClaudeService, ClaudeServiceError
 from app.services.clickup_service import ClickUpService, ClickUpServiceError
 from app.services.routing_service import COMPONENT_MAP, route_assignees
 from app.services.validation_service import validate_bug_payload
@@ -128,10 +128,16 @@ async def _create_bug_task_from_payload(payload: dict[str, Any], source_tag: str
     claude_service = ClaudeService()
     clickup_service = ClickUpService()
 
-    claude_data = await claude_service.ask_claude_json(
-        user_input=_json_user_input(payload),
-        system_prompt=BUG_SCHEMA_PROMPT,
-    )
+    try:
+        claude_data = await claude_service.ask_claude_json(
+            user_input=_json_user_input(payload),
+            system_prompt=BUG_SCHEMA_PROMPT,
+        )
+    except ClaudeServiceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Claude AI unavailable: {exc}",
+        ) from exc
 
     try:
         validated = validate_bug_payload(claude_data)
@@ -188,10 +194,16 @@ async def generate_tests(request: GenerateTestsRequest) -> GeneratedTestCasesRes
 
     claude_service = ClaudeService()
     clickup_service = ClickUpService()
-    raw_data = await claude_service.ask_claude_json(
-        user_input=request.model_dump_json(indent=2),
-        system_prompt=TEST_SCHEMA_PROMPT,
-    )
+    try:
+        raw_data = await claude_service.ask_claude_json(
+            user_input=request.model_dump_json(indent=2),
+            system_prompt=TEST_SCHEMA_PROMPT,
+        )
+    except ClaudeServiceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Claude AI unavailable: {exc}",
+        ) from exc
     description = _format_test_description(raw_data, request)
 
     try:
