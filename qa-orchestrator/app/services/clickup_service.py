@@ -89,7 +89,8 @@ class ClickUpService:
     async def set_custom_field(self, task_id: str, field_id: str, value: Any) -> dict[str, Any] | None:
         """Update a ClickUp custom field after task creation."""
 
-        resolved_field_id = self._field_alias_map.get(field_id) or field_id
+        # Only use an explicitly configured UUID — never fall back to the alias name itself
+        resolved_field_id = self._field_alias_map.get(field_id)
         if not resolved_field_id or value in (None, "", []):
             return None
 
