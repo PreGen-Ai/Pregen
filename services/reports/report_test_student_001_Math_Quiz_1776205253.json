@@ -1,0 +1,72 @@
+{
+  "student_id": "test-student-001",
+  "assignment_name": "Math Quiz",
+  "subject": "Mathematics",
+  "curriculum": "American",
+  "overall_score": 50.0,
+  "raw_score": 1,
+  "max_score": 2,
+  "graded_questions": [
+    {
+      "id": "q1",
+      "question": "What is 2 + 2?",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct! The answer is C.",
+      "is_correct": true
+    },
+    {
+      "id": "q2",
+      "question": "What is the capital of France?",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect. You chose A; the correct answer is C.",
+      "is_correct": false
+    }
+  ],
+  "concept_analytics": [
+    {
+      "concept": "Concept",
+      "count": 1
+    }
+  ],
+  "question_analysis": [
+    {
+      "id": "q1",
+      "question": "What is 2 + 2?",
+      "type": "multiple_choice",
+      "student_answer": "C",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 1,
+      "max_score": 1,
+      "feedback": "Correct! The answer is C.",
+      "is_correct": true
+    },
+    {
+      "id": "q2",
+      "question": "What is the capital of France?",
+      "type": "multiple_choice",
+      "student_answer": "A",
+      "expected_answer": "C",
+      "correct_answer": "C",
+      "score": 0,
+      "max_score": 1,
+      "feedback": "Incorrect. You chose A; the correct answer is C.",
+      "is_correct": false
+    }
+  ],
+  "study_plan": [],
+  "summary_recommendations": [
+    "Review 'Concept' and solve 10 practice questions (focus on mistakes).",
+    "Re-attempt wrong questions after 24 hours for better retention."
+  ]
+}
