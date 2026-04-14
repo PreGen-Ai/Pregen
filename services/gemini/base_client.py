@@ -1,19 +1,20 @@
 # services/gemini/base_client.py
-# Final: Fixed + updated + enhanced BaseGeminiClient
 #
-# Fixes your current crashes:
-# - ✅ Removes duplicated _cache_get/_cache_set definitions (you had two!)
-# - ✅ Guarantees self._cache is OrderedDict (prevents: 'dict' has no move_to_end)
-# - ✅ Fixes Mongo truthiness bug (never uses `mongo_db or config.mongo_db`)
+# BaseAIClient — provider-neutral base for all AI subservices.
 #
-# Enhancements:
-# - ✅ Correct google-genai config wrapping so temperature/top_p/max_output_tokens ALWAYS apply
-# - ✅ Unified analytics (request start/end + usage events) with timeout + fire-and-forget
-# - ✅ LRU cache + optional TTL
-# - ✅ Robust token extraction + fallback estimates
-# - ✅ Retry/backoff with retryable detection
-# - ✅ Strong response parsing (raw text + JSON extraction + repair)
-# - ✅ Safe cache key hashing (merged style)
+# Provider strategy:
+#   Primary  : OpenAI  (gpt-5.4-nano by default)
+#   Fallback : Gemini  (gemini-2.5-flash by default)
+#
+# Fallback triggers only when:
+#   - OPENAI_API_KEY missing but GEMINI_API_KEY present
+#   - OpenAI request fails with retryable error after all retries
+#   - OpenAI returns empty/unusable output after retry policy exhausted
+#
+# Backward-compat shims kept so existing subservices continue to work:
+#   _call_gemini_with_retry  →  alias for _call_model_with_retry
+#   _call_gemini_raw         →  alias for _call_model_raw
+#   BaseGeminiClient         →  alias for BaseAIClient (end of file)
 
 import asyncio
 import hashlib
@@ -27,10 +28,8 @@ from collections import OrderedDict
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 from fastapi import HTTPException
-from google import genai
-from google.genai import types as genai_types
 
-import config  # expects config.mongo_db to exist (or be None)
+import config  # expects config.mongo_db (or None)
 
 from analytics.ai_usage_logger import log_ai_usage
 from analytics.ai_request_logger import (
@@ -38,85 +37,89 @@ from analytics.ai_request_logger import (
     log_ai_request_start,
     log_ai_request_end,
 )
-from models.enums import GeminiError
+from models.enums import AIError
+from providers.provider_factory import get_active_providers
+from providers.base_provider import ProviderResponse
 
 logger = logging.getLogger(__name__)
-
-_ALLOWED_SAMPLING_KEYS = {
-    "temperature",
-    "top_p",
-    "top_k",
-    "max_output_tokens",
-    "stop_sequences",
-    "candidate_count",
-    "response_mime_type",
-}
 
 JsonLike = Union[dict, list, str, int, float, bool, None]
 
 
-class BaseGeminiClient:
+class BaseAIClient:
     """
-    Gemini API client compatible with google-genai SDK.
+    Provider-neutral AI client.
 
-    Important:
-    - google-genai expects sampling params inside:
-        config=genai_types.GenerateContentConfig(...)
-      NOT as top-level kwargs.
+    Handles:
+    - Provider selection (OpenAI primary → Gemini fallback)
+    - LRU cache with TTL
+    - Retry + exponential backoff
+    - Cross-provider fallback with analytics metadata
+    - Response parsing (plain text + JSON extraction + repair)
+    - Fire-and-forget usage analytics
+
+    Sub-services inherit this class and call:
+        await self._call_model_with_retry(prompt, expect_json=True, ...)
     """
 
-    # Best-effort analytics: never block request path
     _USAGE_LOG_TIMEOUT_SEC = 1.5
 
-    # Cache config
     _CACHE_MAX_ITEMS = 256
-    _CACHE_TTL_SEC = 30  # 0/None disables TTL expiration
+    _CACHE_TTL_SEC = 30  # 0 / None disables TTL
 
-    def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash", max_retries: int = 3):
-        if not api_key:
-            raise HTTPException(status_code=503, detail=GeminiError.MISSING_API_KEY.value)
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model_name: str = "gpt-5.4-nano",
+        max_retries: int = 3,
+    ):
+        """
+        api_key: Accepted for backward compatibility.
+                 If GEMINI_API_KEY is absent from env AND api_key is provided,
+                 it is used as the Gemini fallback key.
+        model_name: Default model for the primary provider.
+                    Overridden by OPENAI_MODEL env var when set.
+        """
+        primary, fallback = get_active_providers()
 
-        self.client = genai.Client(api_key=api_key)
-        self.model_name = model_name
+        # If provider_factory didn't find a Gemini key from env but caller
+        # passed api_key (legacy callers pass GEMINI_API_KEY here), wire it up.
+        if fallback is None and api_key and not os.getenv("GEMINI_API_KEY"):
+            from providers.gemini_provider import GeminiProvider
+            fb_model = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
+            from providers.provider_factory import _gemini_provider as _gp  # noqa: F401
+            import providers.provider_factory as _pf
+            _pf._gemini_provider = GeminiProvider(api_key=api_key, model_name=fb_model)
+            fallback = _pf._gemini_provider
+
+        if primary is None and fallback is None:
+            raise HTTPException(status_code=503, detail=AIError.MISSING_API_KEY.value)
+
+        self._primary = primary
+        self._fallback = fallback
+
+        # model_name: env var takes precedence (allows runtime override)
+        self.model_name = os.getenv("OPENAI_MODEL", model_name)
         self.max_retries = max_retries
-        # Different capacity pool used on the final retry attempt when primary is overloaded.
-        self.fallback_model = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.0-flash")
 
-        # ✅ Always OrderedDict: key -> (ts, value)
         self._cache: "OrderedDict[str, Tuple[float, Any]]" = OrderedDict()
 
-    # ---------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Small utils
-    # ---------------------------------------------------------------------
+    # ------------------------------------------------------------------
+
     def _truncate(self, text: str, max_chars: int = 20000) -> str:
         s = (text or "").strip()
-        if not s:
-            return ""
         return s if len(s) <= max_chars else s[:max_chars].rstrip()
 
     def _estimate_tokens(self, text: str = "") -> int:
-        # rough fallback: ~4 chars/token
-        return (len(text or "") + 3) // 4
+        return (len(text or "") + 3) // 4  # ~4 chars/token fallback
 
-    def _extract_allowed_params(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        return {k: v for k, v in kwargs.items() if k in _ALLOWED_SAMPLING_KEYS and v is not None}
+    # ------------------------------------------------------------------
+    # Cache (LRU + optional TTL)
+    # ------------------------------------------------------------------
 
-    # ---------------------------------------------------------------------
-    # Hash key (merged)
-    # ---------------------------------------------------------------------
-    def _hash_key(self, *parts: str) -> str:
-        raw = "|".join([p or "" for p in parts]).encode("utf-8", "ignore")
-        return hashlib.sha256(raw).hexdigest()
-
-    def _hash_key_v2(self, prefix: str, model: str, prompt: str, params_fingerprint: str = "", *extra_parts: str) -> str:
-        # readable wrapper; internally uses the merged *parts implementation
-        return self._hash_key(prefix, model, params_fingerprint, prompt, *extra_parts)
-
-    # ---------------------------------------------------------------------
-    # Cache (LRU + optional TTL)  ✅ fixed to never crash
-    # ---------------------------------------------------------------------
     def _ensure_cache_is_ordered(self) -> None:
-        # If some merge accidentally did self._cache = {}, recover without crashing.
         if not isinstance(self._cache, OrderedDict):
             try:
                 self._cache = OrderedDict(self._cache)  # type: ignore[arg-type]
@@ -125,102 +128,84 @@ class BaseGeminiClient:
 
     def _cache_get(self, key: str) -> Optional[Any]:
         self._ensure_cache_is_ordered()
-
         if key not in self._cache:
             return None
-
         ts, value = self._cache.get(key, (0.0, None))
-
         ttl = self._CACHE_TTL_SEC
-        if ttl and ttl > 0:
-            if (time.time() - ts) > ttl:
-                try:
-                    del self._cache[key]
-                except KeyError:
-                    pass
-                return None
-
+        if ttl and ttl > 0 and (time.time() - ts) > ttl:
+            try:
+                del self._cache[key]
+            except KeyError:
+                pass
+            return None
         self._cache.move_to_end(key)
         return value
 
     def _cache_set(self, key: str, value: Any) -> None:
         self._ensure_cache_is_ordered()
-
         self._cache[key] = (time.time(), value)
         self._cache.move_to_end(key)
-
         while len(self._cache) > self._CACHE_MAX_ITEMS:
             self._cache.popitem(last=False)
 
     def clear_cache(self) -> None:
         self._cache.clear()
-        logger.info("Gemini cache cleared.")
+        logger.info("AI client cache cleared.")
 
     def get_cache_stats(self) -> Dict[str, Any]:
         return {"cache_size": len(self._cache), "sample_keys": list(self._cache.keys())[:5]}
 
-    # ---------------------------------------------------------------------
-    # google-genai config wrapping (CRITICAL)
-    # ---------------------------------------------------------------------
-    def _build_genai_kwargs(self, sampling_params: Dict[str, Any], gen_kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        google-genai SDK does NOT accept temperature/top_p/etc as top-level kwargs
-        on models.generate_content(). They must be inside config=GenerateContentConfig(...)
+    # ------------------------------------------------------------------
+    # Hash key
+    # ------------------------------------------------------------------
 
-        Caller can override by passing:
-          - config=GenerateContentConfig(...)
-        """
-        # Respect explicit config passed by caller
-        if gen_kwargs.get("config") is not None:
-            return {"config": gen_kwargs["config"]}
+    def _hash_key(self, *parts: str) -> str:
+        raw = "|".join([p or "" for p in parts]).encode("utf-8", "ignore")
+        return hashlib.sha256(raw).hexdigest()
 
-        if not sampling_params:
-            return {}
+    # ------------------------------------------------------------------
+    # Retry policy
+    # ------------------------------------------------------------------
 
-        # Preferred: typed GenerateContentConfig
-        try:
-            return {"config": genai_types.GenerateContentConfig(**sampling_params)}
-        except TypeError:
-            # Some SDK versions may reject specific keys; progressively drop
-            sp = dict(sampling_params)
-            keys = list(sp.keys())
-            for k in keys:
-                tmp = dict(sp)
-                tmp.pop(k, None)
-                try:
-                    return {"config": genai_types.GenerateContentConfig(**tmp)}
-                except TypeError:
-                    continue
-        except Exception:
-            pass
+    def _is_retryable(self, msg: str) -> bool:
+        m = (msg or "").lower()
+        return (
+            "429" in m
+            or "quota" in m
+            or "rate" in m
+            or "resource_exhausted" in m
+            or "503" in m
+            or "502" in m
+            or "unavailable" in m
+            or "timeout" in m
+            or "deadline" in m
+            or "temporarily" in m
+            or "overloaded" in m
+        )
 
-        # Fallback: dict config
-        return {"config": dict(sampling_params)}
+    def _backoff(self, attempt_index: int) -> float:
+        base = 1.2 * (2 ** attempt_index)
+        jitter = random.uniform(0.0, 0.6)
+        return min(12.0, base + jitter)
 
-    # ---------------------------------------------------------------------
-    # Usage / analytics (best-effort)
-    # ---------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Analytics (best-effort, non-blocking)
+    # ------------------------------------------------------------------
+
     async def _safe_fire_and_forget(self, fn: Callable, *args, **kwargs) -> None:
-        """
-        Run a function with a short timeout.
-        Supports both sync and async functions.
-        Never raises. Never blocks the request path.
-        """
         try:
             if asyncio.iscoroutinefunction(fn):
                 await asyncio.wait_for(fn(*args, **kwargs), timeout=self._USAGE_LOG_TIMEOUT_SEC)
             else:
-                await asyncio.wait_for(asyncio.to_thread(fn, *args, **kwargs), timeout=self._USAGE_LOG_TIMEOUT_SEC)
+                await asyncio.wait_for(
+                    asyncio.to_thread(fn, *args, **kwargs),
+                    timeout=self._USAGE_LOG_TIMEOUT_SEC,
+                )
         except Exception:
             return
 
     def _schedule_usage_log(self, **payload) -> None:
-        """
-        Best-effort usage logging without blocking.
-        Uses:
-          - log_ai_usage (one doc per model call)
-          - apply_usage_event (aggregate by request_id)
-        """
+        """Best-effort usage logging — never blocks the request path."""
         mongo_db = getattr(config, "mongo_db", None)
         if mongo_db is None:
             return
@@ -233,109 +218,29 @@ class BaseGeminiClient:
             asyncio.get_running_loop()
             asyncio.create_task(_run())
         except RuntimeError:
-            # no event loop (e.g., called in sync context)
-            return
+            return  # No event loop (sync context) — skip
 
-    # ---------------------------------------------------------------------
-    # Tokens extraction (SDK-shape tolerant)
-    # ---------------------------------------------------------------------
-    def _extract_usage_tokens(self, response) -> Tuple[int, int, int]:
-        """
-        Returns (input_tokens, output_tokens, total_tokens)
-        Supports common response shapes from google.genai.
-        """
-        usage = getattr(response, "usage_metadata", None) or getattr(response, "usageMetadata", None)
-        if not usage:
-            return 0, 0, 0
-
-        in_tok = (
-            getattr(usage, "prompt_token_count", None)
-            or getattr(usage, "promptTokenCount", None)
-            or getattr(usage, "input_token_count", None)
-            or getattr(usage, "inputTokenCount", None)
-            or 0
-        )
-
-        out_tok = (
-            getattr(usage, "candidates_token_count", None)
-            or getattr(usage, "candidatesTokenCount", None)
-            or getattr(usage, "output_token_count", None)
-            or getattr(usage, "outputTokenCount", None)
-            or 0
-        )
-
-        total_tok = (
-            getattr(usage, "total_token_count", None)
-            or getattr(usage, "totalTokenCount", None)
-            or 0
-        )
-
-        in_i = int(in_tok or 0)
-        out_i = int(out_tok or 0)
-        total_i = int(total_tok or 0) if total_tok else (in_i + out_i)
-        return in_i, out_i, total_i
-
-    # ---------------------------------------------------------------------
-    # Retry policy
-    # ---------------------------------------------------------------------
-    def _is_retryable(self, msg: str) -> bool:
-        m = (msg or "").lower()
-        return (
-            "429" in m
-            or "quota" in m
-            or "rate" in m
-            or "resource_exhausted" in m
-            or "503" in m
-            or "unavailable" in m
-            or "timeout" in m
-            or "deadline" in m
-            or "temporarily" in m
-        )
-
-    def _backoff(self, attempt_index: int) -> float:
-        # exponential + jitter, cap ~12s
-        base = 1.2 * (2 ** attempt_index)
-        jitter = random.uniform(0.0, 0.6)
-        return min(12.0, base + jitter)
-
-    # ---------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Response parsing
-    # ---------------------------------------------------------------------
-    def _extract_full_text(self, response) -> str:
-        """
-        Try resp.text first; fallback to candidates parsing.
-        """
-        try:
-            txt = (getattr(response, "text", "") or "").strip()
-            if txt:
-                return txt
-
-            if hasattr(response, "candidates"):
-                parts = []
-                for c in response.candidates:
-                    if hasattr(c, "content") and hasattr(c.content, "parts"):
-                        for p in c.content.parts:
-                            t = getattr(p, "text", None)
-                            if t:
-                                parts.append(t)
-                if parts:
-                    return "".join(parts).strip()
-
-            return str(response).strip()
-        except Exception as e:
-            logger.error(f"Error extracting text: {e}")
-            return ""
+    # ------------------------------------------------------------------
 
     def _extract_json_block(self, text: str) -> Optional[str]:
         if not text:
             return None
 
-        # fenced block
+        # Fenced ```json ... ``` or ``` ... ```
         m = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
         if m:
             return m.group(1).strip()
 
-        # first balanced object
+        # Marker-based extraction (---BEGIN X JSON--- ... ---END X JSON---)
+        m2 = re.search(r"---BEGIN [A-Z ]+---\s*([\s\S]*?)\s*---END [A-Z ]+---", text)
+        if m2:
+            candidate = m2.group(1).strip()
+            if candidate.startswith("{") or candidate.startswith("["):
+                return candidate
+
+        # First balanced JSON object
         start = text.find("{")
         if start != -1:
             depth = 0
@@ -347,49 +252,96 @@ class BaseGeminiClient:
                     if depth == 0:
                         return text[start : i + 1]
 
+        # First balanced JSON array
+        start = text.find("[")
+        if start != -1:
+            depth = 0
+            for i in range(start, len(text)):
+                if text[i] == "[":
+                    depth += 1
+                elif text[i] == "]":
+                    depth -= 1
+                    if depth == 0:
+                        return text[start : i + 1]
+
         return None
 
     def _repair_json(self, text: str) -> str:
-        text = re.sub(r",\s*([}\]])", r"\1", text)  # trailing commas
-        text = re.sub(r'(\w+)\s*:', r'"\1":', text)  # naive key quoting
+        text = re.sub(r",\s*([}\]])", r"\1", text)         # trailing commas
+        text = re.sub(r"(?<![\"\\])(\b\w+)\s*:", r'"\1":', text)  # naive key quoting
         return text
 
-    def _parse_response(self, response, expect_json: bool = True) -> Any:
+    def _parse_text_to_result(self, text: str, expect_json: bool) -> Any:
         """
-        If expect_json=False -> {"response_text": "..."}
+        Parse provider text output into the appropriate return value.
+
+        If expect_json=False: returns {"response_text": "..."}
         If expect_json=True:
-          - parsed JSON (dict/list/etc) if confidently parsed
-          - {"response_text": "..."} fallback
+          - Tries to extract and parse JSON
+          - Falls back to {"response_text": "..."} if parsing fails
         """
-        try:
-            text = self._extract_full_text(response)
+        if not text:
+            return {"error": True, "message": AIError.EMPTY_RESPONSE.value}
 
-            if not text:
-                return {"error": True, "message": GeminiError.EMPTY_RESPONSE.value}
-
-            if not expect_json:
-                return {"response_text": text}
-
-            json_block = self._extract_json_block(text)
-            if json_block:
-                try:
-                    return json.loads(json_block)
-                except json.JSONDecodeError:
-                    try:
-                        return json.loads(self._repair_json(json_block))
-                    except Exception:
-                        return {"response_text": text}
-
+        if not expect_json:
             return {"response_text": text}
 
-        except Exception as e:
-            logger.error(f"Parse error: {e}")
-            return {"error": True, "message": GeminiError.PARSE_ERROR.value}
+        json_block = self._extract_json_block(text)
+        if json_block:
+            try:
+                return json.loads(json_block)
+            except json.JSONDecodeError:
+                try:
+                    return json.loads(self._repair_json(json_block))
+                except Exception:
+                    pass
 
-    # ---------------------------------------------------------------------
-    # Main calls
-    # ---------------------------------------------------------------------
-    async def _call_gemini_with_retry(
+        # Try parsing the whole text as JSON (OpenAI json_object mode returns clean JSON)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        return {"response_text": text}
+
+    # ------------------------------------------------------------------
+    # Core call: single provider attempt
+    # ------------------------------------------------------------------
+
+    async def _execute_provider_call(
+        self,
+        provider,
+        prompt: str,
+        *,
+        model: Optional[str],
+        expect_json: bool,
+        temperature: float,
+        top_p: float,
+        max_tokens: int,
+        stop_sequences: Optional[list],
+    ) -> Tuple[ProviderResponse, Any]:
+        """
+        Execute one call to the given provider and return (ProviderResponse, parsed_result).
+        Raises on failure — caller handles retry/fallback.
+        """
+        resp: ProviderResponse = await provider.call(
+            prompt,
+            model=model,
+            temperature=temperature,
+            top_p=top_p,
+            max_tokens=max_tokens,
+            stop_sequences=stop_sequences,
+            expect_json=expect_json,
+        )
+
+        parsed = self._parse_text_to_result(resp.text, expect_json)
+        return resp, parsed
+
+    # ------------------------------------------------------------------
+    # Main call: _call_model_with_retry (OpenAI-first, Gemini fallback)
+    # ------------------------------------------------------------------
+
+    async def _call_model_with_retry(
         self,
         prompt: str,
         *,
@@ -401,83 +353,70 @@ class BaseGeminiClient:
         request_id: Optional[str] = None,
         endpoint: Optional[str] = None,
         feature: Optional[str] = None,
-        mongo_db=None,  # optional override for request start/end logging
+        mongo_db=None,
         **gen_kwargs,
     ) -> Dict[str, Any]:
         """
-        Returns:
-          - {"response_text": "...", "cached": bool}
-          - or parsed json (dict/list) if expect_json=True
-          - or {"error": "...", "response_text": "..."} on failure
+        Main LLM call with retry + cross-provider fallback.
+
+        Returns one of:
+          {"response_text": "...", "cached": bool}
+          parsed JSON (dict / list) when expect_json=True
+          {"error": "...", "response_text": "..."} on total failure
 
         Analytics:
-          - If mongo_db passed (or config.mongo_db exists): request start/end + usage events.
+          Logs actual provider used ("openai" or "gemini"), not assumed.
+          On fallback: logs fallback_from / fallback_to metadata.
         """
-        model = model or self.model_name
+        effective_model = model or self.model_name
         safe_prompt = self._truncate(prompt, max_chars=max_prompt_chars)
 
-        # ---- sampling defaults (overrideable) ----
-        sampling_params = {
-            "temperature": gen_kwargs.get("temperature", 0.55),
-            "top_p": gen_kwargs.get("top_p", 0.9),
-            "top_k": gen_kwargs.get("top_k"),
-            "max_output_tokens": gen_kwargs.get("max_output_tokens", 820),  # ✅ bump default for better answers
-            "stop_sequences": gen_kwargs.get("stop_sequences"),
-            "candidate_count": gen_kwargs.get("candidate_count", 1),
-        }
-        # Force JSON MIME type when expect_json=True so Gemini always returns
-        # valid JSON without markdown fences or extra prose.
-        if expect_json and not gen_kwargs.get("response_mime_type"):
-            sampling_params["response_mime_type"] = "application/json"
-        sampling_params = {k: v for k, v in sampling_params.items() if k in _ALLOWED_SAMPLING_KEYS and v is not None}
+        # Sampling params from gen_kwargs (with sensible defaults)
+        temperature = float(gen_kwargs.get("temperature", 0.55))
+        top_p = float(gen_kwargs.get("top_p", 0.9))
+        max_tokens = int(gen_kwargs.get("max_output_tokens", gen_kwargs.get("max_tokens", 820)))
+        stop_sequences = gen_kwargs.get("stop_sequences")
 
-        params_fingerprint = json.dumps(sampling_params, sort_keys=True)
-        key = self._hash_key_v2("gen", model, safe_prompt, params_fingerprint)
+        params_fingerprint = json.dumps(
+            {"temperature": temperature, "top_p": top_p, "max_tokens": max_tokens,
+             "expect_json": expect_json},
+            sort_keys=True,
+        )
+        cache_key = self._hash_key("gen", effective_model, safe_prompt, params_fingerprint)
 
-        # ---- cache hit ----
-        cached = self._cache_get(key)
+        # ---- Cache hit ----
+        cached = self._cache_get(cache_key)
         if cached is not None:
+            provider_name = self._primary.provider_name if self._primary else "unknown"
             self._schedule_usage_log(
-                provider="gemini",
-                user_id=user_id,
-                session_id=session_id,
-                request_id=request_id,
-                model=model,
-                endpoint=endpoint,
-                feature=feature,
-                input_tokens=0,
-                output_tokens=0,
-                total_tokens=0,
-                latency_ms=0,
-                status="ok",
-                prompt_chars=len(safe_prompt),
-                completion_chars=0,
-                cache_hit=True,
+                provider=provider_name,
+                user_id=user_id, session_id=session_id, request_id=request_id,
+                model=effective_model, endpoint=endpoint, feature=feature,
+                input_tokens=0, output_tokens=0, total_tokens=0,
+                latency_ms=0, status="ok",
+                prompt_chars=len(safe_prompt), completion_chars=0, cache_hit=True,
             )
-
             if expect_json and isinstance(cached, (dict, list)):
                 return cached  # type: ignore[return-value]
-
             if isinstance(cached, str):
                 return {"response_text": cached, "cached": True}
-
             if isinstance(cached, dict) and "response_text" in cached:
                 return {"response_text": str(cached["response_text"]), "cached": True}
-
             return {"response_text": str(cached), "cached": True}
 
-        # ---- request start/end logging ----
+        # ---- Request-level analytics start ----
         req_db_id = None
-        # ✅ IMPORTANT: never do mongo_db OR config.mongo_db (Mongo DB has no truthiness)
         db_for_req = mongo_db if mongo_db is not None else getattr(config, "mongo_db", None)
+        primary_provider_name = self._primary.provider_name if self._primary else "none"
+
         if db_for_req is not None:
             try:
                 req_db_id = await asyncio.to_thread(
                     log_ai_request_start,
                     db_for_req,
                     request_id=request_id,
-                    provider="gemini",
-                    model=model,
+                    provider=primary_provider_name,
+                    model=effective_model,
                     endpoint=endpoint,
                     feature=feature,
                     user_id=user_id,
@@ -487,168 +426,184 @@ class BaseGeminiClient:
             except Exception:
                 req_db_id = None
 
-        genai_kwargs = self._build_genai_kwargs(sampling_params, gen_kwargs)
-
+        # ---- Try primary provider (OpenAI) ----
         last_err: Optional[Exception] = None
+        primary = self._primary
 
-        for attempt in range(self.max_retries):
+        if primary is not None:
+            for attempt in range(self.max_retries):
+                try:
+                    resp, parsed = await self._execute_provider_call(
+                        primary, safe_prompt,
+                        model=effective_model if primary.provider_name == "openai" else None,
+                        expect_json=expect_json,
+                        temperature=temperature, top_p=top_p,
+                        max_tokens=max_tokens, stop_sequences=stop_sequences,
+                    )
+
+                    # Empty JSON {} is semantically useless — treat as retryable
+                    if (expect_json and isinstance(parsed, dict)
+                            and not parsed
+                            and attempt < self.max_retries - 1):
+                        delay = self._backoff(attempt)
+                        logger.warning(
+                            f"{primary.provider_name} returned empty JSON. "
+                            f"Retrying in {delay:.1f}s (attempt {attempt + 1}/{self.max_retries})"
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+
+                    # Success
+                    in_tok = resp.input_tokens or self._estimate_tokens(safe_prompt)
+                    out_tok = resp.output_tokens or self._estimate_tokens(resp.text)
+                    total_tok = in_tok + out_tok
+
+                    if db_for_req is not None and req_db_id is not None:
+                        try:
+                            await asyncio.to_thread(
+                                log_ai_request_end, db_for_req, req_db_id,
+                                ok=True, total_latency_ms=resp.latency_ms,
+                                input_tokens=in_tok, output_tokens=out_tok,
+                                total_tokens=total_tok, last_status="ok", cache_hit=False,
+                            )
+                        except Exception:
+                            pass
+
+                    self._schedule_usage_log(
+                        provider=resp.provider,
+                        user_id=user_id, session_id=session_id, request_id=request_id,
+                        model=resp.model, endpoint=endpoint, feature=feature,
+                        input_tokens=in_tok, output_tokens=out_tok, total_tokens=total_tok,
+                        latency_ms=resp.latency_ms, status="ok",
+                        prompt_chars=len(safe_prompt), completion_chars=len(resp.text),
+                        cache_hit=False,
+                    )
+
+                    cacheable = not (isinstance(parsed, dict) and parsed.get("error"))
+                    if expect_json and isinstance(parsed, dict) and not parsed:
+                        cacheable = False
+                    if cacheable:
+                        self._cache_set(cache_key, parsed if expect_json else resp.text)
+
+                    if expect_json and isinstance(parsed, (dict, list)):
+                        return parsed  # type: ignore[return-value]
+                    if isinstance(parsed, dict) and "response_text" in parsed:
+                        return {"response_text": str(parsed["response_text"]), "cached": False}
+                    return {"response_text": resp.text, "cached": False}
+
+                except Exception as e:
+                    last_err = e
+                    msg = str(e)
+                    self._schedule_usage_log(
+                        provider=primary.provider_name,
+                        user_id=user_id, session_id=session_id, request_id=request_id,
+                        model=effective_model, endpoint=endpoint, feature=feature,
+                        input_tokens=self._estimate_tokens(safe_prompt),
+                        output_tokens=0, total_tokens=0, latency_ms=0, status="error",
+                        error_message=msg,
+                        prompt_chars=len(safe_prompt), completion_chars=0, cache_hit=False,
+                    )
+
+                    if self._is_retryable(msg) and attempt < self.max_retries - 1:
+                        delay = self._backoff(attempt)
+                        logger.warning(
+                            f"{primary.provider_name} retryable error: {msg} | "
+                            f"retry in {delay:.1f}s ({attempt + 1}/{self.max_retries})"
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+
+                    logger.error(f"{primary.provider_name} failed (no more retries): {msg}")
+                    break
+
+        # ---- Cross-provider fallback: try Gemini ----
+        fallback = self._fallback
+        if fallback is not None and (primary is None or last_err is not None):
+            fallback_reason = "primary_key_missing" if primary is None else "primary_exhausted"
+            logger.warning(
+                f"Falling back to {fallback.provider_name} "
+                f"(reason={fallback_reason}, primary_error={last_err})"
+            )
             try:
-                # On the final attempt, switch to the fallback model if the primary has been
-                # failing or returning empty — it draws from a different capacity pool.
-                effective_model = model
-                if (attempt == self.max_retries - 1
-                        and self.fallback_model
-                        and model != self.fallback_model):
-                    effective_model = self.fallback_model
-                    logger.warning(
-                        f"Primary model {model} failed/degraded — switching to fallback "
-                        f"{effective_model} on final attempt"
-                    )
+                resp, parsed = await self._execute_provider_call(
+                    fallback, safe_prompt,
+                    model=None,  # use fallback provider's default model
+                    expect_json=expect_json,
+                    temperature=temperature, top_p=top_p,
+                    max_tokens=max_tokens, stop_sequences=stop_sequences,
+                )
 
-                def _do_generate():
-                    return self.client.models.generate_content(
-                        model=effective_model,
-                        contents=[safe_prompt],
-                        **genai_kwargs,
-                    )
+                in_tok = resp.input_tokens or self._estimate_tokens(safe_prompt)
+                out_tok = resp.output_tokens or self._estimate_tokens(resp.text)
+                total_tok = in_tok + out_tok
 
-                t0 = time.perf_counter()
-                response = await asyncio.to_thread(_do_generate)
-                latency_ms = int((time.perf_counter() - t0) * 1000)
+                # Log fallback event — includes fallback metadata
+                self._schedule_usage_log(
+                    provider=resp.provider,
+                    user_id=user_id, session_id=session_id, request_id=request_id,
+                    model=resp.model, endpoint=endpoint, feature=feature,
+                    input_tokens=in_tok, output_tokens=out_tok, total_tokens=total_tok,
+                    latency_ms=resp.latency_ms, status="ok",
+                    prompt_chars=len(safe_prompt), completion_chars=len(resp.text),
+                    cache_hit=False,
+                    # Fallback metadata (stored if analytics schema supports extra fields)
+                    fallback_from=primary.provider_name if primary else None,
+                    fallback_to=resp.provider,
+                    fallback_reason=fallback_reason,
+                )
 
-                full_text = self._extract_full_text(response) or "I couldn't generate a response."
-
-                in_tok, out_tok, total_tok = self._extract_usage_tokens(response)
-
-                # fallback estimates
-                if not in_tok:
-                    in_tok = self._estimate_tokens(safe_prompt)
-                if not out_tok and full_text:
-                    out_tok = self._estimate_tokens(full_text)
-                if not total_tok:
-                    total_tok = int(in_tok) + int(out_tok)
-
-                parsed = self._parse_response(response, expect_json=expect_json)
-
-                # Empty JSON {} after a 503-recovery or degraded model state: treat as retryable.
-                # An empty object is technically valid JSON but semantically useless for structured AI tasks.
-                if expect_json and isinstance(parsed, dict) and not parsed and attempt < (self.max_retries - 1):
-                    delay = self._backoff(attempt)
-                    logger.warning(
-                        f"Gemini returned empty JSON {{}}. Model may be degraded after overload. "
-                        f"Retrying in {delay:.1f}s (attempt {attempt + 1}/{self.max_retries})"
-                    )
-                    await asyncio.sleep(delay)
-                    continue
-
-                # cache only ok outcomes
-                cacheable = True
-                if isinstance(parsed, dict) and parsed.get("error"):
-                    cacheable = False
-                # do not cache empty JSON — it represents a degraded state
-                if expect_json and isinstance(parsed, dict) and not parsed:
-                    cacheable = False
-
-                if cacheable:
-                    self._cache_set(key, parsed if expect_json else full_text)
-
-                # request end logging
                 if db_for_req is not None and req_db_id is not None:
                     try:
                         await asyncio.to_thread(
-                            log_ai_request_end,
-                            db_for_req,
-                            req_db_id,
-                            ok=True,
-                            total_latency_ms=latency_ms,
-                            input_tokens=in_tok,
-                            output_tokens=out_tok,
-                            total_tokens=total_tok,
-                            last_status="ok",
-                            cache_hit=False,
+                            log_ai_request_end, db_for_req, req_db_id,
+                            ok=True, total_latency_ms=resp.latency_ms,
+                            input_tokens=in_tok, output_tokens=out_tok,
+                            total_tokens=total_tok, last_status="ok_fallback", cache_hit=False,
                         )
                     except Exception:
                         pass
 
-                # usage events (fire-and-forget)
-                self._schedule_usage_log(
-                    provider="gemini",
-                    user_id=user_id,
-                    session_id=session_id,
-                    request_id=request_id,
-                    model=model,
-                    endpoint=endpoint,
-                    feature=feature,
-                    input_tokens=in_tok,
-                    output_tokens=out_tok,
-                    total_tokens=total_tok,
-                    latency_ms=latency_ms,
-                    status="ok",
-                    prompt_chars=len(safe_prompt),
-                    completion_chars=len(full_text),
-                    cache_hit=False,
-                )
+                cacheable = not (isinstance(parsed, dict) and parsed.get("error"))
+                if cacheable:
+                    self._cache_set(cache_key, parsed if expect_json else resp.text)
 
                 if expect_json and isinstance(parsed, (dict, list)):
                     return parsed  # type: ignore[return-value]
-
                 if isinstance(parsed, dict) and "response_text" in parsed:
                     return {"response_text": str(parsed["response_text"]), "cached": False}
+                return {"response_text": resp.text, "cached": False}
 
-                return {"response_text": full_text, "cached": False}
-
-            except Exception as e:
-                last_err = e
-                msg = str(e)
-
-                # request end logging on final failure
-                if attempt == (self.max_retries - 1) and db_for_req is not None and req_db_id is not None:
+            except Exception as fe:
+                logger.error(f"{fallback.provider_name} fallback also failed: {fe}")
+                if db_for_req is not None and req_db_id is not None:
                     try:
                         await asyncio.to_thread(
-                            log_ai_request_end,
-                            db_for_req,
-                            req_db_id,
-                            ok=False,
-                            last_status=msg,
+                            log_ai_request_end, db_for_req, req_db_id,
+                            ok=False, last_status=str(fe),
                         )
                     except Exception:
                         pass
 
-                # usage events
-                self._schedule_usage_log(
-                    provider="gemini",
-                    user_id=user_id,
-                    session_id=session_id,
-                    request_id=request_id,
-                    model=model,
-                    endpoint=endpoint,
-                    feature=feature,
-                    input_tokens=self._estimate_tokens(safe_prompt) if safe_prompt else 0,
-                    output_tokens=0,
-                    total_tokens=0,
-                    latency_ms=0,
-                    status="error",
-                    error_message=msg,
-                    prompt_chars=len(safe_prompt),
-                    completion_chars=0,
-                    cache_hit=False,
+        # ---- Total failure ----
+        if db_for_req is not None and req_db_id is not None and last_err is not None:
+            try:
+                await asyncio.to_thread(
+                    log_ai_request_end, db_for_req, req_db_id,
+                    ok=False, last_status=str(last_err),
                 )
-
-                if self._is_retryable(msg) and attempt < (self.max_retries - 1):
-                    delay = self._backoff(attempt)
-                    logger.warning(f"Gemini retryable error: {msg} | retry in {delay:.1f}s (attempt {attempt + 1}/{self.max_retries})")
-                    await asyncio.sleep(delay)
-                    continue
-
-                logger.error(f"Gemini API error (no more retries): {msg}")
-                break
+            except Exception:
+                pass
 
         return {
-            "error": str(last_err) if last_err else "unknown_error",
-            "response_text": "I'm sorry, I couldn't process that message.",
+            "error": str(last_err) if last_err else "no_provider_available",
+            "response_text": "I'm sorry, I couldn't process that request right now.",
         }
 
-    async def _call_gemini_raw(
+    # ------------------------------------------------------------------
+    # Raw call (plain text, no JSON parsing)
+    # ------------------------------------------------------------------
+
+    async def _call_model_raw(
         self,
         prompt: str,
         *,
@@ -662,128 +617,98 @@ class BaseGeminiClient:
         **gen_kwargs,
     ) -> str:
         """
-        Raw call that always returns a plain string.
-        Uses the same config wrapping, caching, and usage logging.
+        Raw call — always returns a plain string.
+        Uses the same provider selection, caching, and analytics as _call_model_with_retry.
+        No JSON parsing or retry loop.
         """
-        model = model or self.model_name
+        effective_model = model or self.model_name
         safe_prompt = self._truncate(prompt, max_chars=max_prompt_chars)
 
-        sampling_params = self._extract_allowed_params(gen_kwargs)
-        params_fingerprint = json.dumps(sampling_params, sort_keys=True)
-        key = self._hash_key_v2("raw", model, safe_prompt, params_fingerprint)
+        temperature = float(gen_kwargs.get("temperature", 0.55))
+        top_p = float(gen_kwargs.get("top_p", 0.9))
+        max_tokens = int(gen_kwargs.get("max_output_tokens", gen_kwargs.get("max_tokens", 820)))
 
-        cached = self._cache_get(key)
+        cache_key = self._hash_key("raw", effective_model, safe_prompt, str(temperature))
+        cached = self._cache_get(cache_key)
         if cached is not None:
-            self._schedule_usage_log(
-                provider="gemini",
-                user_id=user_id,
-                session_id=session_id,
-                request_id=request_id,
-                model=model,
-                endpoint=endpoint,
-                feature=feature,
-                input_tokens=0,
-                output_tokens=0,
-                total_tokens=0,
-                latency_ms=0,
-                status="ok",
-                prompt_chars=len(safe_prompt),
-                completion_chars=0,
-                cache_hit=True,
-            )
             return str(cached)
 
-        genai_kwargs = self._build_genai_kwargs(sampling_params, gen_kwargs)
+        provider = self._primary or self._fallback
+        if provider is None:
+            return "AI service unavailable. Please try again later."
 
         try:
-            def _do_generate():
-                return self.client.models.generate_content(
-                    model=model,
-                    contents=[safe_prompt],
-                    **genai_kwargs,
-                )
-
-            t0 = time.perf_counter()
-            response = await asyncio.to_thread(_do_generate)
-            latency_ms = int((time.perf_counter() - t0) * 1000)
-
-            text = self._extract_full_text(response) or "I couldn't generate a response."
-
-            in_tok, out_tok, total_tok = self._extract_usage_tokens(response)
-            if not in_tok:
-                in_tok = self._estimate_tokens(safe_prompt)
-            if not out_tok and text:
-                out_tok = self._estimate_tokens(text)
-            if not total_tok:
-                total_tok = int(in_tok) + int(out_tok)
-
-            self._schedule_usage_log(
-                provider="gemini",
-                user_id=user_id,
-                session_id=session_id,
-                request_id=request_id,
-                model=model,
-                endpoint=endpoint,
-                feature=feature,
-                input_tokens=in_tok,
-                output_tokens=out_tok,
-                total_tokens=total_tok,
-                latency_ms=latency_ms,
-                status="ok",
-                prompt_chars=len(safe_prompt),
-                completion_chars=len(text),
-                cache_hit=False,
+            resp = await provider.call(
+                safe_prompt,
+                model=effective_model if provider.provider_name == "openai" else None,
+                temperature=temperature, top_p=top_p, max_tokens=max_tokens,
             )
+            text = resp.text or "I couldn't generate a response."
 
-            self._cache_set(key, text)
+            in_tok = resp.input_tokens or self._estimate_tokens(safe_prompt)
+            out_tok = resp.output_tokens or self._estimate_tokens(text)
+            self._schedule_usage_log(
+                provider=resp.provider,
+                user_id=user_id, session_id=session_id, request_id=request_id,
+                model=resp.model, endpoint=endpoint, feature=feature,
+                input_tokens=in_tok, output_tokens=out_tok, total_tokens=in_tok + out_tok,
+                latency_ms=resp.latency_ms, status="ok",
+                prompt_chars=len(safe_prompt), completion_chars=len(text), cache_hit=False,
+            )
+            self._cache_set(cache_key, text)
             return text
 
         except Exception as e:
             msg = str(e)
-            logger.error(f"Gemini raw call failed: {msg}")
-
+            logger.error(f"Raw model call failed: {msg}")
             self._schedule_usage_log(
-                provider="gemini",
-                user_id=user_id,
-                session_id=session_id,
-                request_id=request_id,
-                model=model,
-                endpoint=endpoint,
-                feature=feature,
-                input_tokens=self._estimate_tokens(safe_prompt) if safe_prompt else 0,
-                output_tokens=0,
-                total_tokens=0,
-                latency_ms=0,
-                status="error",
-                error_message=msg,
-                prompt_chars=len(safe_prompt),
-                completion_chars=0,
-                cache_hit=False,
+                provider=provider.provider_name,
+                user_id=user_id, session_id=session_id, request_id=request_id,
+                model=effective_model, endpoint=endpoint, feature=feature,
+                input_tokens=self._estimate_tokens(safe_prompt),
+                output_tokens=0, total_tokens=0, latency_ms=0, status="error",
+                error_message=msg, prompt_chars=len(safe_prompt), completion_chars=0, cache_hit=False,
             )
             return ""
 
-    # ---------------------------------------------------------------------
-    # Convenience
-    # ---------------------------------------------------------------------
-    async def generate_simple_text(self, prompt: str, temperature: float = 0.3, max_tokens: int = 800) -> str:
-        """
-        Convenience helper for plain text. Uses correct config wrapping.
-        """
+    # ------------------------------------------------------------------
+    # Convenience helper
+    # ------------------------------------------------------------------
+
+    async def generate_simple_text(
+        self, prompt: str, temperature: float = 0.3, max_tokens: int = 800
+    ) -> str:
+        """Simple plain-text generation. Uses primary provider (or fallback)."""
         safe_prompt = self._truncate(prompt, max_chars=50000)
-        try:
-            sampling_params = {"temperature": temperature, "max_output_tokens": max_tokens}
-            genai_kwargs = self._build_genai_kwargs(sampling_params, {})
-
-            response = await asyncio.to_thread(
-                self.client.models.generate_content,
-                model=self.model_name,
-                contents=[safe_prompt],
-                **genai_kwargs,
-            )
-
-            txt = self._extract_full_text(response)
-            return txt or "AI system unavailable. Please try again."
-
-        except Exception as e:
-            logger.error(f"Simple generation failed: {e}")
+        provider = self._primary or self._fallback
+        if provider is None:
             return "AI system unavailable. Please try again."
+        try:
+            resp = await provider.call(
+                safe_prompt, temperature=temperature, max_tokens=max_tokens
+            )
+            return resp.text or "AI system unavailable. Please try again."
+        except Exception as e:
+            logger.error(f"Simple text generation failed: {e}")
+            return "AI system unavailable. Please try again."
+
+    # ------------------------------------------------------------------
+    # Backward-compat aliases (keep existing subservices working)
+    # ------------------------------------------------------------------
+
+    async def _call_gemini_with_retry(self, prompt: str, **kwargs) -> Dict[str, Any]:
+        """Alias for _call_model_with_retry. Kept for backward compatibility."""
+        return await self._call_model_with_retry(prompt, **kwargs)
+
+    async def _call_gemini_raw(self, prompt: str, **kwargs) -> str:
+        """Alias for _call_model_raw. Kept for backward compatibility."""
+        return await self._call_model_raw(prompt, **kwargs)
+
+
+# ------------------------------------------------------------------
+# Backward-compat class alias
+# ------------------------------------------------------------------
+# Old code: from gemini.base_client import BaseGeminiClient
+# New code: from gemini.base_client import BaseAIClient
+# Both work — no import changes required in existing subservices.
+BaseGeminiClient = BaseAIClient

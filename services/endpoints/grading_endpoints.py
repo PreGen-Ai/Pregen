@@ -4,7 +4,7 @@ AI Grading Endpoints (Model-A aligned)
 ✓ Full quiz grading (MCQ, T/F, Essay, Mixed)
 ✓ Single-question grading
 ✓ Returns report_id, PDF link, JSON link
-✓ Uses the unified GeminiService & GradingService (DI aware)
+✓ Uses the unified AIService & GradingService (DI aware)
 """
 
 import logging

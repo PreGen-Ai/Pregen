@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import config
 from analytics.ai_request_logger import log_ai_request_context
-from gemini.base_client import BaseGeminiClient
+from gemini.base_client import BaseAIClient
 from gemini.prompts import Prompts
 from models.response_models import TutorResponse
 from utils.constants import CURRICULUM_GUIDELINES
@@ -104,7 +104,7 @@ def _should_keep_full_message(msg: str) -> bool:
 # ---------------------------------------------------------------------
 # Chat Service (Merged + Enhanced)
 # ---------------------------------------------------------------------
-class ChatService(BaseGeminiClient):
+class ChatService(BaseAIClient):
     """
     Merged tutoring service:
     - DB-backed memory (user_id + session_id) with in-memory TTL cache
@@ -446,7 +446,7 @@ class ChatService(BaseGeminiClient):
                 f"If not found in material, say so before giving general answer."
             )
 
-        result = await self._call_gemini_with_retry(
+        result = await self._call_model_with_retry(
             prompt,
             expect_json=False,
             max_prompt_chars=self.MAX_PROMPT_CHARS,

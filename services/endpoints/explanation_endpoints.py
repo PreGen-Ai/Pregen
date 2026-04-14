@@ -1,8 +1,7 @@
 """
-Explanation Endpoints (Aligned with Updated ExplanationService)
-===============================================================
-This version is fully synchronized with the updated Gemini API layer,
-the new ExplanationService architecture, and all backend behavior.
+Explanation Endpoints
+=====================
+Fully synchronized with ExplanationService (OpenAI primary, Gemini fallback).
 """
 
 import logging
@@ -115,7 +114,7 @@ async def generate_explanation(
             session_id=ctx.get("session_id"),
             endpoint=ctx.get("endpoint"),
             feature=ctx.get("feature"),
-            provider="gemini",
+            provider="openai",
             model=getattr(explanation_service, "model_name", None),
             request_text=req_text,
             context_text=qd.get("context") if isinstance(qd, dict) else None,
@@ -253,7 +252,7 @@ async def debug_explanation(
         ctx = explanation_service._build_prompt_context(raw_data)
         prompt = explanation_service._construct_prompt(ctx)
 
-        raw_output = await explanation_service._call_gemini(prompt)
+        raw_output = await explanation_service._call_model(prompt)
         cleaned, fallback, reason = explanation_service._validate_explanation(raw_output)
 
         return {

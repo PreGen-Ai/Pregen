@@ -11,7 +11,7 @@ import logging
 import re
 from typing import Dict, Any, Optional, List
 
-from gemini.base_client import BaseGeminiClient
+from gemini.base_client import BaseAIClient
 from report_storage_service import ReportStorageService
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,7 @@ def _safe_int(x: Any, default: int = 1) -> int:
         return default
 
 
-class GradingService(BaseGeminiClient):
+class GradingService(BaseAIClient):
     """Unified grading with fair scoring logic + report storage."""
 
     def __init__(self, api_key: Optional[str], report_storage: ReportStorageService):

@@ -6,7 +6,7 @@ from typing import Optional, Any, Dict
 
 from fastapi import HTTPException
 
-from models.enums import GeminiError
+from models.enums import AIError
 from gemini.quiz_service import QuizService
 from gemini.grading_service import GradingService
 from gemini.explanation_service import ExplanationService
@@ -23,7 +23,6 @@ def _wrap_data(obj: Any) -> Any:
     Normalizes incoming payloads into SimpleNamespace for prompt usage.
     """
     if isinstance(obj, dict):
-        # Explanation-like payload
         if "topic" in obj or "question" in obj:
             return SimpleNamespace(
                 question_data={
@@ -37,18 +36,20 @@ def _wrap_data(obj: Any) -> Any:
                 previous_knowledge=obj.get("previous_knowledge", "basic understanding"),
             )
         return SimpleNamespace(**obj)
-
     return obj
 
 
-class GeminiService:
+class AIService:
     """
-    MASTER SERVICE (Orchestrator)
-    ------------------------------
-    DI-friendly design:
-    - Requires api_key
-    - Requires report_storage singleton
-    - Creates sub-services (quiz, grading, explanation, chat, assignment)
+    MASTER AI SERVICE (Orchestrator)
+    ---------------------------------
+    Provider-neutral design. Uses OpenAI as primary LLM provider,
+    with Gemini as automatic fallback.
+
+    DI-friendly:
+    - api_key parameter accepted for backward compat; keys are resolved from env.
+    - Requires report_storage singleton.
+    - Creates sub-services (quiz, grading, explanation, chat, assignment).
     """
 
     def __init__(
@@ -56,26 +57,26 @@ class GeminiService:
         api_key: Optional[str] = None,
         report_storage: Optional[ReportStorageService] = None,
     ):
-        api_key = api_key or os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise HTTPException(status_code=503, detail=GeminiError.MISSING_API_KEY.value)
+        # Resolve a working API key: prefer OpenAI, accept Gemini for backward compat
+        from config import OPENAI_API_KEY, GEMINI_API_KEY
+        resolved_key = api_key or OPENAI_API_KEY or GEMINI_API_KEY
+        if not resolved_key:
+            raise HTTPException(status_code=503, detail=AIError.MISSING_API_KEY.value)
 
         if report_storage is None:
             raise HTTPException(status_code=500, detail="Report storage not initialized")
 
-        self.api_key = api_key
+        self.api_key = resolved_key
         self.report_storage = report_storage
 
-        # Sub-services
-        self.quiz_service = QuizService(api_key)
-        self.explanation_service = ExplanationService(api_key)
-        self.chat_service = ChatService(api_key)
-        self.assignment_service = AssignmentService(api_key)
+        # Sub-services — each inherits BaseAIClient and self-resolves providers from env
+        self.quiz_service = QuizService(resolved_key)
+        self.explanation_service = ExplanationService(resolved_key)
+        self.chat_service = ChatService(resolved_key)
+        self.assignment_service = AssignmentService(resolved_key)
+        self.grading_service = GradingService(resolved_key, report_storage)
 
-        # GradingService needs report_storage (based on your note)
-        self.grading_service = GradingService(api_key, report_storage)
-
-        logger.info("GeminiService initialized with DI-compatible services")
+        logger.info("AIService initialized (primary: OpenAI, fallback: Gemini)")
 
     # ============================================================
     # QUIZ GENERATION
@@ -84,16 +85,11 @@ class GeminiService:
     async def generate_quiz(self, normalized_request: Any, ctx: Optional[dict] = None):
         """
         Delegates quiz generation to QuizService.
-        ctx is forwarded for analytics logging:
-        ctx = { user_id, session_id, request_id, endpoint, feature }
+        ctx: { user_id, session_id, request_id, endpoint, feature }
         """
         ctx = ctx or {}
-
         try:
-            # IMPORTANT: QuizService already builds the prompt, calls Gemini, parses JSON,
-            # normalizes, quality-gates, and returns QuizResponse.
             return await self.quiz_service.generate_quiz(normalized_request, ctx=ctx)
-
         except HTTPException:
             raise
         except Exception as e:
@@ -101,7 +97,7 @@ class GeminiService:
             raise HTTPException(status_code=500, detail=str(e))
 
     # ============================================================
-    # GRADING - ESSAY (single question)
+    # GRADING — SINGLE ESSAY QUESTION
     # ============================================================
 
     async def grade_essay_question(
@@ -123,12 +119,10 @@ class GeminiService:
             "topic": q.get("topic", subject),
         }
 
-        student_answers = {str(q_obj["id"]): student_answer}
-
         result = await self.grading_service.grade_quiz(
             student_id="__single__",
             quiz_questions=[q_obj],
-            student_answers=student_answers,
+            student_answers={str(q_obj["id"]): student_answer},
             subject=subject,
             curriculum="General",
             assignment_name="Single Question",
@@ -138,7 +132,7 @@ class GeminiService:
         return graded[0] if graded else {}
 
     # ============================================================
-    # GRADING - MCQ (single question)
+    # GRADING — SINGLE MCQ
     # ============================================================
 
     async def grade_multiple_choice_question(
@@ -159,12 +153,10 @@ class GeminiService:
             "topic": q.get("topic", subject),
         }
 
-        student_answers = {str(q_obj["id"]): student_answer}
-
         result = await self.grading_service.grade_quiz(
             student_id="__single__",
             quiz_questions=[q_obj],
-            student_answers=student_answers,
+            student_answers={str(q_obj["id"]): student_answer},
             subject=subject,
             curriculum="General",
             assignment_name="Single MCQ",
@@ -174,11 +166,11 @@ class GeminiService:
         return graded[0] if graded else {}
 
     # ============================================================
-    # GRADING - FULL ASSIGNMENT
+    # GRADING — FULL ASSIGNMENT
     # ============================================================
 
     async def grade_assignment(self, data: Any):
-        logger.info("Grading full assignment via GeminiService")
+        logger.info("Grading full assignment via AIService")
 
         try:
             assignment_data = getattr(
@@ -198,15 +190,15 @@ class GeminiService:
                 student_answers=json.dumps(student_answers, indent=2),
             )
 
-            result = await self.grading_service._call_gemini_with_retry(
+            result = await self.grading_service._call_model_with_retry(
                 prompt,
                 expect_json=True,
                 temperature=0.0,
             )
 
             if not result or (isinstance(result, dict) and result.get("error")):
-                logger.error("Assignment grading failed via Gemini")
-                raise HTTPException(status_code=503, detail="Gemini grading failed")
+                logger.error("Assignment grading failed")
+                raise HTTPException(status_code=503, detail="AI grading service unavailable")
 
             return result
 
@@ -230,19 +222,11 @@ class GeminiService:
     # ============================================================
 
     async def set_material(self, session_id: str, raw_text: str, reduce_to_sentences: int = 12, user_id: str = "anon"):
-        """
-        Store reduced study material for a tutor session.
-        Delegates to ChatService (async).
-        """
         if not hasattr(self.chat_service, "set_material"):
             raise HTTPException(status_code=500, detail="ChatService missing set_material()")
         await self.chat_service.set_material(session_id, raw_text, reduce_to_sentences, user_id=user_id)
 
     def get_material(self, session_id: str, user_id: str = "anon") -> str:
-        """
-        Get reduced study material for a tutor session.
-        Delegates to ChatService.
-        """
         if not hasattr(self.chat_service, "get_material"):
             return ""
         return self.chat_service.get_material(session_id, user_id=user_id)
@@ -298,14 +282,13 @@ class GeminiService:
             explanation = await self.explanation_service.generate_explanation(ex_input)
             services_status["explanation"] = bool(explanation and getattr(explanation, "explanation", None))
 
-            ping = await self.grading_service._call_gemini_with_retry(
-                'Reply: {"pong": true}',
+            ping = await self.grading_service._call_model_with_retry(
+                'Reply with exactly: {"pong": true}',
                 expect_json=True,
                 temperature=0.0,
             )
             services_status["grading"] = isinstance(ping, dict) and not ping.get("error")
 
-            # Lightweight checks for services existence
             services_status["quiz"] = self.quiz_service is not None
             services_status["chat"] = self.chat_service is not None
             services_status["assignment"] = self.assignment_service is not None
@@ -314,5 +297,9 @@ class GeminiService:
             return {"status": overall, "services": services_status}
 
         except Exception as e:
-            logger.exception("Gemini health check failed")
+            logger.exception("AI service health check failed")
             return {"status": "unhealthy", "error": str(e), "services": services_status}
+
+
+# Backward-compat alias — existing imports of GeminiService continue to work.
+GeminiService = AIService

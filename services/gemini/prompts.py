@@ -1,18 +1,38 @@
 # services/gemini/prompts.py
-# Commit 20 — prompt hardening, course grounding, study modes, richer feedback
+#
+# Centralized LLM prompt templates.
+# Provider-neutral: used by both OpenAI (primary) and Gemini (fallback).
+#
+# Authoring rules applied throughout:
+#  - JSON tasks: explicit output contract, no markdown outside markers, schema inline.
+#  - Text tasks: concise instructions, student-safe tone, constructive framing only.
+#  - All prompts: respect language/curriculum fields, avoid harsh language,
+#    avoid personal data, no AI self-references.
+
 
 class Prompts:
     """
-    Centralized prompt templates for tutor interaction, quiz generation, grading, and explanation.
-    Commit 20 additions:
-    - Course-material grounding in quiz/assignment/explanation prompts
-    - Bloom taxonomy level support in quiz prompt
-    - Study mode directives in tutor prompt
-    - Explicit "not in materials" fallback in tutor prompt
-    - Richer MCQ/essay feedback prompts
-    - New prompts: QUESTION_REWRITE, DISTRACTOR_GEN, MISTAKE_EXPLANATION,
-      DRAFT_FEEDBACK, ANNOUNCEMENT_DRAFT, LESSON_SUMMARY
+    Centralized prompt templates for all AI-assisted LMS flows.
+
+    Prompts are grouped by feature:
+      TUTOR_PROMPT            — tutor chat
+      ASSIGNMENT_PROMPT       — assignment generation (JSON)
+      QUIZ_PROMPT             — quiz generation (JSON)
+      QUIZ_VERIFY_PROMPT      — quiz validation (JSON)
+      EXPLANATION_PROMPT      — concept explanation (text)
+      ESSAY_GRADING_PROMPT    — essay grading (JSON)
+      ESSAY_GRADE_JUDGE_PROMPT — grade arbitration (JSON)
+      MCQ_GRADING_PROMPT      — MCQ grading (JSON)
+      GRADING_PROMPT          — full assignment grading (JSON)
+      COMPLETE_GRADING_PROMPT — detailed grading (JSON)
+      QUESTION_REWRITE_PROMPT — question rewriting (JSON)
+      DISTRACTOR_GENERATION_PROMPT — MCQ distractor generation (JSON)
+      MISTAKE_EXPLANATION_PROMPT   — student mistake explanation (JSON)
+      DRAFT_FEEDBACK_PROMPT        — teacher feedback draft (JSON)
+      ANNOUNCEMENT_DRAFT_PROMPT    — announcement drafting (JSON)
+      LESSON_SUMMARY_PROMPT        — lesson transformation (JSON)
     """
+
     @staticmethod
     def build_tutor_prompt(
         *,
@@ -27,7 +47,7 @@ class Prompts:
         material: str = "",
         study_mode: str = "general",
     ) -> str:
-        """Legacy builder — retained for compatibility. Now delegates to TUTOR_PROMPT format."""
+        """Convenience builder — delegates to TUTOR_PROMPT.format(...)."""
         return Prompts.TUTOR_PROMPT.format(
             tone=tone,
             language=language,
@@ -35,95 +55,90 @@ class Prompts:
             subject=subject,
             study_mode=study_mode or "general",
             curriculum_guidelines=curriculum_guidelines or "None",
-            context=context or "No prior context",
+            context=context or "No prior context.",
             material=material or "No course material uploaded for this session.",
             message=message,
             max_words=max_words,
         )
 
-    # ============================================================
-    # TUTOR CHAT PROMPT (LEAN)
-    # Placeholders used by ChatService:
-    # tone, language, curriculum, subject, curriculum_guidelines, context, material, message
-    # ============================================================
+    # ================================================================
+    # TUTOR CHAT PROMPT
+    # Placeholders: tone, language, curriculum, subject, study_mode,
+    #               curriculum_guidelines, context, material, message, max_words
+    # ================================================================
     TUTOR_PROMPT = """
-You are an expert AI tutor.
+You are a knowledgeable, patient AI tutor.
 
 Language: {language}
 Tone: {tone}
-Level/Curriculum: {curriculum}
+Curriculum / Level: {curriculum}
 Subject: {subject}
 Study Mode: {study_mode}
 
-Guidelines (use only if clearly relevant):
+Curriculum guidelines (apply only where clearly relevant):
 {curriculum_guidelines}
 
-Recent Context:
+Recent conversation context:
 {context}
 
-Course Material (sourced from uploaded course files — PREFER this over general knowledge):
+Course material (from uploaded files — prefer this over general knowledge):
 {material}
 
-Student Question:
+Student question:
 {message}
 
------------------------------
+────────────────────────────────────
 STUDY MODE INSTRUCTIONS
------------------------------
-Apply the study mode as follows:
-- explain_simply: Use very simple language, short sentences, one concrete analogy. Avoid jargon.
-- explain_deeply: Provide thorough explanation with underlying principles, derivations if relevant, and connections to related concepts.
-- give_example: Lead with 1–2 concrete worked examples before explaining the concept.
-- quiz_me: Do NOT answer the question directly. Instead, ask the student 1–2 guided questions to prompt them to reason toward the answer themselves.
-- summarize: Give a compact revision-ready summary with key terms bolded, suitable for pre-exam review.
-- general: Standard balanced explanation.
+────────────────────────────────────
+- explain_simply : Simple language, short sentences, one concrete analogy. No jargon.
+- explain_deeply : Full explanation with underlying principles, derivations if relevant, and links to related concepts.
+- give_example   : Lead with 1–2 worked examples, then explain the concept.
+- quiz_me        : Do NOT answer directly. Ask 1–2 guiding questions to help the student reason toward the answer themselves.
+- summarize      : Compact, revision-ready summary with key terms bolded. Suitable for pre-exam review.
+- general        : Clear, balanced explanation appropriate for the level.
 
------------------------------
+────────────────────────────────────
 GROUNDING RULES
------------------------------
-- If course material is provided above, base your answer on it and reference it naturally.
-- If the question CANNOT be answered from the course material AND general subject knowledge is insufficient, say:
-  "I couldn't find a direct answer in your course materials. Here is general knowledge on this topic:"
-  Then provide a general answer clearly labeled as such.
-- Do NOT fabricate course-specific facts, diagrams, page numbers, or examples not in the material.
+────────────────────────────────────
+- Ground your answer in the course material when it is relevant.
+- If the question cannot be answered from the material, say:
+  "This topic isn't in your uploaded materials. Here is general knowledge on this topic:"
+  Then provide a clearly labeled general answer.
+- Do NOT fabricate course-specific facts, page numbers, or diagrams not present in the material.
 
------------------------------
-FORMAT REQUIREMENTS (STRICT)
------------------------------
+────────────────────────────────────
+FORMAT (STRICT)
+────────────────────────────────────
+1. Clean Markdown only.
+2. Numbered lists (1. 2. 3.) — never bullet asterisks (*).
+3. No backticks or inline code blocks.
+4. Math: LaTeX only. Inline: \\( ... \\). Block: $$ ... $$.
+   Never use Unicode math symbols outside LaTeX.
+5. Clear spacing between sections.
+6. No emojis or decorative symbols.
+7. Do not repeat the question.
+8. Maximum {max_words} words.
 
-1) Use clean Markdown only.
-2) Use numbered lists (1., 2., 3.) — NEVER use asterisks (*).
-3) Do NOT use backticks or inline code formatting.
-4) For math expressions:
-   - Use LaTeX only.
-   - Inline math: \\( ... \\)
-   - Block math: $$ ... $$
-   - NEVER use Unicode math symbols like ∫ 𝑢 𝑑𝑣 outside LaTeX.
-5) Add clear spacing between sections.
-6) Avoid emojis or decorative symbols.
-7) Keep structure visually clean and professional.
-
------------------------------
+────────────────────────────────────
 CONTENT RULES
------------------------------
-
-- Explain clearly for this level.
-- If the student says "step by step", "derive", or "show", provide structured step-by-step reasoning.
-- If critical information is missing, ask ONLY 1–2 short clarification questions.
-- If SAT/IGCSE is clearly relevant, add ONE short exam tip at the end.
-- Keep the response concise (maximum {max_words} words).
-- Do not repeat the question.
-- Do not add filler sentences.
-
-Now produce the final answer.
+────────────────────────────────────
+- Explain clearly at the appropriate level.
+- If the student asks for step-by-step, provide structured steps.
+- If critical context is missing, ask at most 1–2 short clarification questions.
+- If the curriculum is SAT or IGCSE and it is clearly relevant, add one short exam tip at the end.
+- Be encouraging. Never dismiss or belittle a question.
 """.strip()
 
-    # ============================================================
-    # ASSIGNMENT PROMPT (LEAN JSON)
+    # ================================================================
+    # ASSIGNMENT PROMPT (JSON output)
     # Placeholders: topic, grade_level, subject, num_questions
-    # ============================================================
+    # ================================================================
     ASSIGNMENT_PROMPT = """
-Return ONLY JSON between markers. No markdown/text outside.
+You are an expert educational content designer.
+Create a {num_questions}-question assignment on "{topic}" for {grade_level} ({subject}).
+
+OUTPUT CONTRACT — return ONLY the JSON block between the markers below.
+No text, explanation, or markdown outside the markers.
 
 ---BEGIN ASSIGNMENT JSON---
 {{
@@ -137,49 +152,47 @@ Return ONLY JSON between markers. No markdown/text outside.
         "id": 1,
         "type": "multiple_choice|short_answer|problem_solving|true_false|essay",
         "question": "string",
-
         "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
         "correct_answer": "A|B|C|D|True|False",
-
         "expected_answer": "string",
         "scoring_criteria": "string",
-        "solution_steps": ["..."],
+        "solution_steps": ["step 1", "step 2"],
         "rubric": "string",
-
-        "explanation": "string"
+        "explanation": "string (≤25 words)"
       }}
     ]
   }}
 }}
 ---END ASSIGNMENT JSON---
 
-Task:
-Create exactly {num_questions} questions on "{topic}" for {grade_level} in {subject}.
-Rules:
-- MCQ: 4 labeled options; correct_answer = A/B/C/D; explanation <= 20 words.
-- True/False: correct_answer = True/False; explanation <= 20 words.
-- short_answer: include expected_answer + scoring_criteria (short).
-- problem_solving: include solution_steps (3–6) + explanation (<= 25 words).
-- essay: rare; include expected_answer + rubric (10 pts) + solution_steps (5–7).
-Output compact JSON (no extra whitespace if possible).
+RULES:
+- MCQ: exactly 4 options labeled A–D; correct_answer = A/B/C/D; explanation ≤ 20 words.
+  Distractors must reflect real student misconceptions — not trivial wrong answers.
+- True/False: correct_answer = True or False; explanation ≤ 20 words.
+- short_answer: include expected_answer + scoring_criteria.
+- problem_solving: include solution_steps (3–6 steps) + explanation (≤ 25 words).
+- essay: expected_answer + rubric (10-point scale) + solution_steps (5–7 steps). Use sparingly.
+- All questions must be factually accurate, age-appropriate, and educationally sound.
+- Output compact JSON. Do not add whitespace outside string values.
 """.strip()
 
-    # ============================================================
-    # QUIZ PROMPT (LEAN JSON)
-    # Placeholders used by QuizService:
-    # subject, num_questions, topic, grade_level, curriculum, language, difficulty,
-    # question_type, subject_directive, curriculum_guidelines
-    # ============================================================
+    # ================================================================
+    # QUIZ PROMPT (JSON output)
+    # Placeholders: subject, num_questions, topic, grade_level, curriculum,
+    #               language, difficulty, question_type, bloom_level,
+    #               subject_directive, course_context_block, curriculum_guidelines
+    # ================================================================
     QUIZ_PROMPT = """
 You are an expert {subject} exam designer.
-
-Make a {num_questions}-question quiz on "{topic}" for {grade_level}, curriculum={curriculum}, language={language}.
-difficulty={difficulty}; requested_type={question_type}; bloom_level={bloom_level}.
+Create a {num_questions}-question quiz on "{topic}" for {grade_level}.
+Curriculum: {curriculum} | Language: {language} | Difficulty: {difficulty}
+Type: {question_type} | Bloom level: {bloom_level}
 {subject_directive}
 
 {course_context_block}
 
-Return ONLY JSON between markers. No markdown/text outside.
+OUTPUT CONTRACT — return ONLY the JSON block between the markers below.
+No text, explanation, or markdown outside the markers.
 
 ---BEGIN QUIZ JSON---
 {{
@@ -190,118 +203,140 @@ Return ONLY JSON between markers. No markdown/text outside.
       "question": "string",
       "max_score": 1,
       "bloom_level": "{bloom_level}",
-
       "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
       "answer": "A|B|C|D|True|False",
-
       "expected_answer": "string",
       "rubric": "string",
-      "solution_steps": ["..."],
-
-      "explanation": "string"
+      "solution_steps": ["step 1", "step 2"],
+      "explanation": "string (≤25 words)"
     }}
   ]
 }}
 ---END QUIZ JSON---
 
-Rules:
-- MCQ: 4 labeled options; answer is ONLY A/B/C/D; max_score=1; explanation <= 25 words.
-  Distractors must be plausible and reflect common student misconceptions, not trivial fillers.
-- True/False: answer True/False; max_score=1; explanation <= 25 words.
-- Essay: max_score=10; include expected_answer + rubric + solution_steps(5–7); explanation <= 30 words.
-- Bloom level guidance: remember=recall facts; understand=explain concepts; apply=use in new context;
-  analyze=break down; evaluate=judge/argue; create=produce/design.
-- If course material context is provided, ground questions directly in that content.
-- Output compact JSON (no extra whitespace if possible).
+RULES:
+- MCQ: exactly 4 options labeled A–D; answer = A/B/C/D only; max_score = 1; explanation ≤ 25 words.
+  Distractors must reflect real student misconceptions, not random wrong answers.
+- True/False: answer = True or False; max_score = 1; explanation ≤ 25 words.
+- Essay: max_score = 10; include expected_answer + rubric + solution_steps (5–7 steps); explanation ≤ 30 words.
+- Bloom guidance:
+    remember   = recall facts or definitions
+    understand = explain concepts in own words
+    apply      = use knowledge in a new context
+    analyze    = break down, compare, or identify relationships
+    evaluate   = judge, argue, or assess with reasoning
+    create     = design, produce, or synthesize something new
+- Ground questions in the course material context when it is provided.
+- All questions must be factually accurate, educationally sound, and appropriate for the level.
+- Output compact JSON. Do not add whitespace outside string values.
 
-Curriculum notes (brief; apply if relevant):
+Curriculum notes (apply if relevant):
 {curriculum_guidelines}
 """.strip()
 
-    # ============================================================
-    # QUIZ VERIFY PROMPT (LEAN)
+    # ================================================================
+    # QUIZ VERIFY PROMPT (JSON output)
     # Placeholder: quiz_json
-    # ============================================================
+    # ================================================================
     QUIZ_VERIFY_PROMPT = """
-Validate the quiz JSON strictly and return ONLY JSON:
+Validate the quiz JSON below. Return ONLY the JSON object shown — no other text.
 
 {{
-  "is_valid": true/false,
-  "issues": ["..."],
-  "fix_instructions": ["..."]
+  "is_valid": true,
+  "issues": [],
+  "fix_instructions": []
 }}
 
-Checks:
-- Top object has "quiz" list.
-- Each item has id,type,question,max_score.
-- MCQ: options[4] labeled A–D; answer A/B/C/D.
-- TF: answer True/False.
-- Essay: expected_answer + rubric + solution_steps(list).
-- One correct answer; no ambiguity.
+Checks to perform:
+- Top-level object has a "quiz" array.
+- Each item has: id, type, question, max_score.
+- MCQ: options array has exactly 4 elements labeled A–D; answer is one of A/B/C/D.
+- True/False: answer is exactly "True" or "False".
+- Essay: expected_answer is a non-empty string; rubric is a non-empty string; solution_steps is a non-empty array.
+- Exactly one correct answer per question; no ambiguity.
+- No questions that reference protected personal data.
 
-Quiz JSON:
+Quiz JSON to validate:
 {quiz_json}
 """.strip()
 
-    # ============================================================
-    # EXPLANATION PROMPT (ALREADY SHORT; make even tighter)
-    # Placeholders: topic, grade_level, language, style, previous_knowledge
-    # ============================================================
+    # ================================================================
+    # EXPLANATION PROMPT (plain text output)
+    # Placeholders: topic, grade_level, language, style, previous_knowledge,
+    #               course_context_block
+    # ================================================================
     EXPLANATION_PROMPT = """
-Explain "{topic}" for {grade_level} in {language} ({style}). Prior knowledge: {previous_knowledge}.
+Explain "{topic}" for a {grade_level} student. Language: {language}. Style: {style}.
+Student's prior knowledge: {previous_knowledge}.
 {course_context_block}
-Write 2–4 sentences: definition, key idea, one concrete example, why it matters.
-Keep it clear and at the right level. No headings. Output ONLY the explanation text.
+
+Write 2–4 sentences covering:
+1. A clear definition or core idea.
+2. One concrete real-world example or analogy.
+3. Why this concept matters or how it connects to the subject.
+
+Rules:
+- Match the language and complexity to the grade level.
+- No headings, bullet points, or lists — flowing prose only.
+- Do not start with "Sure", "Certainly", or any affirmation.
+- Output ONLY the explanation text.
 """.strip()
 
-    # ============================================================
-    # ESSAY GRADING PROMPT (LEAN JSON)
-    # Placeholders: subject, grade_level, question_text, expected_answer, rubric, solution_steps, student_answer
-    # ============================================================
+    # ================================================================
+    # ESSAY GRADING PROMPT (JSON output)
+    # Placeholders: subject, grade_level, question_text, expected_answer,
+    #               rubric, solution_steps, student_answer
+    # ================================================================
     ESSAY_GRADING_PROMPT = """
-Grade the essay using the rubric. Return ONLY JSON between markers.
+You are an expert grader. Grade the student essay fairly and constructively.
+
+OUTPUT CONTRACT — return ONLY the JSON block between the markers below.
+No text or markdown outside the markers.
 
 ---BEGIN ESSAY GRADE---
 {{
-  "is_correct": true/false,
+  "is_correct": true,
   "score": 0,
   "max_score": 10,
   "rubric_breakdown": [
-    {{"criterion":"...", "awarded":0, "max":0, "evidence":"..."}}
+    {{"criterion": "string", "awarded": 0, "max": 0, "evidence": "quote or paraphrase from student answer"}}
   ],
   "mistakes": ["specific error 1", "specific error 2"],
   "misconceptions": ["misconception detected, if any"],
-  "feedback": "2–3 sentences of pedagogically useful feedback: what was good, what was wrong, how to improve.",
-  "suggestion": "One concrete action the student should take to improve (e.g., review section X, redo step Y)."
+  "feedback": "2–3 constructive sentences: what the student did well, what was incorrect, and one clear suggestion.",
+  "suggestion": "One specific next step the student can take (e.g., review a concept, redo a step)."
 }}
 ---END ESSAY GRADE---
 
-Subject={subject}; Grade={grade_level}
-Q: {question_text}
-Expected: {expected_answer}
+Subject: {subject} | Grade level: {grade_level}
+Question: {question_text}
+Expected answer: {expected_answer}
 Rubric: {rubric}
-Steps: {solution_steps}
-Student: {student_answer}
+Solution steps: {solution_steps}
+Student answer: {student_answer}
 
-Rules:
-- score is INTEGER 0–10; breakdown sums to score.
-- Only award points with explicit evidence from student answer.
-- Be strict but constructive. Feedback must be pedagogically useful, not just "incorrect."
-- mistakes = list of specific errors (omissions, misconceptions, wrong steps).
-- suggestion = one actionable next step for the student.
+GRADING RULES:
+- score is an integer 0–10; rubric_breakdown entries must sum to score.
+- Award points only when the student's answer contains clear, relevant evidence.
+- Be strict but fair — partial credit is appropriate for partially correct reasoning.
+- feedback must be constructive and specific, not generic ("good try" is not useful).
+- mistakes = specific factual errors, omissions, or wrong steps (not vague summaries).
+- suggestion = one actionable improvement, not a repetition of what was wrong.
+- Never include the student's name or any personal identifiers.
 """.strip()
 
-    # ============================================================
-    # ESSAY GRADE JUDGE PROMPT (LEAN)
-    # Placeholders: question_text, expected_answer, rubric, student_answer, grade_a, grade_b
-    # ============================================================
+    # ================================================================
+    # ESSAY GRADE JUDGE PROMPT (JSON output)
+    # Placeholders: question_text, expected_answer, rubric, student_answer,
+    #               grade_a, grade_b
+    # ================================================================
     ESSAY_GRADE_JUDGE_PROMPT = """
-Choose the better grade (A or B) or merge into one corrected grade.
-Return ONLY JSON between markers with the SAME schema as ESSAY_GRADING_PROMPT.
+Two grades were produced for the same student essay. Choose the more accurate one
+or produce a corrected merged grade. Return ONLY the JSON block between the markers.
 
 ---BEGIN ESSAY GRADE---
 {{
-  "is_correct": true/false,
+  "is_correct": true,
   "score": 0,
   "max_score": 10,
   "rubric_breakdown": [],
@@ -310,110 +345,138 @@ Return ONLY JSON between markers with the SAME schema as ESSAY_GRADING_PROMPT.
 }}
 ---END ESSAY GRADE---
 
-Q: {question_text}
-Expected: {expected_answer}
+Question: {question_text}
+Expected answer: {expected_answer}
 Rubric: {rubric}
-Student: {student_answer}
+Student answer: {student_answer}
 
-A: {grade_a}
-B: {grade_b}
+Grade A: {grade_a}
+Grade B: {grade_b}
 
-Rules:
-- score INTEGER 0–10; breakdown sums to score and respects max.
-- evidence must match student text.
+RULES:
+- score is an integer 0–10; rubric_breakdown entries must sum to score and respect max values.
+- All evidence cited must come directly from the student's answer.
+- Choose the grade that is more accurate and better justified; do not just average the two.
 """.strip()
 
-    # ============================================================
-    # MCQ GRADING PROMPT (LEAN)
-    # Placeholders: subject, question_text, options, correct_answer, student_answer, explanation
-    # ============================================================
+    # ================================================================
+    # MCQ GRADING PROMPT (JSON output)
+    # Placeholders: subject, question_text, options, correct_answer,
+    #               student_answer, explanation
+    # ================================================================
     MCQ_GRADING_PROMPT = """
-Return ONLY JSON between markers.
+Grade the student's multiple-choice answer.
+Return ONLY the JSON block between the markers below — no other text.
 
 ---BEGIN MCQ GRADE---
 {{
-  "is_correct": true/false,
+  "is_correct": true,
   "score": 0,
   "max_score": 1,
-  "feedback": "1 short sentence.",
+  "feedback": "One concise, constructive sentence explaining why the answer is correct or incorrect.",
   "correct_letter": "{correct_answer}"
 }}
 ---END MCQ GRADE---
 
 Subject: {subject}
-Q: {question_text}
+Question: {question_text}
 Options: {options}
-Correct: {correct_answer}
-Student: {student_answer}
-Notes: {explanation}
+Correct answer: {correct_answer}
+Student's answer: {student_answer}
+Explanation note: {explanation}
 
-Rule: correctness = student letter matches correct letter (map full option text to letter if needed).
+RULES:
+- is_correct = true if and only if the student's letter matches the correct letter.
+- If the student provided full option text instead of a letter, map it to the closest letter.
+- feedback must be specific — reference the concept, not just "correct" or "incorrect".
+- Never reveal other options' correctness.
 """.strip()
 
-    # ============================================================
-    # GRADING PROMPT (LEAN)
+    # ================================================================
+    # GRADING PROMPT (JSON output — full assignment)
     # Placeholders: curriculum, assignment_data, student_answers
-    # ============================================================
+    # ================================================================
     GRADING_PROMPT = """
-You are an examiner for {curriculum}. Grade the submission and return ONLY JSON between markers.
+You are an examiner for the {curriculum} curriculum.
+Grade the student submission below and return ONLY the JSON block between the markers.
 
 ---BEGIN GRADING JSON---
 {{
   "overall_score": 0.0,
-  "feedback": "1–2 sentences.",
+  "feedback": "1–2 sentences of constructive overall feedback.",
   "concept_analytics": [],
   "question_analysis": [],
   "study_plan": []
 }}
 ---END GRADING JSON---
 
-Assignment: {assignment_data}
-Answers: {student_answers}
+Assignment data:
+{assignment_data}
+
+Student answers:
+{student_answers}
+
+RULES:
+- overall_score is a number 0–100.
+- feedback is constructive — note strengths and one clear area for improvement.
+- question_analysis: one entry per question with question_id, score, max_score, feedback.
+- study_plan: list of specific topics the student should revisit based on errors.
 """.strip()
 
-    # ============================================================
-    # COMPLETE GRADING PROMPT (LEAN)
-    # Placeholders: subject, curriculum, assignment_name, student_id, assignment_data, student_answers
-    # ============================================================
+    # ================================================================
+    # COMPLETE GRADING PROMPT (JSON output — detailed)
+    # Placeholders: subject, curriculum, assignment_name, student_id,
+    #               assignment_data, student_answers
+    # ================================================================
     COMPLETE_GRADING_PROMPT = """
-Return ONLY JSON between markers. No extra text.
+Grade the student submission and return ONLY the JSON block between the markers.
+No text or markdown outside the markers.
 
 ---BEGIN COMPLETE GRADE---
 {{
   "overall_score": 0,
-  "summary_feedback": "",
-  "per_question_breakdown": [],
-  "recommended_next_topics": []
+  "summary_feedback": "2–3 constructive sentences highlighting strengths and areas for growth.",
+  "per_question_breakdown": [
+    {{
+      "question_id": "string",
+      "score": 0,
+      "max_score": 0,
+      "feedback": "Specific, constructive feedback for this question."
+    }}
+  ],
+  "recommended_next_topics": ["topic 1", "topic 2"]
 }}
 ---END COMPLETE GRADE---
 
-Subject={subject}; Curriculum={curriculum}
-Assignment={assignment_name}; Student={student_id}
+Subject: {subject} | Curriculum: {curriculum}
+Assignment: {assignment_name} | Student ID: {student_id}
 
 Data: {assignment_data}
 Answers: {student_answers}
 
-Rules:
-- overall_score 0–100 (number).
-- summary_feedback concise.
-- per_question_breakdown includes question_id, score, max_score, feedback.
+RULES:
+- overall_score is an integer 0–100.
+- summary_feedback is constructive — do not use harsh language; identify specific strengths.
+- per_question_breakdown must include every question in the assignment.
+- recommended_next_topics: 2–4 specific topics the student should review, based on errors.
 """.strip()
 
-    # ============================================================
-    # QUESTION REWRITE PROMPT (Commit 20)
-    # Placeholders: action, subject, grade_level, language, question_text, options_block
+    # ================================================================
+    # QUESTION REWRITE PROMPT (JSON output)
+    # Placeholders: action, subject, grade_level, language,
+    #               question_text, options_block
     # action: easier | harder | more_conceptual | more_applied | arabic | english
-    # ============================================================
+    # ================================================================
     QUESTION_REWRITE_PROMPT = """
-Rewrite the following quiz/assignment question according to the action below.
-Return ONLY JSON between markers.
+Rewrite the question below according to the specified action.
+Return ONLY the JSON block between the markers — no other text.
 
 ---BEGIN REWRITE JSON---
 {{
   "rewritten_question": "string",
   "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
   "correct_answer": "A|B|C|D|True|False",
-  "explanation": "string (why this version is better for the action)",
+  "explanation": "string (1–2 sentences: why this version is better for the action)",
   "action_applied": "{action}"
 }}
 ---END REWRITE JSON---
@@ -421,7 +484,7 @@ Return ONLY JSON between markers.
 Action: {action}
 Subject: {subject}
 Grade level: {grade_level}
-Language for output: {language}
+Output language: {language}
 
 Original question:
 {question_text}
@@ -429,30 +492,34 @@ Original question:
 Original options (if MCQ):
 {options_block}
 
-Action rules:
-- easier: Simplify language, reduce cognitive load, use familiar context.
-- harder: Add complexity, require multi-step reasoning, use less familiar context.
-- more_conceptual: Focus on understanding the underlying principle, not just recall.
-- more_applied: Reframe as a real-world scenario or calculation problem.
-- arabic: Translate accurately to Arabic. Keep structure identical.
-- english: Translate accurately to English. Keep structure identical.
-- For rewrite actions (not translation): keep the same correct answer letter if MCQ,
-  but rewrite options to match the new phrasing.
-- Output the SAME question type (MCQ, essay, T/F) as the original.
+ACTION RULES:
+- easier         : Simplify language, reduce cognitive load, use familiar context.
+- harder         : Add complexity, require multi-step reasoning, use less familiar context.
+- more_conceptual: Focus on understanding the underlying principle, not recall.
+- more_applied   : Reframe as a real-world scenario or practical calculation.
+- arabic         : Translate accurately to Arabic. Preserve structure and meaning exactly.
+- english        : Translate accurately to English. Preserve structure and meaning exactly.
+
+For rewrite (non-translation) actions on MCQ:
+- Keep the same correct answer letter if possible.
+- Rewrite all options to match the new phrasing.
+- Output the same question type (MCQ, essay, T/F) as the original.
+- Ensure the rewritten question is factually accurate and educationally sound.
 """.strip()
 
-    # ============================================================
-    # DISTRACTOR GENERATION PROMPT (Commit 20)
-    # Placeholders: subject, grade_level, question_text, correct_answer, existing_distractors
-    # ============================================================
+    # ================================================================
+    # DISTRACTOR GENERATION PROMPT (JSON output)
+    # Placeholders: subject, grade_level, question_text, correct_answer,
+    #               existing_distractors
+    # ================================================================
     DISTRACTOR_GENERATION_PROMPT = """
 Generate 3 high-quality MCQ distractors for the question below.
-Return ONLY JSON between markers.
+Return ONLY the JSON block between the markers — no other text.
 
 ---BEGIN DISTRACTORS JSON---
 {{
   "distractors": [
-    {{"text": "string", "why_plausible": "string"}},
+    {{"text": "string", "why_plausible": "string (the misconception it represents)"}},
     {{"text": "string", "why_plausible": "string"}},
     {{"text": "string", "why_plausible": "string"}}
   ]
@@ -463,35 +530,36 @@ Subject: {subject}
 Grade level: {grade_level}
 Question: {question_text}
 Correct answer: {correct_answer}
-Existing distractors (avoid repeating): {existing_distractors}
+Existing distractors to avoid repeating: {existing_distractors}
 
-Rules:
-- Each distractor must be plausible (students with partial understanding would consider it).
-- Each distractor must represent a real misconception or common error, not a random wrong answer.
-- Distractors must be clearly wrong to a student who truly understands the material.
-- Avoid: "All of the above", "None of the above", trivially wrong statements.
-- Keep length similar to the correct answer.
+RULES:
+- Each distractor must be plausible to a student with partial understanding.
+- Each distractor must represent a specific, real misconception or common error.
+- Distractors must be clearly wrong to a student who fully understands the material.
+- Avoid: "All of the above", "None of the above", trivially absurd statements.
+- Keep each distractor approximately the same length as the correct answer.
+- Never include the correct answer as a distractor.
 """.strip()
 
-    # ============================================================
-    # MISTAKE EXPLANATION PROMPT (Commit 20)
+    # ================================================================
+    # MISTAKE EXPLANATION PROMPT (JSON output)
     # Placeholders: subject, grade_level, question_text, correct_answer,
     #               student_answer, question_type, explanation
-    # ============================================================
+    # ================================================================
     MISTAKE_EXPLANATION_PROMPT = """
-A student answered a question incorrectly. Help them understand their mistake.
-Return ONLY JSON between markers.
+A student answered a question incorrectly. Help them understand and learn from their mistake.
+Return ONLY the JSON block between the markers — no other text.
 
 ---BEGIN MISTAKE EXPLANATION---
 {{
-  "what_was_wrong": "string (1–2 sentences: what the student got wrong)",
-  "why_it_was_wrong": "string (2–3 sentences: the underlying reasoning error or gap)",
-  "how_to_fix": "string (2–3 sentences: what the student should understand instead)",
-  "correct_answer_explained": "string (clear explanation of the correct answer)",
+  "what_was_wrong": "string (1–2 sentences: precisely what the student got wrong)",
+  "why_it_was_wrong": "string (2–3 sentences: the underlying reasoning gap or misconception)",
+  "how_to_fix": "string (2–3 sentences: what the student needs to understand instead)",
+  "correct_answer_explained": "string (clear, thorough explanation of the correct answer)",
   "practice_question": {{
     "question": "string (one similar practice question)",
     "answer": "string (answer to the practice question)",
-    "hint": "string (short hint)"
+    "hint": "string (one short hint to guide the student)"
   }}
 }}
 ---END MISTAKE EXPLANATION---
@@ -504,28 +572,31 @@ Correct answer: {correct_answer}
 Student's answer: {student_answer}
 Explanation note: {explanation}
 
-Rules:
-- Be supportive, not discouraging.
-- Focus on the reasoning gap, not just "you got it wrong."
-- Practice question must be similar in concept and difficulty but use different wording/numbers.
+RULES:
+- Use a supportive, encouraging tone — never make the student feel embarrassed.
+- Focus on the reasoning gap, not just labeling the answer wrong.
+- The practice question must be conceptually similar but use different wording or numbers.
+- Never reveal other students' answers or include personal identifiers.
 """.strip()
 
-    # ============================================================
-    # DRAFT FEEDBACK PROMPT (Commit 20) — teacher grading assist
+    # ================================================================
+    # DRAFT FEEDBACK PROMPT (JSON output) — teacher grading assist
     # Placeholders: subject, grade_level, assignment_name, question_text,
     #               rubric, student_answer, score, max_score
-    # ============================================================
+    # ================================================================
     DRAFT_FEEDBACK_PROMPT = """
-You are helping a teacher draft feedback for a student submission.
-Return ONLY JSON between markers. The teacher will review and edit before sending.
+You are assisting a teacher by drafting feedback for a student submission.
+The teacher will review, edit, and approve this before sending it to the student.
+Return ONLY the JSON block between the markers — no other text.
 
 ---BEGIN DRAFT FEEDBACK---
 {{
-  "draft_comment": "string (3–5 sentences of constructive feedback the teacher can send to the student)",
+  "draft_comment": "string (3–5 sentences of constructive, specific feedback the teacher can send)",
   "strengths": ["string", "string"],
   "improvements": ["string", "string"],
   "grade_justification": "string (1–2 sentences explaining why this score was awarded)",
-  "ai_generated": true
+  "ai_generated": true,
+  "teacher_must_review": true
 }}
 ---END DRAFT FEEDBACK---
 
@@ -537,62 +608,66 @@ Rubric: {rubric}
 Student answer: {student_answer}
 Score awarded: {score} / {max_score}
 
-Rules:
-- Be constructive and specific. Reference the student's actual words where possible.
-- draft_comment is what the teacher might send to the student (editable).
-- strengths = what the student did well.
-- improvements = what needs work.
-- Mark ai_generated: true so the teacher knows this is a draft, not a final grade.
-- Never make the final grade decision — the teacher confirms all grades.
+RULES:
+- draft_comment is addressed to the student — constructive, specific, and encouraging.
+- Reference the student's actual words where it supports the feedback.
+- strengths: at least one genuine strength, even in a low-scoring answer.
+- improvements: specific, actionable (not just "be more detailed").
+- grade_justification: explains the score relative to the rubric without being harsh.
+- Never make the final grading decision — the teacher confirms all grades.
+- Do not include the student's name or any personal identifiers.
 """.strip()
 
-    # ============================================================
-    # ANNOUNCEMENT DRAFT PROMPT (Commit 20)
+    # ================================================================
+    # ANNOUNCEMENT DRAFT PROMPT (JSON output)
     # Placeholders: action, context, current_text, language
     # action: draft_from_context | rewrite_tone | simplify | shorten | translate
-    # ============================================================
+    # ================================================================
     ANNOUNCEMENT_DRAFT_PROMPT = """
-Help a teacher with an announcement message.
-Return ONLY JSON between markers.
+Help a teacher write or improve a class announcement.
+Return ONLY the JSON block between the markers — no other text.
 
 ---BEGIN ANNOUNCEMENT DRAFT---
 {{
-  "draft": "string (the announcement text)",
+  "draft": "string (the complete announcement text, ready to send)",
   "action_applied": "{action}",
-  "tone": "string (professional | friendly | formal)",
+  "tone": "professional|friendly|formal",
   "word_count": 0
 }}
 ---END ANNOUNCEMENT DRAFT---
 
 Action: {action}
-Language: {language}
-Context / existing text:
+Output language: {language}
+
+Context / topic:
 {context}
 
-Current announcement text (if editing):
+Current text (if editing an existing announcement):
 {current_text}
 
-Action rules:
-- draft_from_context: Write a clear, friendly announcement from the context provided
-  (e.g., "Assignment due Friday", "Quiz postponed to Monday").
-- rewrite_tone: Keep the meaning, improve the tone to be professional and clear.
-- simplify: Rewrite in simpler language suitable for all parents and students.
-- shorten: Keep the key information but reduce to ≤ 60 words.
-- translate: Translate accurately to {language}. Keep the same meaning and tone.
+ACTION RULES:
+- draft_from_context : Write a clear, friendly announcement from the context provided.
+                       Do not invent deadlines, dates, or facts not in the context.
+- rewrite_tone       : Keep the same meaning; improve the tone to be professional and clear.
+- simplify           : Rewrite in simpler language suitable for students and parents of all literacy levels.
+- shorten            : Reduce to ≤ 60 words while keeping all key information.
+- translate          : Translate accurately to {language}. Preserve tone and meaning exactly.
 
-Rules:
-- Always produce a complete, sendable announcement (not a template with placeholders).
-- Do not invent deadlines, dates, or information not present in the context.
+GENERAL RULES:
+- Produce a complete, sendable announcement — no placeholders like [date] or [name].
+- Be professional and warm; avoid overly formal or bureaucratic language.
+- word_count must accurately reflect the number of words in the draft.
 """.strip()
 
-    # ============================================================
-    # LESSON SUMMARY PROMPT (Commit 20)
+    # ================================================================
+    # LESSON SUMMARY PROMPT (JSON output)
     # Placeholders: output_type, subject, grade_level, language, lesson_text
-    # output_type: summary | flashcards | key_concepts | revision_sheet | glossary | homework_draft
-    # ============================================================
+    # output_type: summary | flashcards | key_concepts | revision_sheet |
+    #              glossary | homework_draft
+    # ================================================================
     LESSON_SUMMARY_PROMPT = """
 Transform the lesson content below into the requested output format.
-Return ONLY JSON between markers.
+Return ONLY the JSON block between the markers — no other text.
 
 ---BEGIN LESSON OUTPUT---
 {{
@@ -615,16 +690,19 @@ Language: {language}
 Lesson content:
 {lesson_text}
 
-Output type rules:
-- summary: 3–5 paragraph summary covering main concepts. label = paragraph heading.
-- flashcards: 8–15 Q&A cards. label = question, text = answer (2–3 sentences).
-- key_concepts: 6–12 key concepts with brief definitions. label = term, text = definition + example.
-- revision_sheet: Structured notes with headings and bullet points. label = section heading.
-- glossary: Alphabetical key terms. label = term, text = definition.
-- homework_draft: 3–5 homework questions based on the lesson. label = "Q{{n}}", text = question + answer key.
+OUTPUT TYPE RULES:
+- summary        : 3–5 paragraphs covering main concepts. label = paragraph heading.
+- flashcards     : 8–15 Q&A pairs. label = question, text = answer (2–3 sentences).
+- key_concepts   : 6–12 terms with definitions. label = term, text = definition + one example.
+- revision_sheet : Structured notes with section headings and concise bullet content.
+                   label = section heading, text = concise notes for that section.
+- glossary       : Alphabetically sorted key terms. label = term, text = definition.
+- homework_draft : 3–5 questions based on the lesson.
+                   label = "Q{n}", text = question + answer key.
 
-Rules:
-- Only use content from the lesson text. Do not hallucinate facts.
-- Keep language appropriate for the grade level.
-- If lesson text is too short, note it in the title: "Short lesson — output may be limited."
+GENERAL RULES:
+- Use only content present in the lesson text — do not hallucinate facts.
+- Language and complexity must match the grade level.
+- If the lesson text is very short, include a note in the title: "(Short lesson — output may be limited)"
+- word_count must accurately count the total words across all content items.
 """.strip()

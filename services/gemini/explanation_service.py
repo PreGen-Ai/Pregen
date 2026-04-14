@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from models.response_models import ExplanationResponse
-from gemini.base_client import BaseGeminiClient
+from gemini.base_client import BaseAIClient
 from gemini.prompts import Prompts
 from utils.decorators import log_execution
 import config
@@ -12,8 +12,8 @@ from analytics.ai_request_logger import log_ai_request_context
 logger = logging.getLogger(__name__)
 
 
-class ExplanationService(BaseGeminiClient):
-    """Enhanced service for generating educational explanations using Gemini API."""
+class ExplanationService(BaseAIClient):
+    """Service for generating educational explanations. Uses OpenAI (primary) with Gemini fallback."""
 
     # hard limit
     MAX_EXPLANATION_CHARS = 500
@@ -187,13 +187,13 @@ class ExplanationService(BaseGeminiClient):
         return text, False, "valid"
 
     # -------------------------------------------------------------------------
-    # MAIN LLM CALL — FIXED FOR NEW GEMINI API
+    # MAIN LLM CALL
     # -------------------------------------------------------------------------
-    async def _call_gemini(self, prompt: str, ctx: Dict[str, Any] | None = None) -> str:
+    async def _call_model(self, prompt: str, ctx: Dict[str, Any] | None = None) -> str:
         try:
             ctx = ctx or {}
 
-            result = await self._call_gemini_with_retry(
+            result = await self._call_model_with_retry(
                 prompt,
                 expect_json=False,
                 temperature=0.4,
@@ -208,7 +208,7 @@ class ExplanationService(BaseGeminiClient):
             return (result.get("response_text") or "").strip()
 
         except Exception as e:
-            logger.error(f"Gemini generation failed: {e}")
+            logger.error(f"AI explanation generation failed: {e}")
             return ""
 
     # -------------------------------------------------------------------------
@@ -235,7 +235,7 @@ class ExplanationService(BaseGeminiClient):
                 context=context.get("context"),
             )
 
-        raw_text = await self._call_gemini(prompt, ctx=ctx)
+        raw_text = await self._call_model(prompt, ctx=ctx)
 
         cleaned, fallback, reason = self._validate_explanation(raw_text)
 

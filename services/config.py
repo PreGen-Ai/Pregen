@@ -56,7 +56,24 @@ def _redact_mongo_uri(uri: str) -> str:
 # ------------------------------------------------------------------------------
 # API Configuration
 # ------------------------------------------------------------------------------
+
+# ---- LLM Provider Configuration ----
+# Primary: OpenAI. Fallback: Gemini.
+# Accepts multiple naming conventions for the OpenAI key.
+PRIMARY_LLM_PROVIDER = os.getenv("PRIMARY_LLM_PROVIDER", "openai")
+FALLBACK_LLM_PROVIDER = os.getenv("FALLBACK_LLM_PROVIDER", "gemini")
+
+OPENAI_API_KEY = (
+    os.getenv("OPENAI_API_KEY")
+    or os.getenv("OPENAI_KEY")
+    or os.getenv("openai-key")
+    or None
+)
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-nano")
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")
+
 PORT = int(os.getenv("PORT", 8000))
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development").lower()
 AI_SERVICE_SHARED_SECRET = (
@@ -69,9 +86,9 @@ AI_SERVICE_SHARED_SECRET = (
 API_TITLE = "E-Learning AI Platform API"
 API_DESCRIPTION = (
     "AI-powered educational services for quizzes, grading, analytics, "
-    "and report generation with Gemini-based intelligence."
+    "and report generation. Primary provider: OpenAI. Fallback: Gemini."
 )
-API_VERSION = "4.0.0"
+API_VERSION = "4.1.0"
 
 # ------------------------------------------------------------------------------
 # CORS Configuration
@@ -216,8 +233,15 @@ def get_mongo_db():
 # ------------------------------------------------------------------------------
 # Validation & Warnings
 # ------------------------------------------------------------------------------
+if not OPENAI_API_KEY:
+    logger.warning(
+        "OPENAI_API_KEY not found. AI services will fall back to Gemini if available. "
+        "Set OPENAI_API_KEY for OpenAI as primary provider."
+    )
 if not GEMINI_API_KEY:
-    logger.warning("GEMINI_API_KEY not found. AI services may not function correctly.")
+    logger.warning("GEMINI_API_KEY not found. Gemini fallback will be unavailable.")
+if not OPENAI_API_KEY and not GEMINI_API_KEY:
+    logger.error("Neither OPENAI_API_KEY nor GEMINI_API_KEY is set. AI services will fail.")
 
 DEBUG = ENVIRONMENT in ["development", "local"]
 USE_FAKE_AI = os.getenv("USE_FAKE_AI", "false").lower() == "true"

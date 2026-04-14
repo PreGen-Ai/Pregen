@@ -3,10 +3,10 @@ Quiz & Learning Endpoints (Model-A aligned)
 -------------------------------------------
 ✓ Uses normalized QuizRequest & ExplanationRequest
 ✓ Returns Pydantic response models (dict-safe)
-✓ Consistent GeminiService integration
+✓ Consistent AIService integration (OpenAI primary, Gemini fallback)
 ✓ Improved error handling & logging
 ✓ Ensures normalized input before passing to services
-✓ Adds request context for Gemini token logging (MongoDB)
+✓ Adds request context for usage logging (MongoDB)
 """
 
 import logging
@@ -59,7 +59,7 @@ async def generate_quiz(
     report_storage=Depends(get_report_storage)
 ) -> dict:
     """
-    Generate a curriculum-aligned quiz using GeminiService.
+    Generate a curriculum-aligned quiz using AIService.
     Supports MCQ, Essay, True/False, and Mixed quizzes.
     """
     if gemini is None:
@@ -75,7 +75,7 @@ async def generate_quiz(
         logger.info(f"📘 /quiz/generate [{ctx['request_id']}] → {normalized}")
 
         # ✅ Request-level log (question + metadata). Tokens will be aggregated later
-        #    by BaseGeminiClient via apply_usage_event().
+        #    by BaseAIClient via apply_usage_event().
         request_text = f"Generate quiz: {normalized.get('topic','')} | {normalized.get('subject','')} | {normalized.get('grade_level','')} | {normalized.get('question_type','mixed')} | n={normalized.get('num_questions')}"
         log_ai_request_start(
             mongo_db,
@@ -84,7 +84,7 @@ async def generate_quiz(
             session_id=ctx.get("session_id"),
             endpoint=ctx.get("endpoint"),
             feature=ctx.get("feature"),
-            provider="gemini",
+            provider="openai",
             model=getattr(getattr(gemini, "quiz_service", None), "model_name", None),
             request_text=request_text,
             payload=normalized,

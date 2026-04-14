@@ -129,7 +129,7 @@ async def generate_assignment(
             session_id=ctx.get("session_id"),
             endpoint=ctx.get("endpoint"),
             feature=ctx.get("feature"),
-            provider="gemini",
+            provider="openai",
             model=getattr(getattr(gemini, "assignment_service", None), "model_name", None),
             request_text=f"Generate assignment: {request.topic} | {request.subject} | {request.grade_level} | n={request.num_questions}",
             payload=request.dict() if hasattr(request, "dict") else None,

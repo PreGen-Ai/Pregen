@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
 
-from gemini.base_client import BaseGeminiClient
+from gemini.base_client import BaseAIClient
 from gemini.prompts import Prompts
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ def _try_parse_json(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-class TeacherToolsService(BaseGeminiClient):
+class TeacherToolsService(BaseAIClient):
     """
     Teacher copilot tools — all outputs are drafts/suggestions for teacher review.
     """
@@ -120,7 +120,7 @@ class TeacherToolsService(BaseGeminiClient):
             options_block=options_block or "No options (not MCQ or options not provided)",
         )
 
-        result = await self._call_gemini_with_retry(
+        result = await self._call_model_with_retry(
             prompt,
             expect_json=True,
             temperature=0.4,
@@ -194,7 +194,7 @@ class TeacherToolsService(BaseGeminiClient):
             existing_distractors=existing_str,
         )
 
-        result = await self._call_gemini_with_retry(
+        result = await self._call_model_with_retry(
             prompt,
             expect_json=True,
             temperature=0.55,
@@ -279,7 +279,7 @@ class TeacherToolsService(BaseGeminiClient):
             max_score=max_score,
         )
 
-        result = await self._call_gemini_with_retry(
+        result = await self._call_model_with_retry(
             prompt,
             expect_json=True,
             temperature=0.45,
@@ -361,7 +361,7 @@ class TeacherToolsService(BaseGeminiClient):
             current_text=current_text[:800] or "No existing text",
         )
 
-        result = await self._call_gemini_with_retry(
+        result = await self._call_model_with_retry(
             prompt,
             expect_json=True,
             temperature=0.5,
@@ -440,7 +440,7 @@ class TeacherToolsService(BaseGeminiClient):
             lesson_text=lesson_text,
         )
 
-        result = await self._call_gemini_with_retry(
+        result = await self._call_model_with_retry(
             prompt,
             expect_json=True,
             temperature=0.4,
@@ -516,7 +516,7 @@ class TeacherToolsService(BaseGeminiClient):
             explanation=explanation or "No explanation available",
         )
 
-        result = await self._call_gemini_with_retry(
+        result = await self._call_model_with_retry(
             prompt,
             expect_json=True,
             temperature=0.4,

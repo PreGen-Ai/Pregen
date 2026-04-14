@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from models.response_models import AssignmentResponse, AssignmentQuestion
-from gemini.base_client import BaseGeminiClient
+from gemini.base_client import BaseAIClient
 from utils.decorators import log_execution
 from utils.constants import CURRICULUM_GUIDELINES
 
@@ -112,7 +112,7 @@ def _extract_json_from_text(text: str) -> Optional[Dict[str, Any]]:
 # ASSIGNMENT SERVICE
 # ---------------------------------------------------------
 @log_execution
-class AssignmentService(BaseGeminiClient):
+class AssignmentService(BaseAIClient):
 
     def __init__(self, *args, **kwargs):
         # Force latest stable model for structured JSON tasks
@@ -183,7 +183,7 @@ class AssignmentService(BaseGeminiClient):
         # Call Gemini (via base client)
         # -------------------------------------
         ctx = ctx or {}
-        result = await self._call_gemini_with_retry(
+        result = await self._call_model_with_retry(
             prompt,
             expect_json=True,
             temperature=0.4,

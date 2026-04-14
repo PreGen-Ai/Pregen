@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import HTTPException
 
-from gemini.base_client import BaseGeminiClient
+from gemini.base_client import BaseAIClient
 from gemini.prompts import Prompts
 from models.response_models import QuizQuestion, QuizResponse
 from utils.constants import CURRICULUM_GUIDELINES
@@ -220,7 +220,7 @@ def _normalize_difficulty(raw: Any) -> str:
 
 def _extract_text_from_result(result: Any) -> str:
     """
-    BaseGeminiClient may return:
+    BaseAIClient may return:
       - str
       - dict with response_text/output/reply/text
       - dict with raw model response
@@ -266,7 +266,7 @@ def _extract_text_from_result(result: Any) -> str:
 # ----------------------------
 
 @log_execution
-class QuizService(BaseGeminiClient):
+class QuizService(BaseAIClient):
     async def generate_quiz(self, data: Any, ctx: Optional[dict] = None) -> QuizResponse:
         ctx = ctx or {}
 
@@ -472,18 +472,16 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
 
     async def _call_quiz_model(self, *, prompt: str, **kwargs) -> Any:
         """
-        Calls BaseGeminiClient in a backward/forward compatible way.
+        Calls BaseAIClient (_call_model_with_retry) with structured JSON mode.
 
-        If your BaseGeminiClient was updated to support:
-          - response_mime_type
-          - disable_afc
-          - tools
-        we use them to prevent empty outputs / tool-call responses.
+        Passes expect_json=True so the primary provider (OpenAI) uses
+        json_object response format, and the Gemini fallback uses
+        response_mime_type=application/json — preventing prose-wrapped output.
 
-        If not supported, we gracefully fallback with no extra args.
+        Falls back gracefully if extra kwargs aren't supported.
         """
         try:
-            return await self._call_gemini_with_retry(
+            return await self._call_model_with_retry(
                 prompt,
                 expect_json=False,
                 response_mime_type="application/json",
@@ -492,7 +490,7 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
                 **kwargs,
             )
         except TypeError:
-            return await self._call_gemini_with_retry(
+            return await self._call_model_with_retry(
                 prompt,
                 expect_json=False,
                 **kwargs,
