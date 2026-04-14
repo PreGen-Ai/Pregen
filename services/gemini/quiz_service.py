@@ -300,7 +300,8 @@ class QuizService(BaseAIClient):
         logger.info(f"Requested curriculum: {curriculum_in!r} -> resolved={curriculum!r}")
 
         if not curriculum or curriculum not in CURRICULUM_GUIDELINES:
-            raise HTTPException(status_code=400, detail=f"Unsupported curriculum: {curriculum_in}")
+            curriculum = "American"
+            logger.info(f"Curriculum {curriculum_in!r} not recognized — defaulting to 'American'")
 
         curriculum_guidelines_short = CURRICULUM_GUIDELINES.get(curriculum, "")
         if isinstance(curriculum_guidelines_short, list):
@@ -395,7 +396,7 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
             )
 
             if not result or (isinstance(result, dict) and result.get("error")):
-                logger.error(f"Gemini returned an error (attempt {attempt}): {result}")
+                logger.error(f"AI model returned an error (attempt {attempt}): {result}")
                 last_issues = [f"Model call failed on attempt {attempt}"]
                 continue
 

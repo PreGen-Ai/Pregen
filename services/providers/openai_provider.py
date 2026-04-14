@@ -69,7 +69,7 @@ class OpenAIProvider(BaseProvider):
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temperature,
             "top_p": top_p,
-            "max_tokens": max_tokens,
+            "max_completion_tokens": max_tokens,
         }
         if stop_sequences:
             kwargs["stop"] = stop_sequences[:4]  # OpenAI accepts up to 4 stop sequences

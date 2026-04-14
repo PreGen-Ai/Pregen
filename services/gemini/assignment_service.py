@@ -116,7 +116,8 @@ class AssignmentService(BaseAIClient):
 
     def __init__(self, *args, **kwargs):
         # Force latest stable model for structured JSON tasks
-        kwargs["model_name"] = kwargs.get("model_name", "gemini-2.5-flash")
+        # Use default OpenAI model (gpt-5.4-nano); Gemini fallback is handled by provider layer
+        kwargs.pop("model_name", None)
         super().__init__(*args, **kwargs)
 
     # ========================================================
@@ -197,7 +198,7 @@ class AssignmentService(BaseAIClient):
         )
 
         if not result:
-            raise HTTPException(status_code=500, detail="Gemini returned empty response")
+            raise HTTPException(status_code=500, detail="AI service returned an empty response")
 
         json_data = None
 
@@ -216,21 +217,21 @@ class AssignmentService(BaseAIClient):
                 for alt in ("questions", "Questions", "Assignment", "items", "problems", "content"):
                     if alt in json_data and isinstance(json_data[alt], list):
                         json_data = {"assignment": json_data[alt]}
-                        logger.info(f"Remapped Gemini key '{alt}' → 'assignment'")
+                        logger.info(f"Remapped key '{alt}' -> 'assignment'")
                         break
 
         if not json_data or "assignment" not in json_data:
             raw = json_data if json_data else {}
             top_keys = list(raw.keys()) if isinstance(raw, dict) else type(raw)
-            logger.error(f"Gemini JSON missing 'assignment' key. Top-level keys: {top_keys}")
+            logger.error(f"AI JSON missing 'assignment' key. Top-level keys: {top_keys}")
             if not json_data:
                 raise HTTPException(
                     status_code=503,
-                    detail="Gemini returned an empty response. The model may be temporarily overloaded. Please try again in a moment."
+                    detail="AI service returned an empty response. The model may be temporarily overloaded. Please try again in a moment."
                 )
             raise HTTPException(
                 status_code=500,
-                detail=f"Gemini returned unexpected JSON structure (keys: {top_keys}). Please try again."
+                detail=f"AI returned unexpected JSON structure (keys: {top_keys}). Please try again."
             )
 
         raw_assignment = json_data["assignment"]

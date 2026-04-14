@@ -698,7 +698,7 @@ OUTPUT TYPE RULES:
                    label = section heading, text = concise notes for that section.
 - glossary       : Alphabetically sorted key terms. label = term, text = definition.
 - homework_draft : 3–5 questions based on the lesson.
-                   label = "Q{n}", text = question + answer key.
+                   label = "Q{{n}}", text = question + answer key.
 
 GENERAL RULES:
 - Use only content present in the lesson text — do not hallucinate facts.
