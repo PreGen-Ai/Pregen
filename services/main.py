@@ -13,6 +13,7 @@ from config import (
     API_TITLE,
     API_DESCRIPTION,
     API_VERSION,
+    OPENAI_API_KEY,
     GEMINI_API_KEY,
     PORT,
     ENVIRONMENT,
@@ -58,10 +59,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"MongoDB check failed during startup: {e}")
 
-    if GEMINI_API_KEY:
-        logger.info("GEMINI_API_KEY loaded successfully.")
+    if OPENAI_API_KEY:
+        logger.info("OPENAI_API_KEY loaded — OpenAI is primary LLM provider.")
     else:
-        logger.warning("GEMINI_API_KEY missing. AI features may be limited.")
+        logger.warning("OPENAI_API_KEY missing — will fall back to Gemini if available.")
+
+    if GEMINI_API_KEY:
+        logger.info("GEMINI_API_KEY loaded — Gemini fallback provider available.")
+    else:
+        logger.warning("GEMINI_API_KEY missing — no fallback provider configured.")
+
+    if not OPENAI_API_KEY and not GEMINI_API_KEY:
+        logger.error("Neither OPENAI_API_KEY nor GEMINI_API_KEY configured. AI endpoints will fail.")
 
     yield
 
@@ -110,7 +119,7 @@ app.include_router(teacher_tools_router)  # Commit 20: teacher copilot tools
 @app.get("/")
 async def root():
     return {
-        "message": "E-Learning AI Platform API with Gemini and MongoDB Analytics",
+        "message": "E-Learning AI Platform API (OpenAI primary, Gemini fallback) with MongoDB Analytics",
         "version": API_VERSION,
         "status": "active",
         "environment": ENVIRONMENT,
@@ -123,10 +132,14 @@ async def root():
 # ------------------------------------------------------------------------------
 @app.get("/health")
 async def health_check():
+    ai_ready = bool(OPENAI_API_KEY or GEMINI_API_KEY)
     return {
-        "status": "healthy" if GEMINI_API_KEY else "degraded",
+        "status": "healthy" if ai_ready else "degraded",
+        "primary_provider": "openai" if OPENAI_API_KEY else ("gemini" if GEMINI_API_KEY else "none"),
+        "fallback_provider": "gemini" if (OPENAI_API_KEY and GEMINI_API_KEY) else "none",
+        "openai_configured": bool(OPENAI_API_KEY),
+        "gemini_configured": bool(GEMINI_API_KEY),
         "mongo_status": "connected" if mongo_db is not None else "disconnected",
-        "api_key_configured": bool(GEMINI_API_KEY),
         "timestamp": datetime.utcnow().isoformat(),
     }
 
@@ -158,10 +171,12 @@ async def not_found_error_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     logger.info("Starting FastAPI server.")
 
-    if GEMINI_API_KEY:
-        logger.info("GEMINI_API_KEY configured.")
+    if OPENAI_API_KEY:
+        logger.info("OpenAI primary provider configured.")
+    elif GEMINI_API_KEY:
+        logger.info("Gemini acting as primary provider (no OPENAI_API_KEY).")
     else:
-        logger.warning("GEMINI_API_KEY not configured.")
+        logger.warning("No LLM provider key configured — AI endpoints will fail.")
 
     if mongo_db is not None:
         logger.info(f"MongoDB active: {mongo_db.name}")

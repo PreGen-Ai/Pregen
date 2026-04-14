@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, Field
 
 from gemini.teacher_tools_service import TeacherToolsService
-from dependencies import get_gemini_service
+from dependencies import get_ai_service
 from security import require_internal_service_auth
 
 logger = logging.getLogger(__name__)
@@ -38,12 +38,24 @@ _teacher_tools_service: Optional[TeacherToolsService] = None
 
 
 def get_teacher_tools_service() -> TeacherToolsService:
+    """
+    Lazy singleton using the same key-resolution logic as the rest of the AI layer:
+    OPENAI_API_KEY (primary) → GEMINI_API_KEY (fallback).
+    """
     global _teacher_tools_service
     if _teacher_tools_service is None:
         import os
-        api_key = os.getenv("GEMINI_API_KEY")
+        api_key = (
+            os.getenv("OPENAI_API_KEY")
+            or os.getenv("OPENAI_KEY")
+            or os.getenv("openai-key")
+            or os.getenv("GEMINI_API_KEY")
+        )
         if not api_key:
-            raise HTTPException(status_code=503, detail="AI service unavailable: missing API key")
+            raise HTTPException(
+                status_code=503,
+                detail="AI service unavailable: no OPENAI_API_KEY or GEMINI_API_KEY configured"
+            )
         _teacher_tools_service = TeacherToolsService(api_key)
     return _teacher_tools_service
 
