@@ -536,8 +536,10 @@ export const api = {
       safe(apiClient.put(`${ADMIN_BASE}/ai/settings`, payload, config)),
 
     // Canonical Node -> FastAPI bridge
+    // Quiz gen and assignment gen use extended timeouts: the AI quality-gate
+    // loop can take 30-60s; the default 25s apiClient timeout kills the request.
     generateQuiz: (payload, config = {}) =>
-      safe(apiClient.post("/api/ai/quiz/generate", payload, config)),
+      safe(apiClient.post("/api/ai/quiz/generate", payload, { timeout: 90000, ...config })),
     gradeQuiz: (payload, config = {}) =>
       safe(apiClient.post("/api/ai/grade-quiz", payload, config)),
     gradeQuestion: (payload, config = {}) =>
@@ -546,7 +548,7 @@ export const api = {
       safe(apiClient.get("/api/ai/grade/health", config)),
 
     generateAssignment: (payload, config = {}) =>
-      safe(apiClient.post("/api/ai/assignments/generate", payload, config)),
+      safe(apiClient.post("/api/ai/assignments/generate", payload, { timeout: 90000, ...config })),
     validateAssignment: (payload, config = {}) =>
       safe(apiClient.post("/api/ai/assignments/validate", payload, config)),
     uploadAssignmentFile: (formData, config = {}) =>
