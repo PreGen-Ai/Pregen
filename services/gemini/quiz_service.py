@@ -232,6 +232,10 @@ def _extract_text_from_result(result: Any) -> str:
     if isinstance(result, str):
         return result.strip()
 
+    # Pre-parsed JSON list (e.g. from expect_json=True) — serialize back to string
+    if isinstance(result, list):
+        return json.dumps(result)
+
     if isinstance(result, dict):
         for k in ("response_text", "output", "reply", "text", "content"):
             v = result.get(k)
@@ -400,7 +404,16 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
                 last_issues = [f"Model call failed on attempt {attempt}"]
                 continue
 
-            raw_text = _extract_text_from_result(result)
+            # When expect_json=True the base client returns pre-parsed JSON (list or dict)
+            # rather than {"response_text": "..."}. Detect that case and serialize back to
+            # a JSON string so _extract_quiz_list_from_text can process it uniformly.
+            if isinstance(result, list):
+                raw_text = json.dumps(result)
+            elif isinstance(result, dict) and any(k in result for k in ("quiz", "questions", "items")):
+                raw_text = json.dumps(result)
+            else:
+                raw_text = _extract_text_from_result(result)
+
             if not raw_text:
                 logger.warning("Model returned no extractable text (likely AFC/tool-call or empty parts).")
                 last_issues = [
