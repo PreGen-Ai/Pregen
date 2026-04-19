@@ -116,7 +116,12 @@ export default function DashboardRoutes() {
           path="announcements"
           element={
             <RequireRole
-              allowedRoles={[ROLES.STUDENT, ROLES.TEACHER, ROLES.ADMIN, ROLES.SUPERADMIN]}
+              allowedRoles={[
+                ROLES.STUDENT,
+                ROLES.TEACHER,
+                ROLES.ADMIN,
+                ROLES.SUPERADMIN,
+              ]}
             >
               <AnnouncementsPage />
             </RequireRole>
@@ -133,7 +138,7 @@ export default function DashboardRoutes() {
         <Route
           path="ai-tutor"
           element={
-            <RequireRole allowedRoles={[ROLES.STUDENT]}>
+            <RequireRole allowedRoles={[ROLES.STUDENT, ROLES.TEACHER]}>
               <AITutor />
             </RequireRole>
           }

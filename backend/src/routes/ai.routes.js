@@ -78,14 +78,23 @@ router.post(
 router.post("/assignments/report", saveAssignmentReport);
 router.post("/assignments/grade", gradeAssignment);
 
-router.post("/tutor/session/:sessionId", requireRole("STUDENT"), startTutorSession);
+router.post(
+  "/tutor/session/:sessionId",
+  requireRole("STUDENT", "TEACHER"),
+  startTutorSession,
+);
 router.post(
   "/tutor/material/:sessionId",
-  requireRole("STUDENT"),
+  requireRole("STUDENT", "TEACHER"),
   memoryUpload.single("file"),
   uploadTutorMaterial,
 );
-router.post("/tutor/chat", requireRole("STUDENT"), maybeSingle("file"), tutorChat);
+router.post(
+  "/tutor/chat",
+  requireRole("STUDENT", "TEACHER"),
+  maybeSingle("file"),
+  tutorChat,
+);
 
 router.post("/learning/explanation", generateExplanation);
 router.post("/learning/explanations/batch", generateBatchExplanations);

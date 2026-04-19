@@ -63,12 +63,8 @@ const AnalyticsReportsPage = lazyPage(
 );
 
 // portals (from your screenshot)
-const ParentPortal = lazyPage(
-  () => import("./pages/ParentPortal"),
-);
-const TeacherPortal = lazyPage(
-  () => import("./pages/TeacherPortal"),
-);
+const ParentPortal = lazyPage(() => import("./pages/ParentPortal"));
+const TeacherPortal = lazyPage(() => import("./pages/TeacherPortal"));
 
 const TenantsPage = lazyPage(
   () => import("./components/Dashboard/pages/SuperAdmin/TenantsPage"),
@@ -188,197 +184,197 @@ export default function App() {
               </ProtectedRoute>
             }
           >
-              {/* Legacy redirects */}
-              <Route
-                path="/settings"
-                element={<Navigate to="/dashboard/settings" replace />}
-              />
-              <Route
-                path="/ai-tutor"
-                element={<Navigate to="/dashboard/ai-tutor" replace />}
-              />
-              <Route
-                path="/assignments"
-                element={<Navigate to="/dashboard/assignments" replace />}
-              />
-              <Route
-                path="/quizzes"
-                element={<Navigate to="/dashboard/quizzes" replace />}
-              />
-              <Route
-                path="/practice-lab"
-                element={<Navigate to="/dashboard/practice-lab" replace />}
-              />
+            {/* Legacy redirects */}
+            <Route
+              path="/settings"
+              element={<Navigate to="/dashboard/settings" replace />}
+            />
+            <Route
+              path="/ai-tutor"
+              element={<Navigate to="/dashboard/ai-tutor" replace />}
+            />
+            <Route
+              path="/assignments"
+              element={<Navigate to="/dashboard/assignments" replace />}
+            />
+            <Route
+              path="/quizzes"
+              element={<Navigate to="/dashboard/quizzes" replace />}
+            />
+            <Route
+              path="/practice-lab"
+              element={<Navigate to="/dashboard/practice-lab" replace />}
+            />
 
-              <Route
-                path="/admin"
-                element={<Navigate to="/dashboard/admin/users" replace />}
-              />
-              <Route
-                path="/super"
-                element={
-                  <Navigate to="/dashboard/superadmin/dashboard" replace />
-                }
-              />
+            <Route
+              path="/admin"
+              element={<Navigate to="/dashboard/admin/users" replace />}
+            />
+            <Route
+              path="/super"
+              element={
+                <Navigate to="/dashboard/superadmin/dashboard" replace />
+              }
+            />
 
             {/* Unified dashboard */}
             <Route path="/dashboard" element={<DashboardAppLayout />}>
-                <Route index element={<DashboardHomeRedirect />} />
+              <Route index element={<DashboardHomeRedirect />} />
 
-                {/* ---------- STUDENT ---------- */}
-                <Route
-                  path="assignments"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.STUDENT]}>
-                      <Assignments />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="quizzes"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.STUDENT]}>
-                      <QuizGenerator />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="practice-lab"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.STUDENT]}>
-                      <PracticeLab />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="materials"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.STUDENT, ROLES.TEACHER]}>
-                      <LessonsPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="grades"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.STUDENT, ROLES.TEACHER]}>
-                      <GradebookPage />
-                    </RequireRole>
-                  }
-                />
+              {/* ---------- STUDENT ---------- */}
+              <Route
+                path="assignments"
+                element={
+                  <RequireRole allowedRoles={[ROLES.STUDENT]}>
+                    <Assignments />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="quizzes"
+                element={
+                  <RequireRole allowedRoles={[ROLES.STUDENT]}>
+                    <QuizGenerator />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="practice-lab"
+                element={
+                  <RequireRole allowedRoles={[ROLES.STUDENT]}>
+                    <PracticeLab />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="materials"
+                element={
+                  <RequireRole allowedRoles={[ROLES.STUDENT, ROLES.TEACHER]}>
+                    <LessonsPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="grades"
+                element={
+                  <RequireRole allowedRoles={[ROLES.STUDENT, ROLES.TEACHER]}>
+                    <GradebookPage />
+                  </RequireRole>
+                }
+              />
 
-                {/* ---------- TEACHER ---------- */}
-                <Route
-                  path="teacher"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.TEACHER]}>
-                      <TeacherPortal />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="teacher/assignments"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.TEACHER]}>
-                      <Assignments />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="teacher/quizzes"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.TEACHER]}>
-                      <QuizGenerator />
-                    </RequireRole>
-                  }
-                />
+              {/* ---------- TEACHER ---------- */}
+              <Route
+                path="teacher"
+                element={
+                  <RequireRole allowedRoles={[ROLES.TEACHER]}>
+                    <TeacherPortal />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="teacher/assignments"
+                element={
+                  <RequireRole allowedRoles={[ROLES.TEACHER]}>
+                    <Assignments />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="teacher/quizzes"
+                element={
+                  <RequireRole allowedRoles={[ROLES.TEACHER]}>
+                    <QuizGenerator />
+                  </RequireRole>
+                }
+              />
 
-                {/* ---------- PARENT ---------- */}
-                <Route
-                  path="parent"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.PARENT]}>
-                      <ParentPortal />
-                    </RequireRole>
-                  }
-                />
+              {/* ---------- PARENT ---------- */}
+              <Route
+                path="parent"
+                element={
+                  <RequireRole allowedRoles={[ROLES.PARENT]}>
+                    <ParentPortal />
+                  </RequireRole>
+                }
+              />
 
-                {/* ---------- SHARED ---------- */}
-                <Route
-                  path="ai-tutor"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.STUDENT]}>
-                      <AITutor />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="announcements"
-                  element={
-                    <RequireRole
-                      allowedRoles={[
-                        ROLES.STUDENT,
-                        ROLES.TEACHER,
-                        ROLES.ADMIN,
-                        ROLES.SUPERADMIN,
-                      ]}
-                    >
-                      <AnnouncementsPage />
-                    </RequireRole>
-                  }
-                />
+              {/* ---------- SHARED ---------- */}
+              <Route
+                path="ai-tutor"
+                element={
+                  <RequireRole allowedRoles={[ROLES.STUDENT, ROLES.TEACHER]}>
+                    <AITutor />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="announcements"
+                element={
+                  <RequireRole
+                    allowedRoles={[
+                      ROLES.STUDENT,
+                      ROLES.TEACHER,
+                      ROLES.ADMIN,
+                      ROLES.SUPERADMIN,
+                    ]}
+                  >
+                    <AnnouncementsPage />
+                  </RequireRole>
+                }
+              />
 
-                {/* ---------- ADMIN ---------- */}
-                <Route
-                  path="admin/users"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-                      <UserManagementPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="admin/workspace"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-                      <AcademicStructurePage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="admin/subjects"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-                      <SubjectsPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="admin/branding"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-                      <BrandingPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="admin/ai-controls"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-                      <AIControlsPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="admin/analytics"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-                      <AnalyticsReportsPage />
-                    </RequireRole>
-                  }
-                />
+              {/* ---------- ADMIN ---------- */}
+              <Route
+                path="admin/users"
+                element={
+                  <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
+                    <UserManagementPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="admin/workspace"
+                element={
+                  <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
+                    <AcademicStructurePage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="admin/subjects"
+                element={
+                  <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
+                    <SubjectsPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="admin/branding"
+                element={
+                  <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
+                    <BrandingPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="admin/ai-controls"
+                element={
+                  <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
+                    <AIControlsPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="admin/analytics"
+                element={
+                  <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
+                    <AnalyticsReportsPage />
+                  </RequireRole>
+                }
+              />
 
-                {/* ---------- SUPERADMIN ---------- */}
+              {/* ---------- SUPERADMIN ---------- */}
 
               <Route
                 path="superadmin/dashboard"
@@ -412,38 +408,38 @@ export default function App() {
                   </RequireRole>
                 }
               />
-                <Route
-                  path="superadmin/feature-flags"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
-                      <FeatureFlagsPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="superadmin/audit"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
-                      <AuditLogsPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="superadmin/ai-controls"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
-                      <AIControlsPage />
-                    </RequireRole>
-                  }
-                />
-                <Route
-                  path="superadmin/analytics"
-                  element={
-                    <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
-                      <AnalyticsReportsPage />
-                    </RequireRole>
-                  }
-                />
+              <Route
+                path="superadmin/feature-flags"
+                element={
+                  <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
+                    <FeatureFlagsPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="superadmin/audit"
+                element={
+                  <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
+                    <AuditLogsPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="superadmin/ai-controls"
+                element={
+                  <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
+                    <AIControlsPage />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="superadmin/analytics"
+                element={
+                  <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
+                    <AnalyticsReportsPage />
+                  </RequireRole>
+                }
+              />
 
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Route>

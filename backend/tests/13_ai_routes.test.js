@@ -24,7 +24,9 @@ describe("AI Routes - Access Control", () => {
     { method: "post", path: "/api/ai/grade-question" },
     { method: "get", path: "/api/ai/grade/health" },
     { method: "post", path: "/api/ai/assignments/generate" },
-    { method: "post", path: "/api/ai/tutor/chat", teacherDenied: true },
+    { method: "post", path: "/api/ai/tutor/session/fake-session-id" },
+    { method: "post", path: "/api/ai/tutor/material/fake-session-id" },
+    { method: "post", path: "/api/ai/tutor/chat" },
     { method: "post", path: "/api/ai/learning/explanation" },
   ];
 
@@ -36,7 +38,8 @@ describe("AI Routes - Access Control", () => {
 
     test(`${method.toUpperCase()} ${path} parent gets 403`, async () => {
       const { token } = await createParent();
-      const res = await request(app)[method](path)
+      const res = await request(app)
+        [method](path)
         .set(authHeader(token))
         .send({});
       expect(res.status).toBe(403);
@@ -44,7 +47,8 @@ describe("AI Routes - Access Control", () => {
 
     test(`${method.toUpperCase()} ${path} student passes auth`, async () => {
       const { token } = await createStudent();
-      const res = await request(app)[method](path)
+      const res = await request(app)
+        [method](path)
         .set(authHeader(token))
         .send({});
       expect(res.status).not.toBe(403);
@@ -53,7 +57,8 @@ describe("AI Routes - Access Control", () => {
 
     test(`${method.toUpperCase()} ${path} teacher role gate`, async () => {
       const { token } = await createTeacher();
-      const res = await request(app)[method](path)
+      const res = await request(app)
+        [method](path)
         .set(authHeader(token))
         .send({});
 
@@ -77,7 +82,8 @@ describe("AI Routes - Reports Access Control", () => {
   for (const { method, path } of reportRoutes) {
     test(`${method.toUpperCase()} ${path} student passes auth`, async () => {
       const { token } = await createStudent();
-      const res = await request(app)[method](path)
+      const res = await request(app)
+        [method](path)
         .set(authHeader(token))
         .send({});
       expect(res.status).not.toBe(401);
@@ -109,17 +115,13 @@ describe("AI Routes - AI Usage Logging", () => {
 
   test("GET /api/ai-usage admin returns usage list", async () => {
     const { token } = await createAdmin();
-    const res = await request(app)
-      .get("/api/ai-usage")
-      .set(authHeader(token));
+    const res = await request(app).get("/api/ai-usage").set(authHeader(token));
     expect(res.status).not.toBe(403);
   });
 
   test("GET /api/ai-usage student gets 403", async () => {
     const { token } = await createStudent();
-    const res = await request(app)
-      .get("/api/ai-usage")
-      .set(authHeader(token));
+    const res = await request(app).get("/api/ai-usage").set(authHeader(token));
     expect(res.status).toBe(403);
   });
 

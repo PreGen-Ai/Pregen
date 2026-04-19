@@ -45,7 +45,12 @@ export const dashboardNav = [
         key: "announcements",
         label: "Announcements",
         to: "/dashboard/announcements",
-        allowedRoles: [ROLES.STUDENT, ROLES.TEACHER, ROLES.ADMIN, ROLES.SUPERADMIN],
+        allowedRoles: [
+          ROLES.STUDENT,
+          ROLES.TEACHER,
+          ROLES.ADMIN,
+          ROLES.SUPERADMIN,
+        ],
       },
       {
         key: "gradebook",
@@ -62,7 +67,7 @@ export const dashboardNav = [
         key: "aiTutor",
         label: "AI Tutor",
         to: "/dashboard/ai-tutor",
-        allowedRoles: [ROLES.STUDENT],
+        allowedRoles: [ROLES.STUDENT, ROLES.TEACHER],
       },
     ],
   },

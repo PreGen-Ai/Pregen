@@ -20,6 +20,7 @@ export const roleMatrix = {
       "manageQuizzes",
       "leaderboard",
       "myClasses",
+      "aiTutor",
     ],
   },
   [ROLES.ADMIN]: {
@@ -40,3 +41,5 @@ export const roleMatrix = {
     can: ["leaderboard"],
   },
 };
+
+export default roleMatrix;
