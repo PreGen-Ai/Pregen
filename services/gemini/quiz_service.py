@@ -376,7 +376,7 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
         endpoint = ctx.get("endpoint")
         feature = ctx.get("feature")
 
-        max_attempts = 3
+        max_attempts = 2
         last_issues: List[str] = []
 
         for attempt in range(1, max_attempts + 1):

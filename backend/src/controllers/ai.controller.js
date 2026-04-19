@@ -391,6 +391,7 @@ export async function generateQuiz(req, res) {
     feature: "quiz-generate",
     endpoint: "POST /api/ai/quiz/generate",
     path: "/api/quiz/generate",
+    timeoutMs: 90000,
     realtime: {
       type: "quiz_generation",
       entityType: "quiz",
