@@ -39,6 +39,22 @@ TYPE_MAP = {
 DIFFICULTY_MAP = {"easy": "easy", "medium": "medium", "hard": "hard"}
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```", re.IGNORECASE)
+_QUIZ_WRAPPER_KEYS = (
+    "quiz",
+    "questions",
+    "items",
+    "data",
+    "content",
+    "results",
+    "result",
+    "output",
+    "response",
+    "payload",
+    "body",
+    "assessment",
+    "quiz_data",
+)
+_QUESTION_FIELD_ALIASES = ("question", "prompt", "stem", "text")
 
 
 # ----------------------------
@@ -158,6 +174,83 @@ def _repair_json(text: str) -> str:
     out = re.sub(r",\s*([}\]])", r"\1", out)
     out = re.sub(r'(\{|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s*:', r'\1 "\2":', out)
     return out
+
+
+def _parse_json_candidate(candidate: str) -> Optional[Any]:
+    if not candidate:
+        return None
+    try:
+        return json.loads(candidate)
+    except Exception:
+        try:
+            return json.loads(_repair_json(candidate))
+        except Exception:
+            return None
+
+
+def _looks_like_quiz_item(item: Any) -> bool:
+    if not isinstance(item, dict):
+        return False
+
+    keys = {
+        str(k).strip().lower()
+        for k in item.keys()
+        if isinstance(k, (str, int, float))
+    }
+
+    if keys.intersection(_QUESTION_FIELD_ALIASES):
+        return True
+    if {"options", "answer"}.issubset(keys) or {"options", "correct_answer"}.issubset(keys):
+        return True
+    if keys.intersection({"expected_answer", "rubric", "solution_steps", "explanation"}):
+        return True
+    return False
+
+
+def _extract_quiz_list_from_obj(obj: Any, depth: int = 0) -> List[Dict[str, Any]]:
+    if depth > 8 or obj is None:
+        return []
+
+    if isinstance(obj, str):
+        stripped = obj.strip()
+        if stripped.startswith("{") or stripped.startswith("["):
+            parsed = _parse_json_candidate(stripped)
+            if parsed is not None:
+                return _extract_quiz_list_from_obj(parsed, depth + 1)
+        return []
+
+    if isinstance(obj, list):
+        dict_items = [x for x in obj if isinstance(x, dict)]
+        quiz_like = [x for x in dict_items if _looks_like_quiz_item(x)]
+        if quiz_like:
+            return quiz_like
+        for item in obj:
+            extracted = _extract_quiz_list_from_obj(item, depth + 1)
+            if extracted:
+                return extracted
+        return []
+
+    if isinstance(obj, dict):
+        if _looks_like_quiz_item(obj):
+            return [obj]
+
+        lower_map = {}
+        for key, value in obj.items():
+            if isinstance(key, str):
+                lower_map.setdefault(key.strip().lower(), value)
+
+        for key in _QUIZ_WRAPPER_KEYS:
+            if key in lower_map:
+                extracted = _extract_quiz_list_from_obj(lower_map[key], depth + 1)
+                if extracted:
+                    return extracted
+
+        for value in obj.values():
+            extracted = _extract_quiz_list_from_obj(value, depth + 1)
+            if extracted:
+                return extracted
+
+    return []
 
 
 def _compact_fix_list(items: List[str], max_items: int = 8, max_chars_each: int = 170) -> List[str]:
@@ -539,29 +632,11 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
 
         candidate = candidate.strip()
 
-        # Parse
-        obj: Any
-        try:
-            obj = json.loads(candidate)
-        except Exception:
-            try:
-                obj = json.loads(_repair_json(candidate))
-            except Exception:
-                return []
-
-        # Normalize containers
-        if isinstance(obj, dict):
-            for k in ("quiz", "questions", "items"):
-                if k in obj and isinstance(obj[k], list):
-                    return [x for x in obj[k] if isinstance(x, dict)]
-            if "question" in obj:
-                return [obj]
+        obj = _parse_json_candidate(candidate)
+        if obj is None:
             return []
 
-        if isinstance(obj, list):
-            return [x for x in obj if isinstance(x, dict)]
-
-        return []
+        return _extract_quiz_list_from_obj(obj)
 
     def _normalize_and_validate_quiz(
         self,
@@ -590,7 +665,13 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
                     q_type = "multiple_choice"
 
             q["type"] = q_type
-            q["question"] = _safe_strip(q.get("question") or f"Question {q['id']}")
+            q["question"] = _safe_strip(
+                q.get("question")
+                or q.get("prompt")
+                or q.get("stem")
+                or q.get("text")
+                or f"Question {q['id']}"
+            )
 
             if q_type == "essay":
                 q["max_score"] = _safe_int(q.get("max_score", 10), 10)
@@ -598,7 +679,7 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
                 q["max_score"] = _safe_int(q.get("max_score", 1), 1)
 
             if q_type == "multiple_choice":
-                options = q.get("options") or []
+                options = q.get("options") or q.get("choices") or q.get("answers") or []
                 q["options"] = self._validate_mcq_options(options, topic)
 
                 raw_ans = q.get("correct_answer") or q.get("answer")
@@ -614,7 +695,7 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
                 )
                 q["rubric"] = q.get("rubric") or "Accuracy (4), reasoning (4), clarity (2)."
 
-                steps = q.get("solution_steps")
+                steps = q.get("solution_steps") or q.get("steps")
                 if not steps:
                     steps = [
                         "Identify key concept(s).",
@@ -627,7 +708,9 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
                 q["max_score"] = _safe_int(q.get("max_score", 10), 10)
 
             elif q_type == "true_false":
-                raw = _safe_strip(q.get("answer") or q.get("correct_answer") or "").lower()
+                raw = _safe_strip(
+                    q.get("answer") or q.get("correct_answer") or q.get("correct") or ""
+                ).lower()
                 if raw in {"t", "true", "yes", "y"}:
                     q["answer"] = "True"
                 elif raw in {"f", "false", "no", "n"}:

@@ -45,6 +45,63 @@ const asCourses = (value) => {
   return [];
 };
 
+const asPractices = (value) => {
+  if (Array.isArray(value?.assignments)) return value.assignments;
+  if (Array.isArray(value?.data?.assignments)) return value.data.assignments;
+  if (Array.isArray(value?.data)) return value.data;
+  if (Array.isArray(value?.items)) return value.items;
+  if (Array.isArray(value)) return value;
+  return [];
+};
+
+const getPracticeStorage = () => {
+  try {
+    return window.localStorage;
+  } catch (error) {
+    return null;
+  }
+};
+
+export const readStoredPractices = () => {
+  const storage = getPracticeStorage();
+  if (!storage) return [];
+
+  try {
+    const raw = storage.getItem("ai_practices");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn("Failed to read stored practices:", error);
+    return [];
+  }
+};
+
+export const mergePractices = (apiPractices = [], storedPractices = []) => {
+  const merged = new Map();
+
+  [...storedPractices, ...apiPractices].forEach((practice, index) => {
+    if (!practice || typeof practice !== "object") return;
+
+    const key = String(
+      practice.id ||
+        practice.report_id ||
+        `${practice.topic || "practice"}-${practice.generated_at || index}`,
+    );
+
+    merged.set(key, {
+      ...(merged.get(key) || {}),
+      ...practice,
+    });
+  });
+
+  return Array.from(merged.values()).sort((a, b) => {
+    const aTime = new Date(a?.generated_at || 0).getTime();
+    const bTime = new Date(b?.generated_at || 0).getTime();
+    return bTime - aTime;
+  });
+};
+
 const compactText = (value, max = 1800) => {
   const text = normalizeText(value);
   return text.length > max ? `${text.slice(0, max)}…` : text;
@@ -80,11 +137,11 @@ export default function PracticeLab() {
   }, []);
 
   // ---------- State ----------
-  const [practices, setPractices] = useState([]);
+  const [practices, setPractices] = useState(() => readStoredPractices());
   const [loading, setLoading] = useState(false);
   const [topic, setTopic] = useState("");
   const [gradeLevel, setGradeLevel] = useState("high school");
-  const [subject, setSubject] = useState("Mathematics");
+  const [subject, setSubject] = useState("General");
   const [numQuestions, setNumQuestions] = useState(5);
   const [difficulty, setDifficulty] = useState("medium");
   const [questionType, setQuestionType] = useState("multiple_choice");
@@ -168,21 +225,29 @@ export default function PracticeLab() {
   };
 
   const loadPractices = async (live = true) => {
+    const storedPractices = readStoredPractices();
+    if (live && storedPractices.length) {
+      setPractices((current) => mergePractices(current, storedPractices));
+    }
+
     try {
       const apiPractices = await apiService.getAllPractices();
-      if (apiPractices && apiPractices.assignments) {
-        if (live) setPractices(apiPractices.assignments);
-      } else {
-        const saved = JSON.parse(localStorage.getItem("ai_practices")) || [];
-        if (live) setPractices(saved);
+      const mergedPractices = mergePractices(
+        asPractices(apiPractices),
+        storedPractices,
+      );
+      if (live) setPractices(mergedPractices);
+
+      const storage = getPracticeStorage();
+      if (storage) {
+        storage.setItem("ai_practices", JSON.stringify(mergedPractices));
       }
     } catch (error) {
       console.warn(
         "Failed to load practices from API, using localStorage:",
         error,
       );
-      const saved = JSON.parse(localStorage.getItem("ai_practices")) || [];
-      if (live) setPractices(saved);
+      if (live) setPractices(storedPractices);
     }
   };
 
@@ -192,7 +257,10 @@ export default function PracticeLab() {
       const nextCourses = asCourses(response);
       if (!live) return;
       setCourses(nextCourses);
-      setSelectedCourseId((current) => current || nextCourses[0]?._id || "");
+      setSelectedCourseId((current) => {
+        if (!current) return "";
+        return nextCourses.some((course) => course._id === current) ? current : "";
+      });
     } catch (error) {
       console.warn("Failed to load course context for practice lab:", error);
       if (live) setCourses([]);
@@ -719,14 +787,22 @@ export default function PracticeLab() {
       const controller = new AbortController();
       abortRef.current = controller;
 
+      const requestedTopic = topic.split(",")[0].trim();
+      const requestedSubject = subject || "General";
+      const requestedGradeLevel = gradeLevel || "high school";
+      const requestedCurriculum = curriculum || "IGCSE";
       const studyContext = buildStudyContext();
       const scopedInstructions = [
+        `Primary requested topic: ${requestedTopic}.`,
+        `Primary requested subject: ${requestedSubject}.`,
+        "Treat the requested topic and subject as authoritative.",
+        "Do not replace the requested topic with the selected course or lesson context.",
         "Generate student-safe study practice only.",
         selectedCourse?.title
-          ? `Keep the practice aligned with the selected course: ${selectedCourse.title}.`
+          ? `Use ${selectedCourse.title} only as supporting context for examples and terminology.`
           : "",
         selectedMaterial?.title
-          ? `Base the practice primarily on the selected lesson material: ${selectedMaterial.title}.`
+          ? `Use the selected lesson material only when it supports the requested topic: ${selectedMaterial.title}.`
           : "",
         studyContext ? `Source context:\n${studyContext}` : "",
       ]
@@ -734,24 +810,20 @@ export default function PracticeLab() {
         .join("\n\n");
 
       const practiceData = {
-        topic: topic.split(",")[0].trim(),
-        grade_level:
-          selectedCourse?.gradeLevel ||
-          selectedCourse?.level ||
-          gradeLevel,
-        subject:
-          selectedCourse?.subject?.name ||
-          selectedCourse?.subjectName ||
-          subject,
+        topic: requestedTopic,
+        grade_level: requestedGradeLevel,
+        subject: requestedSubject,
         num_questions: numQuestions,
         language: "English",
         question_type: questionType,
         difficulty,
         assignment_type: practiceType,
-        curriculum: selectedCourse?.curriculum || curriculum,
+        curriculum: requestedCurriculum,
         exam_focus: examFocus,
         instructions: scopedInstructions,
+        course_context: studyContext,
         learning_objectives: [
+          requestedTopic ? `Practice the requested topic: ${requestedTopic}` : "",
           selectedMaterial?.title
             ? `Review the key ideas in ${selectedMaterial.title}`
             : "",
@@ -794,18 +866,20 @@ export default function PracticeLab() {
         topic: practice.topic || topic,
         subject:
           practice.subject ||
+          requestedSubject ||
           selectedCourse?.subject?.name ||
           selectedCourse?.subjectName ||
           subject,
         grade_level:
           practice.grade_level ||
+          requestedGradeLevel ||
           selectedCourse?.gradeLevel ||
           selectedCourse?.level ||
           gradeLevel,
         difficulty: practice.difficulty || difficulty,
         assignment_type: practice.assignment_type || practiceType,
         curriculum:
-          practice.curriculum || selectedCourse?.curriculum || curriculum,
+          practice.curriculum || requestedCurriculum || selectedCourse?.curriculum || curriculum,
         questions: formattedQuestions,
         total_points: practice.total_points || 100,
         estimated_time: practice.estimated_time || "",
@@ -833,7 +907,10 @@ export default function PracticeLab() {
 
       const updated = [...practices, newPractice];
       setPractices(updated);
-      localStorage.setItem("ai_practices", JSON.stringify(updated));
+      const storage = getPracticeStorage();
+      if (storage) {
+        storage.setItem("ai_practices", JSON.stringify(updated));
+      }
 
       setCurrentPractice(newPractice);
       setStudentAnswers({});
@@ -1095,7 +1172,10 @@ export default function PracticeLab() {
   const deletePractice = (practiceId) => {
     const updated = practices.filter((p) => p.id !== practiceId);
     setPractices(updated);
-    localStorage.setItem("ai_practices", JSON.stringify(updated));
+    const storage = getPracticeStorage();
+    if (storage) {
+      storage.setItem("ai_practices", JSON.stringify(updated));
+    }
 
     if (currentPractice?.id === practiceId) {
       setCurrentPractice(null);

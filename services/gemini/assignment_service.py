@@ -333,7 +333,9 @@ Rules:
 - correct_answer MUST be the full text of the correct option.
 - Essay questions MUST include expected_answer and rubric.
 - If learning objectives are listed, ensure every question maps to at least one objective.
+- The requested topic is the primary target. Do not replace it with course material context or subject metadata.
 - If course material context is provided, ground questions in that content.
+- Use course material context only as supporting context when it aligns with the requested topic.
 """
 
     # ---------------------------------------------------------
