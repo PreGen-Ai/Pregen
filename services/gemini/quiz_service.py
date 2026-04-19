@@ -484,7 +484,7 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
         try:
             return await self._call_model_with_retry(
                 prompt,
-                expect_json=False,
+                expect_json=True,
                 response_mime_type="application/json",
                 disable_afc=True,
                 tools=[],
@@ -493,7 +493,7 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
         except TypeError:
             return await self._call_model_with_retry(
                 prompt,
-                expect_json=False,
+                expect_json=True,
                 **kwargs,
             )
 
