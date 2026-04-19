@@ -407,12 +407,17 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
             # When expect_json=True the base client returns pre-parsed JSON (list or dict)
             # rather than {"response_text": "..."}. Detect that case and serialize back to
             # a JSON string so _extract_quiz_list_from_text can process it uniformly.
+            _CONTROL_KEYS = {"response_text", "error", "cached", "message"}
             if isinstance(result, list):
+                # Already-parsed JSON array — serialize back for uniform processing
                 raw_text = json.dumps(result)
-            elif isinstance(result, dict) and any(k in result for k in ("quiz", "questions", "items")):
+            elif isinstance(result, dict) and not _CONTROL_KEYS.intersection(result.keys()):
+                # Dict without control keys → treat as raw quiz JSON data from the model
                 raw_text = json.dumps(result)
             else:
                 raw_text = _extract_text_from_result(result)
+
+            logger.debug(f"Quiz attempt {attempt}: result type={type(result).__name__}, raw_text_len={len(raw_text) if raw_text else 0}")
 
             if not raw_text:
                 logger.warning("Model returned no extractable text (likely AFC/tool-call or empty parts).")
