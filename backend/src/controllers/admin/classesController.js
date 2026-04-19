@@ -1,5 +1,7 @@
 import Classroom from "../../models/Classroom.js";
 import User from "../../models/userModel.js";
+import Course from "../../models/CourseModel.js";
+import CourseMember from "../../models/CourseMember.js";
 import { getTenantId } from "../../middleware/authMiddleware.js";
 import { writeAuditLog } from "../../services/auditLogService.js";
 
@@ -112,6 +114,38 @@ export async function assignTeacher(req, res) {
       { _id: teacherId },
       { $addToSet: { tenantIds: tenantId } },
     );
+
+    // Auto-enroll teacher as CourseMember in any course linked to this classroom.
+    // This ensures the teacher's course list is populated so they can create
+    // assignments without the "Select a course first" error.
+    try {
+      const linkedCourses = await Course.find({
+        classroomId: doc._id,
+        deleted: false,
+      }).select("_id").lean();
+
+      if (linkedCourses.length > 0) {
+        const ops = linkedCourses.map((c) => ({
+          updateOne: {
+            filter: { courseId: c._id, userId: teacher._id },
+            update: {
+              $setOnInsert: {
+                courseId: c._id,
+                userId: teacher._id,
+                role: "teacher",
+                status: "active",
+                joinedAt: new Date(),
+              },
+            },
+            upsert: true,
+          },
+        }));
+        await CourseMember.bulkWrite(ops);
+      }
+    } catch (memberErr) {
+      // Non-fatal: log but don't fail the overall assignment
+      console.error("assignTeacher: failed to sync CourseMember records:", memberErr);
+    }
 
     await writeClassAudit(req, {
       tenantId,

@@ -21,6 +21,10 @@ import CourseMember from "../models/CourseMember.js";
 const TENANT_ID = "tnt_test_001";
 const TENANT_NAME = "Test School";
 
+// Secondary tenant seeded for QA / docs alignment
+const TESTSCHOOL_TENANT_ID = "testschool";
+const TESTSCHOOL_TENANT_NAME = "Test School (QA)";
+
 const SEED_USERS = [
   {
     email: "superadmin@pregen.test",
@@ -62,22 +66,37 @@ const SEED_USERS = [
     tenantIds: [TENANT_ID],
     password: "Student@1234",
   },
+  // QA alias tenant — keeps docs/test-suites in sync
+  {
+    email: "admin@testschool.com",
+    username: "admin_testschool",
+    firstName: "School",
+    lastName: "Admin",
+    role: "ADMIN",
+    tenantId: TESTSCHOOL_TENANT_ID,
+    tenantIds: [TESTSCHOOL_TENANT_ID],
+    password: "Admin@1234",
+  },
 ];
 
-async function upsertTenant() {
-  const existing = await Tenant.findOne({ tenantId: TENANT_ID }).lean();
+async function upsertTenantById(tenantId, name, plan = "basic") {
+  const existing = await Tenant.findOne({ tenantId }).lean();
   if (existing) {
-    console.log(`[seed] tenant exists:      ${TENANT_ID}`);
+    console.log(`[seed] tenant exists:      ${tenantId}`);
     return existing;
   }
   const doc = await Tenant.create({
-    tenantId: TENANT_ID,
-    name: TENANT_NAME,
+    tenantId,
+    name,
     status: "active",
-    plan: "basic",
+    plan,
   });
-  console.log(`[seed] tenant created:     ${TENANT_ID} — "${TENANT_NAME}"`);
+  console.log(`[seed] tenant created:     ${tenantId} — "${name}"`);
   return doc.toObject();
+}
+
+async function upsertTenant() {
+  return upsertTenantById(TENANT_ID, TENANT_NAME);
 }
 
 async function upsertTenantSettings() {
@@ -230,6 +249,7 @@ async function main() {
   console.log("[seed] connected\n");
 
   await upsertTenant();
+  await upsertTenantById(TESTSCHOOL_TENANT_ID, TESTSCHOOL_TENANT_NAME);
   await upsertTenantSettings();
 
   console.log();
@@ -249,11 +269,12 @@ async function main() {
   console.log("  Test credentials:");
   for (const u of SEED_USERS) {
     console.log(
-      `    ${u.role.padEnd(12)}  ${u.email.padEnd(32)}  pw: ${u.password}`,
+      `    ${u.role.padEnd(12)}  ${u.email.padEnd(36)}  pw: ${u.password}`,
     );
   }
   console.log();
-  console.log(`  Tenant:    ${TENANT_ID}  ("${TENANT_NAME}")`);
+  console.log(`  Primary tenant:    ${TENANT_ID}  ("${TENANT_NAME}")`);
+  console.log(`  QA alias tenant:   ${TESTSCHOOL_TENANT_ID}  ("${TESTSCHOOL_TENANT_NAME}")`);
   console.log(`  Subject:   Mathematics  (MATH)`);
   console.log(`  Classroom: Class 10A  (grade 10, section A)`);
   console.log(`  Course:    Introduction to Algebra  (code: ${courseDoc.code})`);

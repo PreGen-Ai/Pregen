@@ -122,6 +122,12 @@ function planStyle(plan) {
       bd: "rgba(34,197,94,0.35)",
       tx: "#86efac",
     };
+  if (p === "premium")
+    return {
+      bg: "rgba(139,92,246,0.12)",
+      bd: "rgba(139,92,246,0.35)",
+      tx: "#c4b5fd",
+    };
   if (p === "pro")
     return {
       bg: "rgba(245,158,11,0.12)",
@@ -829,6 +835,7 @@ export default function TenantsPage() {
                 >
                   <option value="basic">basic</option>
                   <option value="pro">pro</option>
+                  <option value="premium">premium</option>
                   <option value="enterprise">enterprise</option>
                 </select>
               </div>

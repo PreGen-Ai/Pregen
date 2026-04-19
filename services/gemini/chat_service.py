@@ -122,10 +122,10 @@ class ChatService(BaseAIClient):
     MAX_MESSAGE_CHARS = 800
     MAX_PROMPT_CHARS = 12000
 
-    # output tokens
-    TOKENS_NORMAL = 260
-    TOKENS_MEDIUM = 460
-    TOKENS_DEEP = 520
+    # output tokens — increased to prevent mid-sentence truncation
+    TOKENS_NORMAL = 450
+    TOKENS_MEDIUM = 650
+    TOKENS_DEEP = 900
 
     # In-memory cache for Mongo reads (fast)
     CACHE_TTL_S = 45
@@ -266,10 +266,10 @@ class ChatService(BaseAIClient):
     def _budgets(self, message: str) -> Tuple[int, int, float]:
         bucket = _depth_bucket(message)
         if bucket == "deep":
-            return (self.TOKENS_DEEP, 170, 0.45)   # tokens, max_words, temperature
+            return (self.TOKENS_DEEP, 320, 0.45)   # tokens, max_words, temperature
         if bucket == "medium":
-            return (self.TOKENS_MEDIUM, 140, 0.52)
-        return (self.TOKENS_NORMAL, 110, 0.55)
+            return (self.TOKENS_MEDIUM, 240, 0.52)
+        return (self.TOKENS_NORMAL, 170, 0.55)
 
     def _include_context(self, msg: str, msg_keywords: List[str], context: str) -> bool:
         if not context:
@@ -468,7 +468,7 @@ class ChatService(BaseAIClient):
         if not reply_text:
             reply_text = "I'm sorry, I couldn't process that message."
 
-        reply_text = _md_sanitize(_cap(reply_text.strip(), 1800))
+        reply_text = _md_sanitize(_cap(reply_text.strip(), 3500))
 
         # Update memory (local + DB)
         self._update_memory_local(k, original_message, reply_text)

@@ -121,7 +121,11 @@ export default function AdminClassesPage() {
   };
 
   const enrollSelected = async () => {
-    if (!detailClass || !enrollIds.length) return;
+    if (!detailClass) return;
+    if (!enrollIds.length) {
+      toast.error("Please select at least one student to enroll");
+      return;
+    }
     setSaving(true);
     try {
       await api.admin.enrollStudents(detailClass._id, enrollIds, cfg);
