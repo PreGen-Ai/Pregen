@@ -22,6 +22,77 @@ function clampLimit(v, def = 200, max = 500) {
   return Math.min(n, max);
 }
 
+function sanitizeString(value, { max = 200, allowEmpty = true } = {}) {
+  if (value === undefined) return undefined;
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    if (!allowEmpty) {
+      throw new Error("Value is required");
+    }
+    return "";
+  }
+  if (normalized.length > max) {
+    throw new Error(`Value exceeds ${max} characters`);
+  }
+  return normalized;
+}
+
+function sanitizeNumber(value, { min = 0, max = 1_000_000_000 } = {}) {
+  if (value === undefined || value === null || value === "") return undefined;
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized) || normalized < min || normalized > max) {
+    throw new Error(`Numeric value must be between ${min} and ${max}`);
+  }
+  return normalized;
+}
+
+function normalizeTenantPayload(body = {}, { requireIdentity = false } = {}) {
+  const tenantId = sanitizeString(body.tenantId, { max: 80, allowEmpty: !requireIdentity });
+  const name = sanitizeString(body.name, { max: 140, allowEmpty: !requireIdentity });
+  const description = sanitizeString(body.description, { max: 500 });
+  const plan = sanitizeString(body.plan, { max: 60 }) || undefined;
+  const status = sanitizeString(body.status, { max: 40 }) || undefined;
+  const logoUrl = sanitizeString(body.branding?.logoUrl, { max: 500 });
+  const primaryColor = sanitizeString(body.branding?.primaryColor, { max: 32 });
+  const subdomain = sanitizeString(body.branding?.subdomain, { max: 120 });
+  const ticketLimit = sanitizeNumber(body.limits?.ticketLimit, { min: 0, max: 1_000_000 });
+  const studentLimit = sanitizeNumber(body.limits?.studentLimit, { min: 0, max: 1_000_000 });
+  const aiHardCapTokensPerMonth = sanitizeNumber(
+    body.limits?.aiHardCapTokensPerMonth,
+    { min: 0, max: 10_000_000_000 },
+  );
+  const aiSoftCapTokensPerMonth = sanitizeNumber(
+    body.limits?.aiSoftCapTokensPerMonth,
+    { min: 0, max: 10_000_000_000 },
+  );
+  const amount = sanitizeNumber(body.pricing?.amount, { min: 0, max: 1_000_000_000 });
+  const currency = sanitizeString(body.pricing?.currency, { max: 12 }) || undefined;
+
+  return {
+    ...(tenantId !== undefined ? { tenantId } : {}),
+    ...(name !== undefined ? { name } : {}),
+    ...(description !== undefined ? { description } : {}),
+    ...(status ? { status } : {}),
+    ...(plan ? { plan } : {}),
+    limits: {
+      ...(studentLimit !== undefined ? { studentLimit } : {}),
+      ...(ticketLimit !== undefined ? { ticketLimit } : {}),
+      ...(aiHardCapTokensPerMonth !== undefined ? { aiHardCapTokensPerMonth } : {}),
+      ...(aiSoftCapTokensPerMonth !== undefined ? { aiSoftCapTokensPerMonth } : {}),
+    },
+    branding: {
+      ...(logoUrl !== undefined ? { logoUrl } : {}),
+      ...(primaryColor !== undefined ? { primaryColor } : {}),
+      ...(subdomain !== undefined ? { subdomain } : {}),
+    },
+    pricing: {
+      ...(amount !== undefined ? { amount } : {}),
+      ...(currency ? { currency: currency.toUpperCase() } : {}),
+    },
+    ...(body.members && typeof body.members === "object" ? { members: body.members } : {}),
+  };
+}
+
 /**
  * ✅ LIST tenants
  * GET /api/admin/system/super/tenants?limit=200&q=abc&status=active&plan=pro
@@ -63,7 +134,7 @@ router.get("/tenants", ...requireSuperAdmin, async (req, res) => {
  */
 router.post("/tenants", ...requireSuperAdmin, async (req, res) => {
   try {
-    const body = req.body || {};
+    const body = normalizeTenantPayload(req.body || {}, { requireIdentity: true });
 
     const tenantId = String(body.tenantId || "").trim();
     const name = String(body.name || "").trim();
@@ -89,16 +160,23 @@ router.post("/tenants", ...requireSuperAdmin, async (req, res) => {
     const doc = await Tenant.create({
       tenantId,
       name,
+      description: body.description || "",
       status: body.status || "trial",
       plan: body.plan || "basic",
       limits: body.limits || {},
       branding: body.branding || {},
+      pricing: body.pricing || {},
       members: body.members || {},
     });
 
     res.status(201).json({ success: true, tenant: doc });
   } catch (err) {
     console.error("POST /system/super/tenants failed:", err);
+    if (/required|exceeds|between/i.test(err?.message || "")) {
+      return res
+        .status(400)
+        .json({ success: false, message: err.message });
+    }
     res
       .status(500)
       .json({ success: false, message: "Failed to create tenant" });
@@ -137,19 +215,18 @@ router.get("/tenants/:tenantId", ...requireSuperAdmin, async (req, res) => {
 router.patch("/tenants/:tenantId", ...requireSuperAdmin, async (req, res) => {
   try {
     const tenantId = String(req.params.tenantId || "").trim();
-    const body = req.body || {};
+    const body = normalizeTenantPayload(req.body || {});
 
     const updates = pick(body, [
       "name",
+      "description",
       "status",
       "plan",
       "limits",
       "branding",
+      "pricing",
       "members",
     ]);
-
-    if (updates.name !== undefined)
-      updates.name = String(updates.name || "").trim();
 
     const doc = await Tenant.findOneAndUpdate(
       { tenantId },
@@ -166,6 +243,11 @@ router.patch("/tenants/:tenantId", ...requireSuperAdmin, async (req, res) => {
     res.json({ success: true, tenant: doc });
   } catch (err) {
     console.error("PATCH /system/super/tenants/:tenantId failed:", err);
+    if (/required|exceeds|between/i.test(err?.message || "")) {
+      return res
+        .status(400)
+        .json({ success: false, message: err.message });
+    }
     res
       .status(500)
       .json({ success: false, message: "Failed to update tenant" });

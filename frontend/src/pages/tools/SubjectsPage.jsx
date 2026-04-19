@@ -141,7 +141,7 @@ export default function SubjectsPage() {
         api.admin.listSubjects({}, cfg),
         api.admin.listUsers({ role: "TEACHER", limit: 200 }, cfg),
         api.admin.listClasses({}, cfg),
-        api.courses.getAllCourses({ limit: 200 }),
+        api.courses.getAllCourses({ limit: 200 }, cfg),
       ]);
 
       setSubjects(asItems(subjectsRes));
@@ -480,6 +480,12 @@ export default function SubjectsPage() {
                     also sync the selected courses to this subject.
                   </div>
                 ) : null}
+
+                <div style={{ color: "#9CA3AF", fontSize: 13 }}>
+                  Assigning a subject to one or more classes now provisions the
+                  matching class workspace automatically so teachers and
+                  students immediately get the right course context.
+                </div>
               </div>
             </div>
 

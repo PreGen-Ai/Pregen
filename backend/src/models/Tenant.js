@@ -6,6 +6,12 @@ const TenantSchema = new Schema(
   {
     tenantId: { type: String, required: true, unique: true },
     name: { type: String, required: true },
+    description: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 500,
+    },
 
     status: {
       type: String,
@@ -20,12 +26,18 @@ const TenantSchema = new Schema(
       aiHardCapTokensPerMonth: { type: Number, default: 0 },
       aiSoftCapTokensPerMonth: { type: Number, default: 0 },
       studentLimit: { type: Number, default: 0 },
+      ticketLimit: { type: Number, default: 0 },
     },
 
     branding: {
       logoUrl: { type: String },
       primaryColor: { type: String },
       subdomain: { type: String, index: true },
+    },
+
+    pricing: {
+      amount: { type: Number, default: 0 },
+      currency: { type: String, default: "USD" },
     },
 
     members: {

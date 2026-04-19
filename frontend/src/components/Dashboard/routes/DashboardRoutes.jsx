@@ -133,7 +133,7 @@ export default function DashboardRoutes() {
         <Route
           path="ai-tutor"
           element={
-            <RequireRole allowedRoles={[ROLES.STUDENT, ROLES.TEACHER]}>
+            <RequireRole allowedRoles={[ROLES.STUDENT]}>
               <AITutor />
             </RequireRole>
           }

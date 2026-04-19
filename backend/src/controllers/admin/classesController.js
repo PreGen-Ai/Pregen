@@ -23,6 +23,112 @@ async function writeClassAudit(req, {
   });
 }
 
+function normalizeObjectIdList(values = []) {
+  return Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+async function listLinkedCourses(classroomId) {
+  if (!classroomId) return [];
+
+  return Course.find({
+    classroomId,
+    deleted: false,
+  })
+    .select("_id")
+    .lean();
+}
+
+async function syncTeacherMembershipsForCourses(courseIds, teacherId) {
+  const normalizedCourseIds = normalizeObjectIdList(courseIds);
+
+  if (!normalizedCourseIds.length) return;
+
+  if (!teacherId) {
+    await CourseMember.updateMany(
+      {
+        courseId: { $in: normalizedCourseIds },
+        role: "teacher",
+      },
+      { $set: { status: "removed" } },
+    );
+    return;
+  }
+
+  await CourseMember.updateMany(
+    {
+      courseId: { $in: normalizedCourseIds },
+      role: "teacher",
+      userId: { $ne: teacherId },
+    },
+    { $set: { status: "removed" } },
+  );
+
+  await CourseMember.bulkWrite(
+    normalizedCourseIds.map((courseId) => ({
+      updateOne: {
+        filter: { courseId, userId: teacherId },
+        update: {
+          $set: { role: "teacher", status: "active" },
+          $setOnInsert: { joinedAt: new Date() },
+        },
+        upsert: true,
+      },
+    })),
+    { ordered: false },
+  );
+}
+
+async function syncStudentMembershipsForCourses(courseIds, studentIds = []) {
+  const normalizedCourseIds = normalizeObjectIdList(courseIds);
+  if (!normalizedCourseIds.length) return;
+
+  const normalizedStudentIds = normalizeObjectIdList(studentIds);
+
+  if (!normalizedStudentIds.length) {
+    await CourseMember.updateMany(
+      {
+        courseId: { $in: normalizedCourseIds },
+        role: "student",
+      },
+      { $set: { status: "removed" } },
+    );
+    return;
+  }
+
+  await CourseMember.updateMany(
+    {
+      courseId: { $in: normalizedCourseIds },
+      role: "student",
+      userId: { $nin: normalizedStudentIds },
+    },
+    { $set: { status: "removed" } },
+  );
+
+  const ops = [];
+  for (const courseId of normalizedCourseIds) {
+    for (const studentId of normalizedStudentIds) {
+      ops.push({
+        updateOne: {
+          filter: { courseId, userId: studentId },
+          update: {
+            $set: { role: "student", status: "active" },
+            $setOnInsert: { joinedAt: new Date() },
+          },
+          upsert: true,
+        },
+      });
+    }
+  }
+
+  await CourseMember.bulkWrite(ops, { ordered: false });
+}
+
 export async function listClasses(req, res) {
   try {
     const tenantId = getTenantId(req);
@@ -119,29 +225,11 @@ export async function assignTeacher(req, res) {
     // This ensures the teacher's course list is populated so they can create
     // assignments without the "Select a course first" error.
     try {
-      const linkedCourses = await Course.find({
-        classroomId: doc._id,
-        deleted: false,
-      }).select("_id").lean();
-
-      if (linkedCourses.length > 0) {
-        const ops = linkedCourses.map((c) => ({
-          updateOne: {
-            filter: { courseId: c._id, userId: teacher._id },
-            update: {
-              $setOnInsert: {
-                courseId: c._id,
-                userId: teacher._id,
-                role: "teacher",
-                status: "active",
-                joinedAt: new Date(),
-              },
-            },
-            upsert: true,
-          },
-        }));
-        await CourseMember.bulkWrite(ops);
-      }
+      const linkedCourses = await listLinkedCourses(doc._id);
+      await syncTeacherMembershipsForCourses(
+        linkedCourses.map((course) => course._id),
+        teacher._id,
+      );
     } catch (memberErr) {
       // Non-fatal: log but don't fail the overall assignment
       console.error("assignTeacher: failed to sync CourseMember records:", memberErr);
@@ -213,6 +301,16 @@ export async function enrollStudents(req, res) {
     );
     if (!doc) return res.status(404).json({ message: "Class not found" });
 
+    try {
+      const linkedCourses = await listLinkedCourses(doc._id);
+      await syncStudentMembershipsForCourses(
+        linkedCourses.map((course) => course._id),
+        doc.studentIds,
+      );
+    } catch (memberErr) {
+      console.error("enrollStudents: failed to sync CourseMember records:", memberErr);
+    }
+
     await writeClassAudit(req, {
       tenantId,
       type: "CLASS_STUDENTS_ENROLLED",
@@ -250,6 +348,16 @@ export async function unenrollStudents(req, res) {
       { new: true },
     );
     if (!doc) return res.status(404).json({ message: "Class not found" });
+
+    try {
+      const linkedCourses = await listLinkedCourses(doc._id);
+      await syncStudentMembershipsForCourses(
+        linkedCourses.map((course) => course._id),
+        doc.studentIds,
+      );
+    } catch (memberErr) {
+      console.error("unenrollStudents: failed to sync CourseMember records:", memberErr);
+    }
 
     await writeClassAudit(req, {
       tenantId,

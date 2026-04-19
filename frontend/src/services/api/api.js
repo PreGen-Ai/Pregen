@@ -174,8 +174,13 @@ export const api = {
   // COURSES (aligned with backend courseRoutes.js)
   // =======================================================
   courses: {
-    getAllCourses: (params) =>
-      safe(apiClient.get("/api/courses", { params: cleanParams(params) })),
+    getAllCourses: (params = {}, config = {}) =>
+      safe(
+        apiClient.get("/api/courses", {
+          ...config,
+          params: cleanParams(params),
+        }),
+      ),
 
     createCourse: (payload) => safe(apiClient.post("/api/courses", payload)),
 

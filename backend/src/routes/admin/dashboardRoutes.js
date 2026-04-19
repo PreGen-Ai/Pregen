@@ -3,6 +3,7 @@ import { requireAdmin } from "../../middleware/authMiddleware.js";
 import { getDashboardMetrics } from "../../controllers/admin/dashboardController.js";
 
 const router = express.Router();
+router.get("/", requireAdmin, getDashboardMetrics);
 router.get("/metrics", requireAdmin, getDashboardMetrics);
 
 export default router;

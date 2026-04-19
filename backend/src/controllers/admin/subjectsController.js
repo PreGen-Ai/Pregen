@@ -1,4 +1,5 @@
 import Course from "../../models/CourseModel.js";
+import CourseMember from "../../models/CourseMember.js";
 import Classroom from "../../models/Classroom.js";
 import Subject from "../../models/Subject.js";
 import User from "../../models/userModel.js";
@@ -62,7 +63,7 @@ async function validateSubjectRelations({
           tenantId,
           deletedAt: null,
         })
-          .select("name grade section")
+          .select("name grade section teacherId studentIds")
           .lean()
       : [],
     courseIds.length
@@ -91,22 +92,218 @@ async function validateSubjectRelations({
   return { teachers, classrooms, courses };
 }
 
-async function syncSubjectCourses({ tenantId, subjectId, courseIds }) {
+function buildWorkspaceTitle(subject, classroom) {
+  if (!classroom) return subject.name;
+
+  const classLabel = [classroom.name, classroom.grade, classroom.section]
+    .filter(Boolean)
+    .join(" ");
+
+  return classLabel ? `${subject.name} - ${classLabel}` : subject.name;
+}
+
+function buildWorkspaceShortName(subject, classroom) {
+  const base = subject.code || subject.name;
+  const suffix = classroom?.name || classroom?.section || "";
+  return String([base, suffix].filter(Boolean).join(" - "))
+    .trim()
+    .slice(0, 50);
+}
+
+async function syncCourseMemberships({
+  courseId,
+  teacherIds = [],
+  studentIds = [],
+}) {
+  const normalizedTeacherIds = normalizeIdArray(teacherIds);
+  const normalizedStudentIds = normalizeIdArray(studentIds);
+
+  await CourseMember.updateMany(
+    {
+      courseId,
+      role: "teacher",
+      ...(normalizedTeacherIds.length
+        ? { userId: { $nin: normalizedTeacherIds } }
+        : {}),
+    },
+    { $set: { status: "removed" } },
+  );
+
+  await CourseMember.updateMany(
+    {
+      courseId,
+      role: "student",
+      ...(normalizedStudentIds.length
+        ? { userId: { $nin: normalizedStudentIds } }
+        : {}),
+    },
+    { $set: { status: "removed" } },
+  );
+
+  const ops = [];
+
+  for (const teacherId of normalizedTeacherIds) {
+    ops.push({
+      updateOne: {
+        filter: { courseId, userId: teacherId },
+        update: {
+          $set: { role: "teacher", status: "active" },
+          $setOnInsert: { joinedAt: new Date() },
+        },
+        upsert: true,
+      },
+    });
+  }
+
+  for (const studentId of normalizedStudentIds) {
+    ops.push({
+      updateOne: {
+        filter: { courseId, userId: studentId },
+        update: {
+          $set: { role: "student", status: "active" },
+          $setOnInsert: { joinedAt: new Date() },
+        },
+        upsert: true,
+      },
+    });
+  }
+
+  if (ops.length) {
+    await CourseMember.bulkWrite(ops, { ordered: false });
+  }
+}
+
+async function syncSubjectCourses({
+  tenantId,
+  subject,
+  courseIds = [],
+  classrooms = [],
+  courses = [],
+  actorUserId,
+}) {
+  const managedCourseIds = new Set(normalizeIdArray(courseIds));
+  const explicitCourseByClassroomId = new Map(
+    (courses || [])
+      .map((course) => [toId(course.classroomId), course])
+      .filter(([classroomId]) => classroomId),
+  );
+  const courseClassroomOverrides = new Map();
+  const selectedClassroomIds = new Set(
+    (classrooms || []).map((classroom) => toId(classroom._id)).filter(Boolean),
+  );
+
+  for (const classroom of classrooms || []) {
+    const classroomId = toId(classroom._id);
+    let course = explicitCourseByClassroomId.get(classroomId);
+
+    if (!course) {
+      course = await Course.findOne({
+        tenantId,
+        subjectId: subject._id,
+        classroomId,
+        deleted: false,
+      })
+        .select("_id classroomId")
+        .lean();
+    }
+
+    if (!course) {
+      course = await Course.create({
+        title: buildWorkspaceTitle(subject, classroom),
+        shortName: buildWorkspaceShortName(subject, classroom),
+        description: subject.description || "",
+        tenantId,
+        subjectId: subject._id,
+        classroomId,
+        createdBy: actorUserId,
+        visibility: "private",
+        type: "course",
+      });
+    }
+
+    managedCourseIds.add(String(course._id));
+    courseClassroomOverrides.set(String(course._id), classroom);
+  }
+
   await Course.updateMany(
     {
       tenantId,
-      subjectId,
-      ...(courseIds.length ? { _id: { $nin: courseIds } } : {}),
+      subjectId: subject._id,
+      ...(managedCourseIds.size
+        ? { _id: { $nin: Array.from(managedCourseIds) } }
+        : {}),
     },
     { $set: { subjectId: null } },
   );
 
-  if (!courseIds.length) return;
+  if (!managedCourseIds.size) return [];
 
-  await Course.updateMany(
-    { _id: { $in: courseIds }, tenantId, deleted: false },
-    { $set: { subjectId } },
+  const managedCourses = await Course.find({
+    _id: { $in: Array.from(managedCourseIds) },
+    tenantId,
+    deleted: false,
+  })
+    .select("_id classroomId")
+    .lean();
+
+  const classroomIdsToHydrate = Array.from(
+    new Set(
+      managedCourses
+        .map((course) => toId(course.classroomId))
+        .filter(
+          (classroomId) =>
+            classroomId && !selectedClassroomIds.has(String(classroomId)),
+        ),
+    ),
   );
+
+  const extraClassrooms = classroomIdsToHydrate.length
+    ? await Classroom.find({
+        _id: { $in: classroomIdsToHydrate },
+        tenantId,
+        deletedAt: null,
+      })
+        .select("name grade section teacherId studentIds")
+        .lean()
+    : [];
+
+  const classroomById = new Map(
+    [...(classrooms || []), ...extraClassrooms].map((classroom) => [
+      toId(classroom._id),
+      classroom,
+    ]),
+  );
+
+  const subjectTeacherIds = normalizeIdArray(subject.teacherIds);
+
+  for (const course of managedCourses) {
+    const courseId = String(course._id);
+    const classroom =
+      courseClassroomOverrides.get(courseId) ||
+      classroomById.get(toId(course.classroomId)) ||
+      null;
+
+    const updates = { subjectId: subject._id };
+    if (classroom) {
+      updates.classroomId = classroom._id;
+      updates.title = buildWorkspaceTitle(subject, classroom);
+      updates.shortName = buildWorkspaceShortName(subject, classroom);
+      updates.description = subject.description || "";
+    }
+
+    await Course.updateOne({ _id: course._id }, { $set: updates });
+
+    await syncCourseMemberships({
+      courseId: course._id,
+      teacherIds: [
+        ...subjectTeacherIds,
+        ...(classroom?.teacherId ? [classroom.teacherId] : []),
+      ],
+      studentIds: classroom?.studentIds || [],
+    });
+  }
+
+  return Array.from(managedCourseIds);
 }
 
 async function serializeSubject(subjectDoc) {
@@ -223,7 +420,7 @@ export async function createSubject(req, res) {
       }
     }
 
-    await validateSubjectRelations({ tenantId, ...payload });
+    const relations = await validateSubjectRelations({ tenantId, ...payload });
 
     const subject = await Subject.create({
       tenantId,
@@ -239,8 +436,11 @@ export async function createSubject(req, res) {
 
     await syncSubjectCourses({
       tenantId,
-      subjectId: subject._id,
+      subject,
       courseIds: payload.courseIds,
+      classrooms: relations.classrooms,
+      courses: relations.courses,
+      actorUserId: req.user?._id,
     });
 
     return res.status(201).json({
@@ -307,7 +507,7 @@ export async function updateSubject(req, res) {
       }
     }
 
-    await validateSubjectRelations({ tenantId, ...payload });
+    const relations = await validateSubjectRelations({ tenantId, ...payload });
 
     subject.name = payload.name;
     subject.code = payload.code;
@@ -319,8 +519,11 @@ export async function updateSubject(req, res) {
 
     await syncSubjectCourses({
       tenantId,
-      subjectId: subject._id,
+      subject,
       courseIds: payload.courseIds,
+      classrooms: relations.classrooms,
+      courses: relations.courses,
+      actorUserId: req.user?._id || subject.createdBy,
     });
 
     return res.json({

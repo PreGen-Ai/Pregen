@@ -22,10 +22,14 @@ const GOLD = "#D4AF37";
 const EMPTY_TENANT_FORM = {
   tenantId: "",
   name: "",
+  description: "",
   status: "trial",
   plan: "basic",
+  logoUrl: "",
   subdomain: "",
   primaryColor: "",
+  monthlyPrice: "",
+  ticketLimit: "",
 };
 
 const fmtInt = (v) => new Intl.NumberFormat().format(Number(v || 0));
@@ -327,20 +331,26 @@ function DetailModal({ open, onClose, tenant }) {
                 alignItems: "center",
                 justifyContent: "space-between",
               }}
-            >
-              <div style={{ fontSize: 12, opacity: 0.8 }}>
-                Created:{" "}
-                <span style={{ fontWeight: 900, color: "#F9FAFB" }}>
+              >
+                <div style={{ fontSize: 12, opacity: 0.8 }}>
+                  Created:{" "}
+                  <span style={{ fontWeight: 900, color: "#F9FAFB" }}>
                   {tenant.createdAt
                     ? new Date(tenant.createdAt).toLocaleString()
                     : "-"}
                 </span>
-              </div>
+                </div>
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className="btn-ghost"
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <Pill>
+                    ${fmtMoney(tenant.pricing?.amount || 0)} / month
+                  </Pill>
+                  <Pill>
+                    Ticket limit: {fmtInt(tenant.limits?.ticketLimit || 0)}
+                  </Pill>
+                  <button
+                    type="button"
+                    className="btn-ghost"
                   style={{
                     borderRadius: 14,
                     padding: "10px 12px",
@@ -373,6 +383,23 @@ function DetailModal({ open, onClose, tenant }) {
                 </Link>
               </div>
             </div>
+
+            {tenant.description ? (
+              <div
+                style={{
+                  marginTop: 12,
+                  borderRadius: 18,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: 14,
+                  color: "#E5E7EB",
+                  fontSize: 14,
+                  lineHeight: 1.55,
+                }}
+              >
+                {tenant.description}
+              </div>
+            ) : null}
 
           </div>
         </div>
@@ -450,10 +477,20 @@ export default function TenantsPage() {
     setTenantForm({
       tenantId: tenant.tenantId || "",
       name: tenant.name || "",
+      description: tenant.description || "",
       status: tenant.status || "trial",
       plan: tenant.plan || "basic",
+      logoUrl: tenant.branding?.logoUrl || "",
       subdomain: tenant.branding?.subdomain || "",
       primaryColor: tenant.branding?.primaryColor || "",
+      monthlyPrice:
+        tenant.pricing?.amount !== undefined && tenant.pricing?.amount !== null
+          ? String(tenant.pricing.amount)
+          : "",
+      ticketLimit:
+        tenant.limits?.ticketLimit !== undefined && tenant.limits?.ticketLimit !== null
+          ? String(tenant.limits.ticketLimit)
+          : "",
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -467,9 +504,18 @@ export default function TenantsPage() {
     const payload = {
       tenantId: tenantForm.tenantId.trim(),
       name: tenantForm.name.trim(),
+      description: tenantForm.description.trim(),
       status: tenantForm.status,
       plan: tenantForm.plan,
+      pricing: {
+        amount: tenantForm.monthlyPrice === "" ? 0 : Number(tenantForm.monthlyPrice),
+        currency: "USD",
+      },
+      limits: {
+        ticketLimit: tenantForm.ticketLimit === "" ? 0 : Number(tenantForm.ticketLimit),
+      },
       branding: {
+        logoUrl: tenantForm.logoUrl.trim(),
         subdomain: tenantForm.subdomain.trim(),
         primaryColor: tenantForm.primaryColor.trim(),
       },
@@ -810,6 +856,17 @@ export default function TenantsPage() {
                   placeholder="Tenant name"
                 />
               </div>
+              <div className="col-md-6">
+                <label className="form-label">Description</label>
+                <input
+                  className="input"
+                  value={tenantForm.description}
+                  onChange={(e) =>
+                    setTenantForm((prev) => ({ ...prev, description: e.target.value }))
+                  }
+                  placeholder="Short tenant description (max 500 chars)"
+                />
+              </div>
               <div className="col-md-2">
                 <label className="form-label">Status</label>
                 <select
@@ -851,6 +908,17 @@ export default function TenantsPage() {
                 />
               </div>
               <div className="col-md-3">
+                <label className="form-label">Logo URL</label>
+                <input
+                  className="input"
+                  value={tenantForm.logoUrl}
+                  onChange={(e) =>
+                    setTenantForm((prev) => ({ ...prev, logoUrl: e.target.value }))
+                  }
+                  placeholder="https://..."
+                />
+              </div>
+              <div className="col-md-2">
                 <label className="form-label">Primary Color</label>
                 <input
                   className="input"
@@ -859,6 +927,34 @@ export default function TenantsPage() {
                     setTenantForm((prev) => ({ ...prev, primaryColor: e.target.value }))
                   }
                   placeholder="#D4AF37"
+                />
+              </div>
+              <div className="col-md-2">
+                <label className="form-label">Monthly Price</label>
+                <input
+                  className="input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={tenantForm.monthlyPrice}
+                  onChange={(e) =>
+                    setTenantForm((prev) => ({ ...prev, monthlyPrice: e.target.value }))
+                  }
+                  placeholder="0.00"
+                />
+              </div>
+              <div className="col-md-2">
+                <label className="form-label">Ticket Limit</label>
+                <input
+                  className="input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={tenantForm.ticketLimit}
+                  onChange={(e) =>
+                    setTenantForm((prev) => ({ ...prev, ticketLimit: e.target.value }))
+                  }
+                  placeholder="0"
                 />
               </div>
             </div>

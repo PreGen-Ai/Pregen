@@ -19,7 +19,6 @@ export const roleMatrix = {
       "manageAssignments",
       "manageQuizzes",
       "leaderboard",
-      "aiTutor",
       "myClasses",
     ],
   },

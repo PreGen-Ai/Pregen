@@ -134,7 +134,7 @@ export default function SuperDashboardPage() {
       title: "Feature Flags",
       icon: FaMoneyBillWave,
       desc: "Safe rollouts, kill switches, and tenant-level toggles.",
-      to: "/dashboard/superadmin/flags",
+      to: "/dashboard/superadmin/feature-flags",
       label: "Open Flags",
     },
   ], []);

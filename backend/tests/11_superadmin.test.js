@@ -78,6 +78,45 @@ describe("SuperAdmin — Tenant Management", () => {
     expect(res.status).not.toBe(401);
   });
 
+  test("POST /api/admin/system/super/tenants persists description, pricing, and ticket limit", async () => {
+    const { token } = await createSuperAdmin();
+    const tenantId = `tenant_${Date.now()}`;
+    const createRes = await request(app)
+      .post("/api/admin/system/super/tenants")
+      .set(authHeader(token))
+      .send({
+        tenantId,
+        name: "Structured School",
+        description: "A tenant with package and billing metadata",
+        status: "trial",
+        plan: "pro",
+        pricing: { amount: 199.99, currency: "USD" },
+        limits: { ticketLimit: 500 },
+        branding: { logoUrl: "https://example.com/logo.png" },
+      });
+
+    expect(createRes.status).toBe(201);
+    expect(createRes.body?.tenant?.description).toBe(
+      "A tenant with package and billing metadata",
+    );
+    expect(createRes.body?.tenant?.pricing?.amount).toBe(199.99);
+    expect(createRes.body?.tenant?.limits?.ticketLimit).toBe(500);
+    expect(createRes.body?.tenant?.branding?.logoUrl).toBe(
+      "https://example.com/logo.png",
+    );
+
+    const getRes = await request(app)
+      .get(`/api/admin/system/super/tenants/${tenantId}`)
+      .set(authHeader(token));
+
+    expect(getRes.status).toBe(200);
+    expect(getRes.body?.tenant?.description).toBe(
+      "A tenant with package and billing metadata",
+    );
+    expect(getRes.body?.tenant?.pricing?.amount).toBe(199.99);
+    expect(getRes.body?.tenant?.limits?.ticketLimit).toBe(500);
+  });
+
   test("POST /api/admin/system/super/tenants ADMIN gets 403", async () => {
     const { token } = await createAdmin();
     const res = await request(app)

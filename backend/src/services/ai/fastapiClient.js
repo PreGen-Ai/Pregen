@@ -187,7 +187,14 @@ export async function callAiService({
             data,
             `AI service request failed with status ${response.status}`,
           ),
-          status: response.status >= 500 ? 502 : response.status,
+          // User auth is enforced in the Node app. A 401/403 from the internal
+          // AI bridge is almost always a deployment/config problem, so surface
+          // it as an upstream failure instead of pretending the LMS user is
+          // unauthenticated.
+          status:
+            response.status >= 500 || response.status === 401 || response.status === 403
+              ? 502
+              : response.status,
           upstreamStatus: response.status,
           data,
           headers: responseHeaders,
