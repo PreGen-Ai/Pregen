@@ -715,9 +715,10 @@ function TeacherAssignmentsView() {
     setLoading(true);
     try {
       const coursesRes = await api.courses.getAllCourses();
+      // API may return { courses: [] }, { items: [] }, or a plain array
       const nextCourses = Array.isArray(coursesRes)
         ? coursesRes
-        : coursesRes?.items || [];
+        : coursesRes?.courses || coursesRes?.items || [];
       setCourses(nextCourses);
 
       const effectiveCourseId = courseId || nextCourses[0]?._id || "";
