@@ -85,6 +85,7 @@ export const mergePractices = (apiPractices = [], storedPractices = []) => {
 
     const key = String(
       practice.id ||
+        practice._id ||
         practice.report_id ||
         `${practice.topic || "practice"}-${practice.generated_at || index}`,
     );
