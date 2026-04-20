@@ -10,6 +10,11 @@ import "../../styles/PracticeLab.css";
 import Casio from "../../casio";
 import api from "../../../services/api/api";
 import { useAuthContext } from "../../../context/AuthContext";
+import {
+  getPracticeEntityId,
+  mergePractices,
+  upsertPractices,
+} from "./practiceLab.helpers";
 
 const apiService = {
   generatePractice: (data, config) => api.ai.generateAssignment(data, config),
@@ -77,31 +82,6 @@ export const readStoredPractices = () => {
   }
 };
 
-export const mergePractices = (apiPractices = [], storedPractices = []) => {
-  const merged = new Map();
-
-  [...storedPractices, ...apiPractices].forEach((practice, index) => {
-    if (!practice || typeof practice !== "object") return;
-
-    const key = String(
-      practice.id ||
-        practice._id ||
-        practice.report_id ||
-        `${practice.topic || "practice"}-${practice.generated_at || index}`,
-    );
-
-    merged.set(key, {
-      ...(merged.get(key) || {}),
-      ...practice,
-    });
-  });
-
-  return Array.from(merged.values()).sort((a, b) => {
-    const aTime = new Date(a?.generated_at || 0).getTime();
-    const bTime = new Date(b?.generated_at || 0).getTime();
-    return bTime - aTime;
-  });
-};
 
 const compactText = (value, max = 1800) => {
   const text = normalizeText(value);
@@ -138,7 +118,9 @@ export default function PracticeLab() {
   }, []);
 
   // ---------- State ----------
-  const [practices, setPractices] = useState(() => readStoredPractices());
+  const [practices, setPractices] = useState(() =>
+    mergePractices([], readStoredPractices()),
+  );
   const [loading, setLoading] = useState(false);
   const [topic, setTopic] = useState("");
   const [gradeLevel, setGradeLevel] = useState("high school");
@@ -226,7 +208,12 @@ export default function PracticeLab() {
   };
 
   const loadPractices = async (live = true) => {
-    const storedPractices = readStoredPractices();
+    const storedPractices = mergePractices([], readStoredPractices());
+    const storage = getPracticeStorage();
+    if (storage) {
+      storage.setItem("ai_practices", JSON.stringify(storedPractices));
+    }
+
     if (live && storedPractices.length) {
       setPractices((current) => mergePractices(current, storedPractices));
     }
@@ -239,7 +226,6 @@ export default function PracticeLab() {
       );
       if (live) setPractices(mergedPractices);
 
-      const storage = getPracticeStorage();
       if (storage) {
         storage.setItem("ai_practices", JSON.stringify(mergedPractices));
       }
@@ -861,8 +847,12 @@ export default function PracticeLab() {
         scoring_criteria: item.scoring_criteria || "",
       }));
 
+      const canonicalPracticeId =
+        getPracticeEntityId(practice) || `practice-${Date.now()}`;
+
       const newPractice = {
-        id: practice.id || `practice-${Date.now()}`,
+        _id: practice._id || practice.id || canonicalPracticeId,
+        id: practice.id || practice._id || canonicalPracticeId,
         title: `Practice: ${practice.topic || topic}`,
         topic: practice.topic || topic,
         subject:
@@ -906,7 +896,7 @@ export default function PracticeLab() {
       const reportId = await savePracticeReport(newPractice);
       if (reportId) newPractice.report_id = reportId;
 
-      const updated = [...practices, newPractice];
+      const updated = upsertPractices(practices, newPractice);
       setPractices(updated);
       const storage = getPracticeStorage();
       if (storage) {
@@ -1008,7 +998,12 @@ export default function PracticeLab() {
       "workspace_id",
       currentPractice?.courseId || selectedCourseId || "practices",
     );
-    if (currentPractice) formData.append("assignment_id", currentPractice.id);
+    if (currentPractice) {
+      formData.append(
+        "assignment_id",
+        getPracticeEntityId(currentPractice),
+      );
+    }
 
     try {
       setLoading(true);
@@ -1171,14 +1166,17 @@ export default function PracticeLab() {
 
   // ---------- Delete Practice ----------
   const deletePractice = (practiceId) => {
-    const updated = practices.filter((p) => p.id !== practiceId);
+    const targetId = String(practiceId || "");
+    const updated = practices.filter(
+      (practice) => getPracticeEntityId(practice) !== targetId,
+    );
     setPractices(updated);
     const storage = getPracticeStorage();
     if (storage) {
       storage.setItem("ai_practices", JSON.stringify(updated));
     }
 
-    if (currentPractice?.id === practiceId) {
+    if (getPracticeEntityId(currentPractice) === targetId) {
       setCurrentPractice(null);
       setStudentAnswers({});
       setGradingResults(null);
@@ -1851,7 +1849,9 @@ export default function PracticeLab() {
                         {loading ? "Generating..." : "Generate PDF Report"}
                       </button>
                       <button
-                        onClick={() => deletePractice(currentPractice.id)}
+                        onClick={() =>
+                          deletePractice(getPracticeEntityId(currentPractice))
+                        }
                         className="btn btn-outline danger"
                       >
                         Delete
@@ -2114,7 +2114,7 @@ export default function PracticeLab() {
                       <div className="assignment-grid">
                         {practices.map((practice) => (
                           <div
-                            key={practice.id}
+                            key={getPracticeEntityId(practice) || practice.title}
                             className="card assignment-card"
                           >
                             <h4>{practice.title}</h4>
@@ -2180,7 +2180,9 @@ export default function PracticeLab() {
                                 PDF
                               </button>
                               <button
-                                onClick={() => deletePractice(practice.id)}
+                                onClick={() =>
+                                  deletePractice(getPracticeEntityId(practice))
+                                }
                                 className="btn btn-small btn-outline danger"
                               >
                                 🗑️

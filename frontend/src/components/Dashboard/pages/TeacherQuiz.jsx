@@ -6,6 +6,10 @@ import api from "../../../services/api/api";
 import useRealtimeRefresh from "../../../hooks/useRealtimeRefresh";
 import { withRequestId } from "../../../utils/requestId";
 import "../../styles/dashboard.css";
+import {
+  extractCourseItems,
+  extractGeneratedQuestions,
+} from "./teacherQuiz.helpers";
 
 const STATUS_OPTIONS = ["draft", "published", "closed"];
 const QUESTION_TYPES = [
@@ -93,76 +97,6 @@ function createQuestion(type = "multiple_choice") {
   };
 }
 
-function normalizeCorrectAnswer(value, options) {
-  const raw = String(value || "").trim();
-  if (!raw) return "A";
-  const upper = raw.toUpperCase();
-  if (["A", "B", "C", "D"].includes(upper)) return upper;
-
-  const optionIndex = (options || []).findIndex(
-    (option) => String(option || "").trim().toLowerCase() === raw.toLowerCase(),
-  );
-  return optionIndex >= 0 ? String.fromCharCode(65 + optionIndex) : "A";
-}
-
-function extractGeneratedQuestions(response) {
-  const payload = response?.quiz || response?.data || response || {};
-  const rawQuestions = Array.isArray(payload?.questions)
-    ? payload.questions
-    : Array.isArray(payload)
-      ? payload
-      : [];
-
-  return rawQuestions.map((question, index) => {
-    const questionType = String(
-      question?.questionType || question?.type || "multiple_choice",
-    )
-      .trim()
-      .toLowerCase();
-    const rawOptions = Array.isArray(question?.options)
-      ? question.options.map((option) =>
-          typeof option === "string" ? option : option?.text || option?.label || "",
-        )
-      : [];
-
-    const options =
-      questionType === "multiple_choice"
-        ? rawOptions.length
-          ? rawOptions
-          : ["Option A", "Option B", "Option C", "Option D"]
-        : [];
-
-    const correctAnswer =
-      questionType === "multiple_choice"
-        ? normalizeCorrectAnswer(
-            question?.correct_answer || question?.correctAnswer || question?.answer,
-            options,
-          )
-        : questionType === "true_false"
-          ? String(question?.correct_answer || question?.correctAnswer || "true")
-              .trim()
-              .toLowerCase() === "false"
-            ? "false"
-            : "true"
-          : String(
-              question?.expected_answer ||
-                question?.correct_answer ||
-                question?.correctAnswer ||
-                "",
-            ).trim();
-
-    return {
-      questionText:
-        question?.questionText || question?.question || `Question ${index + 1}`,
-      questionType,
-      options,
-      correctAnswer,
-      points: Number(question?.points || question?.max_score || 1),
-      explanation: question?.explanation || "",
-    };
-  });
-}
-
 export default function TeacherQuiz() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -215,10 +149,7 @@ export default function TeacherQuiz() {
     setLoading(true);
     try {
       const coursesRes = await api.courses.getAllCourses();
-      // API returns { courses: [] }, { items: [] }, or a plain array
-      const nextCourses = Array.isArray(coursesRes)
-        ? coursesRes
-        : coursesRes?.courses || coursesRes?.items || [];
+      const nextCourses = extractCourseItems(coursesRes);
       setCourses(nextCourses);
 
       const effectiveCourseId = courseId || nextCourses[0]?._id || "";
