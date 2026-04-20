@@ -20,6 +20,9 @@ import Classroom from "../src/models/Classroom.js";
 import Course from "../src/models/CourseModel.js";
 import CourseMember from "../src/models/CourseMember.js";
 import Leaderboard from "../src/models/leaderboardModel.js";
+import Quiz from "../src/models/quiz.js";
+import QuizAssignment from "../src/models/QuizAssignment.js";
+import QuizAttempt from "../src/models/QuizAttempt.js";
 import Submission from "../src/models/Submission.js";
 import User from "../src/models/userModel.js";
 
@@ -27,6 +30,9 @@ beforeAll(() => connectTestDB());
 afterAll(() => disconnectTestDB());
 beforeEach(async () => {
   await clearAllCollections();
+});
+afterEach(() => {
+  jest.restoreAllMocks();
 });
 
 function futureIso(days = 3) {
@@ -560,6 +566,177 @@ describe("Remediation - submission and review lifecycle", () => {
       .set(authHeader(otherTeacherToken));
 
     expect(foreignRes.status).toBe(403);
+  });
+
+  test("student quiz submission is persisted, reaches AI review, and is visible to the teacher", async () => {
+    const fixture = await buildCourseFixture();
+    const { teacherToken, student, studentToken, course, classroom } = fixture;
+
+    jest.spyOn(global, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          overall_score: 84,
+          graded_questions: [
+            {
+              id: "essay-quiz-1",
+              feedback: "Thoughtful explanation of photosynthesis.",
+              score: 84,
+              max_score: 100,
+            },
+          ],
+          report_id: "report-quiz-review-1",
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+
+    const quizRes = await createPublishedQuiz({
+      teacherToken,
+      course,
+      classroom,
+      studentIds: [student._id],
+      overrides: {
+        title: "AI Reviewed Quiz",
+      },
+    });
+
+    expect(quizRes.status).toBe(201);
+
+    const targetRow = await QuizAssignment.findOne({
+      quizId: quizRes.body.data._id,
+      studentId: student._id,
+    }).lean();
+    expect(targetRow).toBeTruthy();
+
+    const storedQuiz = await Quiz.findById(quizRes.body.data._id).lean();
+    const quizQuestionId = String(storedQuiz.questions[0]._id);
+
+    const startRes = await request(app)
+      .post(`/api/quizzes/assignments/${targetRow._id}/start`)
+      .set(authHeader(studentToken));
+
+    expect(startRes.status).toBe(200);
+    expect(startRes.body.attempt.status).toBe("InProgress");
+
+    const submitRes = await request(app)
+      .post(`/api/quizzes/attempts/${startRes.body.attempt._id}/submit`)
+      .set(authHeader(studentToken))
+      .send({
+        answers: {
+          [quizQuestionId]: "Plants use sunlight to make glucose.",
+        },
+      });
+
+    expect(submitRes.status).toBe(202);
+
+    const storedAttempt = await QuizAttempt.findById(startRes.body.attempt._id).lean();
+    expect(storedAttempt).toBeTruthy();
+    expect(storedAttempt.status).toBe("pending_teacher_review");
+    expect(storedAttempt.aiScore).toBe(84);
+    expect(storedAttempt.aiFeedback).toBe(
+      "Thoughtful explanation of photosynthesis.",
+    );
+    expect(storedAttempt.answers).toHaveLength(1);
+    expect(String(storedAttempt.answers[0].questionId)).toBe(quizQuestionId);
+    expect(storedAttempt.workspaceId.toString()).toBe(String(course._id));
+
+    const resultsRes = await request(app)
+      .get(`/api/teachers/quizzes/${quizRes.body.data._id}/results`)
+      .set(authHeader(teacherToken));
+
+    expect(resultsRes.status).toBe(200);
+    expect(resultsRes.body.summary.submitted).toBe(1);
+    expect(resultsRes.body.attempts).toHaveLength(1);
+    expect(resultsRes.body.attempts[0].score).toBe(84);
+    expect(resultsRes.body.attempts[0].feedback).toBe(
+      "Thoughtful explanation of photosynthesis.",
+    );
+    expect(String(resultsRes.body.attempts[0].student._id)).toBe(String(student._id));
+  });
+
+  test("course assignment submit route persists the submission, runs AI grading, and exposes it to the teacher", async () => {
+    const fixture = await buildCourseFixture();
+    const { teacherToken, student, studentToken, course, classroom } = fixture;
+
+    jest.spyOn(global, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          overall_score: 92,
+          graded_questions: [
+            {
+              id: "assignment-1",
+              feedback: "Strong evidence and clear reasoning.",
+              score: 92,
+              max_score: 100,
+            },
+          ],
+          report_id: "report-assignment-review-1",
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+
+    const assignmentRes = await createPublishedAssignment({
+      teacherToken,
+      course,
+      classroom,
+      studentIds: [student._id],
+      overrides: {
+        title: "Course Submit Assignment",
+      },
+    });
+
+    expect(assignmentRes.status).toBe(201);
+
+    const submitRes = await request(app)
+      .post(
+        `/api/courses/${course._id}/assignments/${assignmentRes.body.data._id}/submit`,
+      )
+      .set(authHeader(studentToken))
+      .field("textSubmission", "Here is my final lab reflection.");
+
+    expect(submitRes.status).toBe(202);
+    expect(submitRes.body.submission.score).toBeNull();
+    expect(submitRes.body.submission.feedback).toBe("");
+
+    const storedSubmission = await Submission.findOne({
+      assignmentId: assignmentRes.body.data._id,
+      studentId: student._id,
+      workspaceId: course._id,
+    }).lean();
+
+    expect(storedSubmission).toBeTruthy();
+    expect(storedSubmission.textSubmission).toBe(
+      "Here is my final lab reflection.",
+    );
+    expect(storedSubmission.gradingStatus).toBe("pending_teacher_review");
+    expect(storedSubmission.aiScore).toBe(92);
+    expect(storedSubmission.aiFeedback).toBe(
+      "Strong evidence and clear reasoning.",
+    );
+
+    const teacherSubmissionsRes = await request(app)
+      .get(`/api/teachers/assignments/${assignmentRes.body.data._id}/submissions`)
+      .set(authHeader(teacherToken));
+
+    expect(teacherSubmissionsRes.status).toBe(200);
+    expect(teacherSubmissionsRes.body.summary.submitted).toBe(1);
+    expect(teacherSubmissionsRes.body.submissions).toHaveLength(1);
+    expect(teacherSubmissionsRes.body.submissions[0].score).toBe(92);
+    expect(teacherSubmissionsRes.body.submissions[0].feedback).toBe(
+      "Strong evidence and clear reasoning.",
+    );
+    expect(
+      String(teacherSubmissionsRes.body.submissions[0].student._id),
+    ).toBe(String(student._id));
   });
 });
 

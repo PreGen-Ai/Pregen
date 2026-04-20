@@ -342,7 +342,7 @@ export default function TeacherQuiz() {
     });
   };
 
-  const saveQuiz = async () => {
+  const saveQuiz = async (nextStatus = form.status) => {
     if (!selectedCourseId) return toast.error("Select a course first");
     if (!form.title.trim() || !form.subject.trim()) {
       return toast.error("Title and subject are required");
@@ -361,7 +361,7 @@ export default function TeacherQuiz() {
       timeLimit: Number(form.timeLimit || 30),
       maxAttempts: Number(form.maxAttempts || 1),
       passingScore: Number(form.passingScore || 60),
-      status: form.status,
+      status: nextStatus,
       courseId: selectedCourseId,
       classroomId: assignMode === "class" ? (form.classroomId || null) : null,
       studentIds: assignMode === "students" ? form.studentIds : [],
@@ -936,11 +936,11 @@ export default function TeacherQuiz() {
 
             <div className="d-flex gap-2">
               <button className="btn btn-outline-light flex-fill" type="button" disabled={saving}
-                onClick={() => { setForm(p => ({ ...p, status: "draft" })); saveQuiz(); }}>
+                onClick={() => { setForm(p => ({ ...p, status: "draft" })); saveQuiz("draft"); }}>
                 Save draft
               </button>
               <button className="btn btn-primary flex-fill" type="button" disabled={saving}
-                onClick={() => { setForm(p => ({ ...p, status: "published" })); saveQuiz(); }}>
+                onClick={() => { setForm(p => ({ ...p, status: "published" })); saveQuiz("published"); }}>
                 {saving ? "Saving…" : "Publish"}
               </button>
             </div>

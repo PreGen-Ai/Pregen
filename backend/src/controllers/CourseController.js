@@ -6,6 +6,11 @@ import Assignment from "../models/Assignment.js";
 import AssignmentAssignment from "../models/AssignmentAssignment.js";
 import Submission from "../models/Submission.js";
 import Quiz from "../models/quiz.js";
+import { gradeAssignmentSubmissionWithAi } from "../services/ai/assessmentGradingService.js";
+import {
+  applyAiReviewState,
+  applyGradingDelayState,
+} from "../services/gradingLifecycle.js";
 import {
   buildActorFromRequest,
   emitRealtimeEvent,
@@ -31,6 +36,21 @@ import {
 
 const requestIdFromReq = (req) =>
   req.get?.("x-request-id") || req.headers?.["x-request-id"] || null;
+
+const buildStudentFacingSubmission = (submission) => {
+  const serialized = serializeSubmission(submission);
+  if (serialized.released) return serialized;
+
+  return {
+    ...serialized,
+    score: null,
+    feedback: "",
+    aiScore: null,
+    aiFeedback: "",
+    teacherAdjustedScore: null,
+    teacherAdjustedFeedback: "",
+  };
+};
 
 const escapeRegex = (value) =>
   String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -806,6 +826,47 @@ export const submitAssignmentById = async (req, res) => {
       },
     );
 
+    let responseStatus = 202;
+    let responseMessage =
+      "Assignment submitted successfully. Teacher review is pending.";
+
+    try {
+      const aiResult = await gradeAssignmentSubmissionWithAi({
+        assignment,
+        submission,
+        tenantId,
+        actorUserId: req.user?._id || null,
+      });
+
+      applyAiReviewState(submission, {
+        statusField: "gradingStatus",
+        score: aiResult.score,
+        feedback: aiResult.feedback,
+        metadata: {
+          assignmentId: assignment._id,
+          gradedQuestions: aiResult.gradedQuestions.length,
+        },
+        reportId: aiResult.reportId,
+      });
+      responseMessage =
+        "Assignment submitted successfully. AI review is awaiting teacher approval.";
+    } catch (error) {
+      applyGradingDelayState(submission, {
+        statusField: "gradingStatus",
+        error: error?.message || "AI grading delayed",
+        metadata: {
+          assignmentId: assignment._id,
+          upstreamStatus:
+            error?.upstreamStatus ||
+            (error?.status >= 500 ? error.status : null),
+        },
+      });
+      responseMessage =
+        "Assignment submitted successfully. Grading is delayed and queued for teacher review.";
+    }
+
+    await submission.save();
+
     const requestId = requestIdFromReq(req);
     const studentUserId = toId(req.user._id);
     const teacherUserId = toId(assignment.teacher);
@@ -829,7 +890,7 @@ export const submitAssignmentById = async (req, res) => {
         courseId,
         classroomId,
         teacherId: teacherUserId,
-        gradingStatus: "submitted",
+        gradingStatus: submission.gradingStatus,
       },
     });
 
@@ -853,10 +914,10 @@ export const submitAssignmentById = async (req, res) => {
       },
     });
 
-    return res.json({
+    return res.status(responseStatus).json({
       success: true,
-      message: "Submission uploaded",
-      submission: serializeSubmission(submission),
+      message: responseMessage,
+      submission: buildStudentFacingSubmission(submission),
     });
   } catch (err) {
     emitRealtimeEvent({

@@ -1,5 +1,8 @@
 // backend/src/routes/courseRoutes.js
 import express from "express";
+import fs from "fs";
+import multer from "multer";
+import path from "path";
 import {
   getCourseById,
   createCourse,
@@ -33,6 +36,26 @@ import {
 } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+const assignmentUploadDir = "uploads/assignments";
+
+const assignmentUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      fs.mkdirSync(path.resolve(assignmentUploadDir), { recursive: true });
+      cb(null, assignmentUploadDir);
+    },
+    filename: (_req, file, cb) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      cb(
+        null,
+        `${file.fieldname}-${uniqueSuffix}${path.extname(file.originalname)}`,
+      );
+    },
+  }),
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+  },
+});
 
 /* =========================
    LIST ENDPOINTS
@@ -56,7 +79,12 @@ router.get("/user/:userId", requireAuth, getCoursesByUser);
    POST /api/courses/:assignmentId/submit
    Student only
 ========================= */
-router.post("/:assignmentId/submit", ...requireStudent, submitAssignmentById);
+router.post(
+  "/:assignmentId/submit",
+  ...requireStudent,
+  assignmentUpload.any(),
+  submitAssignmentById,
+);
 
 /* =========================
    SUBMISSIONS LIST (NEW)
@@ -88,6 +116,7 @@ router.post("/:courseId/assignments", ...requireTeacher, assignToCourse);
 router.post(
   "/:courseId/assignments/:assignmentId/submit",
   ...requireStudent,
+  assignmentUpload.any(),
   (req, res, next) => submitAssignmentById(req, res, next),
 );
 
