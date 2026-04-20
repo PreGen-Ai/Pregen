@@ -770,16 +770,10 @@ export default function TeacherQuiz() {
             </div>
 
             <div className="row g-2 mb-3">
-              <div className="col-6">
+              <div className="col-12">
                 <label className="form-label">Due date</label>
                 <input className="form-control" type="datetime-local" value={form.dueDate}
                   onChange={e => setForm(p => ({ ...p, dueDate: e.target.value }))} />
-              </div>
-              <div className="col-6">
-                <label className="form-label">Status</label>
-                <select className="form-select" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
-                  {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
-                </select>
               </div>
               <div className="col-4">
                 <label className="form-label">Time (min)</label>
