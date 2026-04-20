@@ -1,6 +1,14 @@
 import Quiz from "../models/quiz.js";
 import QuizAssignment from "../models/QuizAssignment.js";
 import QuizAttempt from "../models/QuizAttempt.js";
+import Leaderboard from "../models/leaderboardModel.js";
+import { gradeQuizAttemptWithAi } from "../services/ai/assessmentGradingService.js";
+import {
+  applyAiReviewState,
+  applyFinalApprovalState,
+  applyGradingDelayState,
+  getCurrentScore,
+} from "../services/gradingLifecycle.js";
 import {
   buildActorFromRequest,
   emitRealtimeEvent,
@@ -65,6 +73,41 @@ const pickPreferredTarget = (rows) => {
     });
 
   return byQuiz;
+};
+
+const updateLeaderboard = async (studentId, score, {
+  tenantId = null,
+  courseId = null,
+  classId = null,
+  subject = null,
+} = {}) => {
+  try {
+    const filter = {
+      tenantId: tenantId || null,
+      studentId,
+      courseId: courseId || null,
+      classId: classId || null,
+      subject: subject || null,
+    };
+
+    await Leaderboard.findOneAndUpdate(
+      filter,
+      {
+        $setOnInsert: {
+          tenantId: tenantId || null,
+          studentId,
+          courseId: courseId || null,
+          classId: classId || null,
+          subject: subject || null,
+        },
+        $inc: { points: score },
+        $set: { lastUpdatedFrom: "quiz" },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+  } catch (err) {
+    console.error("updateLeaderboard error:", err);
+  }
 };
 
 const buildAssignedItem = ({ target = null, quiz, attempt = null }) => {
@@ -293,7 +336,15 @@ export const getAssignedQuizContent = async (req, res) => {
       deleted: false,
     });
 
-    const includeAnswers = ["submitted", "graded"].includes(
+    const includeAnswers = [
+      "submitted",
+      "graded",
+      "ai_graded",
+      "pending_teacher_review",
+      "grading_delayed",
+      "final",
+      "failed",
+    ].includes(
       String(attempt?.status || "").toLowerCase(),
     );
 
@@ -530,22 +581,68 @@ export const submitQuizAttempt = async (req, res) => {
       },
     });
 
+    attempt.tenantId = attempt.tenantId || quiz.tenantId || getRequestTenantId(req) || null;
+    attempt.workspaceId = attempt.workspaceId || quiz.workspace || null;
     attempt.answers = graded.processedAnswers;
     attempt.pointsEarnedTotal = graded.pointsEarnedTotal;
     attempt.maxScore = graded.totalPoints;
-    attempt.score = graded.percentageScore;
     attempt.submittedAt = new Date();
-    attempt.status = requiresManualReview ? "submitted" : "graded";
-    attempt.gradedAt = requiresManualReview ? null : new Date();
     attempt.timeSpent = Math.max(
       attempt.timeSpent || 0,
       Math.floor((Date.now() - new Date(attempt.startedAt).getTime()) / 1000),
     );
     attempt.locked = true;
 
-    await attempt.save();
+    let responseStatus = 200;
+    let responseMessage = "Quiz graded successfully.";
+    let responseScore = graded.percentageScore;
+    let responsePassed = graded.percentageScore >= (quiz.passingScore ?? 60);
 
     if (requiresManualReview) {
+      responseStatus = 202;
+      responseMessage = "Quiz submitted successfully. Teacher review is pending.";
+      responseScore = null;
+      responsePassed = false;
+
+      attempt.status = "submitted";
+
+      try {
+        const aiResult = await gradeQuizAttemptWithAi({
+          quiz,
+          attempt,
+          tenantId: attempt.tenantId || null,
+          actorUserId: req.user?._id || studentId,
+        });
+
+        applyAiReviewState(attempt, {
+          statusField: "status",
+          score: aiResult.score,
+          feedback: aiResult.feedback,
+          metadata: {
+            quizId: quiz._id,
+            gradedQuestions: aiResult.gradedQuestions.length,
+          },
+          reportId: aiResult.reportId,
+        });
+        responseMessage =
+          "Quiz submitted successfully. AI review is awaiting teacher approval.";
+      } catch (error) {
+        applyGradingDelayState(attempt, {
+          statusField: "status",
+          error: error?.message || "AI grading delayed",
+          metadata: {
+            quizId: quiz._id,
+            upstreamStatus:
+              error?.upstreamStatus ||
+              (error?.status >= 500 ? error.status : null),
+          },
+        });
+        responseMessage =
+          "Quiz submitted successfully. Grading is delayed and queued for teacher review.";
+      }
+
+      await attempt.save();
+
       emitRealtimeEvent({
         type: "teacher_review",
         status: "updated",
@@ -563,10 +660,34 @@ export const submitQuizAttempt = async (req, res) => {
           studentId: toId(studentId),
           courseId,
           classroomId,
-          score: graded.percentageScore,
+          score: getCurrentScore(attempt),
         },
       });
     } else {
+      applyFinalApprovalState(attempt, {
+        actorId: null,
+        actorRole: "SYSTEM",
+        statusField: "status",
+        score: graded.percentageScore,
+        feedback: "Automatically finalized from objective quiz scoring.",
+        metadata: {
+          quizId: quiz._id,
+          scoringMode: "objective_only",
+        },
+        source: "system",
+      });
+
+      await attempt.save();
+
+      if (graded.percentageScore >= (quiz.passingScore ?? 60)) {
+        await updateLeaderboard(studentId, graded.percentageScore, {
+          tenantId: attempt.tenantId || null,
+          courseId,
+          classId: classroomId,
+          subject: quiz.subject || null,
+        });
+      }
+
       emitRealtimeEvent({
         type: "grading",
         status: "success",
@@ -590,9 +711,11 @@ export const submitQuizAttempt = async (req, res) => {
       });
     }
 
-    return res.json({
+    return res.status(responseStatus).json({
       success: true,
-      score: graded.percentageScore,
+      message: responseMessage,
+      score: responseScore,
+      passed: responsePassed,
       attempt: serializeAttemptForUi(attempt),
     });
   } catch (err) {

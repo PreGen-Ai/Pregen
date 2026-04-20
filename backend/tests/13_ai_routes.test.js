@@ -1,5 +1,7 @@
 import request from "supertest";
 import app from "./helpers/app.js";
+import Quiz from "../src/models/quiz.js";
+import QuizAttempt from "../src/models/QuizAttempt.js";
 import {
   connectTestDB,
   disconnectTestDB,
@@ -174,5 +176,58 @@ describe("AI Routes - Quiz Routes", () => {
       .send({ answers: [] });
     expect(res.status).not.toBe(403);
     expect(res.status).not.toBe(401);
+  });
+
+  test("POST /api/quizzes/attempts/:id/submit finalizes objective quiz attempts", async () => {
+    const { user: teacher } = await createTeacher();
+    const { user: student, token } = await createStudent();
+
+    const quiz = await Quiz.create({
+      title: "Objective quiz",
+      subject: "Mathematics",
+      teacher: teacher._id,
+      createdBy: teacher._id,
+      status: "published",
+      questions: [
+        {
+          questionText: "2 + 2 = ?",
+          questionType: "multiple_choice",
+          options: [
+            { text: "4", isCorrect: true },
+            { text: "5", isCorrect: false },
+          ],
+          points: 1,
+        },
+      ],
+    });
+
+    const attempt = await QuizAttempt.create({
+      quizId: quiz._id,
+      studentId: student._id,
+      status: "in_progress",
+      startedAt: new Date(Date.now() - 60 * 1000),
+    });
+
+    const questionId = String(quiz.questions[0]._id);
+    const res = await request(app)
+      .post(`/api/quizzes/attempts/${attempt._id}/submit`)
+      .set(authHeader(token))
+      .send({
+        answers: {
+          [questionId]: "A",
+        },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.score).toBe(100);
+    expect(res.body.passed).toBe(true);
+    expect(res.body.attempt?.gradingStatus).toBe("final");
+    expect(res.body.attempt?.score).toBe(100);
+
+    const savedAttempt = await QuizAttempt.findById(attempt._id).lean();
+    expect(savedAttempt?.status).toBe("final");
+    expect(savedAttempt?.finalScore).toBe(100);
+    expect(savedAttempt?.score).toBe(100);
   });
 });

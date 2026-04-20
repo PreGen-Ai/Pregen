@@ -30,8 +30,20 @@ function normalizeAttemptStatus(status) {
     return "in_progress";
   }
   if (normalized === "submitted") return "submitted";
-  if (normalized === "graded") return "graded";
-  if (normalized === "grading") return "grading";
+  if (normalized === "graded" || normalized === "final") return "graded";
+  if (
+    [
+      "grading",
+      "ai_graded",
+      "aigraded",
+      "pending_teacher_review",
+      "pendingteacherreview",
+      "grading_delayed",
+      "gradingdelayed",
+    ].includes(normalized)
+  ) {
+    return "grading";
+  }
   return normalized;
 }
 
@@ -282,7 +294,7 @@ export default function StudentQuiz() {
       const status = statusForItem(item);
       if (status === "Available") counts.available += 1;
       if (status === "In Progress") counts.inProgress += 1;
-      if (status === "Submitted") counts.submitted += 1;
+      if (status === "Submitted" || status === "Grading") counts.submitted += 1;
       if (status === "Graded") counts.graded += 1;
     }
 
@@ -365,7 +377,7 @@ export default function StudentQuiz() {
                     const normalizedAttemptStatus = normalizeAttemptStatus(
                       item?.attempt?.status,
                     );
-                    const canStart = !["Closed", "Scheduled", "Submitted", "Graded"].includes(
+                    const canStart = !["Closed", "Scheduled", "Submitted", "Grading", "Graded"].includes(
                       itemStatus,
                     );
 
