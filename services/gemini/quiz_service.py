@@ -591,7 +591,14 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
         response_mime_type=application/json — preventing prose-wrapped output.
 
         Falls back gracefully if extra kwargs aren't supported.
+
+        max_output_tokens defaults to 4096 here because 5+ MCQ questions
+        with options, explanation, rubric and solution_steps can exceed the
+        base_client default of 820 tokens, causing truncated JSON parse failures.
+        Callers can override by passing max_output_tokens explicitly.
         """
+        # 820-token base default is too small for ≥5 questions; use 4096.
+        kwargs.setdefault("max_output_tokens", 4096)
         try:
             return await self._call_model_with_retry(
                 prompt,
