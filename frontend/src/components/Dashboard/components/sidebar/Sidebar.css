@@ -54,8 +54,10 @@
 /* Drawer */
 .dash-drawer{ position:fixed; inset:0; z-index:40; pointer-events:none; }
 .dash-drawer.is-open{ pointer-events:auto; }
-.dash-drawer-backdrop{ position:absolute; inset:0; background:rgba(0,0,0,0.55); opacity:0; transition:opacity .18s ease; }
-.dash-drawer.is-open .dash-drawer-backdrop{ opacity:1; }
+/* backdrop must explicitly opt out of pointer-events when closed; CSS pointer-events:none on
+   the parent element does NOT cascade to children — children keep their default `auto`. */
+.dash-drawer-backdrop{ position:absolute; inset:0; background:rgba(0,0,0,0.55); opacity:0; transition:opacity .18s ease; pointer-events:none; }
+.dash-drawer.is-open .dash-drawer-backdrop{ opacity:1; pointer-events:auto; }
 
 .dash-drawer-card{
   position:absolute;
