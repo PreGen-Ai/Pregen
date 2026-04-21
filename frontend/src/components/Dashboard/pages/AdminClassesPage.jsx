@@ -369,6 +369,7 @@ export default function AdminClassesPage() {
                                 const next = detailClass?._id === cls._id ? null : cls;
                                 setDetailClass(next);
                                 setAssignTeacherId(next?.teacher?._id || "");
+                                setEnrollIds([]);
                               }}
                             >
                               {detailClass?._id === cls._id ? "Close" : "Manage"}

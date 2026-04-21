@@ -479,7 +479,21 @@ export async function updateSubject(req, res) {
       return res.status(404).json({ message: "Subject not found" });
     }
 
-    const payload = normalizeSubjectPayload(req.body);
+    // Preserve existing classroomIds/teacherIds if the client omits them
+    // (frontend edit form only sends name/code/description — omitting these
+    // fields must not wipe classroom/teacher associations already on the record)
+    const bodyWithPreserved = {
+      ...req.body,
+      classroomIds:
+        req.body.classroomIds !== undefined
+          ? req.body.classroomIds
+          : (subject.classroomIds || []).map(String),
+      teacherIds:
+        req.body.teacherIds !== undefined
+          ? req.body.teacherIds
+          : (subject.teacherIds || []).map(String),
+    };
+    const payload = normalizeSubjectPayload(bodyWithPreserved);
     if (!payload.name) {
       return res.status(400).json({ message: "Subject name is required" });
     }
