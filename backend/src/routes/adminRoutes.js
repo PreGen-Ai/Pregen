@@ -13,6 +13,12 @@ import {
   requireSuperAdmin,
 } from "../middleware/authMiddleware.js";
 import { requireTenant } from "../middleware/tenant.js";
+import {
+  getSuperadminAiCostPayload,
+  getSuperadminAuditLogsPayload,
+  getSuperadminFeatureFlagsPayload,
+  getSuperadminOverviewPayload,
+} from "../services/platformAnalyticsService.js";
 
 // ✅ Tenants CRUD router (you already have it)
 import systemTenantsRoutes from "./admin/systemTenants.routes.js";
@@ -974,66 +980,8 @@ adminSystemRouter.get(
   ...requireSuperAdmin,
   async (req, res) => {
     try {
-      const now = new Date();
-      const since24h = new Date(now - 24 * 60 * 60 * 1000);
-      const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-      const [
-        activeTenants,
-        totalTenants,
-        totalStudents,
-        aiCalls24h,
-        aiRequestsAllTime,
-        errorsToday,
-        costTodayRows,
-        costMTDRows,
-        latencyRows,
-      ] = await Promise.all([
-        col("tenants").countDocuments({ status: { $ne: "suspended" } }),
-        col("tenants").countDocuments({}),
-        col("users").countDocuments({ role: { $in: ["STUDENT", "student"] } }),
-        col("aiusages").countDocuments({ createdAt: { $gte: since24h } }),
-        col("aiusages").countDocuments({}),
-        col("aiusages").countDocuments({ status: "error", createdAt: { $gte: startToday } }),
-        col("aiusages").aggregate([
-          { $match: { createdAt: { $gte: startToday } } },
-          { $group: { _id: null, cost: { $sum: { $ifNull: ["$totalCost", { $ifNull: ["$cost", 0] }] } } } },
-        ]).toArray(),
-        col("aiusages").aggregate([
-          { $match: { createdAt: { $gte: startMonth } } },
-          { $group: { _id: null, cost: { $sum: { $ifNull: ["$totalCost", { $ifNull: ["$cost", 0] }] } } } },
-        ]).toArray(),
-        col("aiusages").aggregate([
-          { $match: { createdAt: { $gte: since24h }, latencyMs: { $gt: 0 } } },
-          { $sort: { latencyMs: 1 } },
-          { $group: { _id: null, arr: { $push: "$latencyMs" } } },
-        ]).toArray(),
-      ]);
-
-      const costToday = Math.round((costTodayRows?.[0]?.cost || 0) * 100) / 100;
-      const costMTD = Math.round((costMTDRows?.[0]?.cost || 0) * 100) / 100;
-      const p95LatencyMs = (() => {
-        const arr = latencyRows?.[0]?.arr || [];
-        if (!arr.length) return 0;
-        return arr[Math.max(0, Math.floor(arr.length * 0.95) - 1)] || 0;
-      })();
-      const healthStatus = errorsToday > 20 ? "degraded" : errorsToday > 0 ? "warning" : "healthy";
-
-      return res.json({
-        success: true,
-        activeTenants,
-        totalTenants,
-        totalStudents,
-        aiCalls24h,
-        aiRequestsAllTime,
-        costToday,
-        costMTD,
-        p95LatencyMs,
-        errorsToday,
-        healthStatus,
-        spikes: [],
-      });
+      const payload = await getSuperadminOverviewPayload();
+      return res.json({ success: true, ...payload });
     } catch (e) {
       console.error("super overview error:", e);
       return res
@@ -1058,39 +1006,18 @@ adminSystemRouter.get(
   ...requireSuperAdmin,
   async (req, res) => {
     try {
-      const { range = "7d", limit = 200 } = req.query;
-      const since = sinceDate(range);
-
-      const matchStage = { $match: { createdAt: { $gte: since } } };
-      const lim = Math.min(1000, Math.max(1, safeInt(limit, 200)));
-
-      const [tenantRows, featureRows] = await Promise.all([
-        col("aiusages").aggregate([
-          matchStage,
-          {
-            $group: {
-              _id: "$tenantId",
-              requests: { $sum: 1 },
-              tokens: { $sum: { $ifNull: ["$totalTokens", 0] } },
-              cost: { $sum: { $ifNull: ["$totalCost", { $ifNull: ["$cost", 0] }] } },
-            },
-          },
-          { $sort: { cost: -1 } },
-          { $limit: lim },
-        ]).toArray(),
-        col("aiusages").aggregate([
-          matchStage,
-          {
-            $group: {
-              _id: "$feature",
-              requests: { $sum: 1 },
-              tokens: { $sum: { $ifNull: ["$totalTokens", 0] } },
-              cost: { $sum: { $ifNull: ["$totalCost", { $ifNull: ["$cost", 0] }] } },
-            },
-          },
-          { $sort: { requests: -1 } },
-        ]).toArray(),
-      ]);
+      const payload = await getSuperadminAiCostPayload({
+        range: req.query.range || "7d",
+        tenantId: req.query.tenantId || null,
+        limit: req.query.limit || 50,
+        skip: req.query.skip || 0,
+        q: req.query.q || "",
+        status: req.query.status || "",
+        provider: req.query.provider || "",
+        model: req.query.model || "",
+        cacheHit: req.query.cacheHit ?? "",
+      });
+      return res.json({ success: true, ...payload });
 
       // join tenant names
       const tenantIds = tenantRows.map((r) => r._id).filter(Boolean);
@@ -1140,17 +1067,14 @@ adminSystemRouter.get(
   ...requireSuperAdmin,
   async (req, res) => {
     try {
-      const items = await col("feature_flags")
-        .find({})
-        .sort({ updatedAt: -1 })
-        .limit(500)
-        .toArray();
-      return res.json({
-        success: true,
-        items: Array.isArray(items) ? items : [],
+      const payload = await getSuperadminFeatureFlagsPayload();
+      return res.json({ success: true, ...payload });
+    } catch (error) {
+      console.error("feature-flags error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to load feature flags",
       });
-    } catch {
-      return res.json({ success: true, items: [] });
     }
   },
 );
@@ -1161,17 +1085,16 @@ adminSystemRouter.get(
  */
 adminSystemRouter.get("/super/logs", ...requireSuperAdmin, async (req, res) => {
   try {
-    const items = await col("system_audit_logs")
-      .find({})
-      .sort({ createdAt: -1 })
-      .limit(500)
-      .toArray();
-    return res.json({
-      success: true,
-      items: Array.isArray(items) ? items : [],
+    const payload = await getSuperadminAuditLogsPayload({
+      limit: req.query.limit || 200,
     });
-  } catch {
-    return res.json({ success: true, items: [] });
+    return res.json({ success: true, ...payload });
+  } catch (error) {
+    console.error("super-logs error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load platform logs",
+    });
   }
 });
 
@@ -1183,22 +1106,27 @@ adminSystemRouter.get(
   ...requireSuperAdmin,
   async (req, res) => {
     try {
-      const { range = "7d", limit = 200 } = req.query;
-      const since = sinceDate(range);
+      const payload = await getSuperadminAiCostPayload({
+        range: req.query.range || "7d",
+        tenantId: req.query.tenantId || null,
+        limit: req.query.limit || 50,
+        skip: req.query.skip || 0,
+        q: req.query.q || "",
+        status: req.query.status || "",
+        provider: req.query.provider || "",
+        model: req.query.model || "",
+        cacheHit: req.query.cacheHit ?? "",
+      });
 
-      const raw = await col("aiusages")
-        .find({ createdAt: { $gte: since } })
-        .sort({ createdAt: -1 })
-        .limit(Math.min(1000, Math.max(1, safeInt(limit, 200))))
-        .toArray();
-      const items = raw.map((r) => ({
-        ...r,
-        lastStatus: r.status,
-        totalLatencyMs: r.latencyMs,
-        cacheHit: r.cacheHit ?? false,
-      }));
-
-      return res.json({ success: true, range, items });
+      return res.json({
+        success: true,
+        range: payload.range,
+        state: payload.recentRequests.state,
+        label: payload.recentRequests.label,
+        lastUpdated: payload.recentRequests.lastUpdated,
+        meta: payload.recentRequests.meta,
+        items: payload.recentRequests.items,
+      });
     } catch (e) {
       console.error("ai-requests error:", e);
       return res
@@ -1216,46 +1144,13 @@ adminSystemRouter.get(
   ...requireSuperAdmin,
   async (req, res) => {
     try {
-      const { range = "7d" } = req.query;
-      const since = sinceDate(range);
-
-      const rows = await col("aiusages")
-        .aggregate([
-          { $match: { createdAt: { $gte: since } } },
-          {
-            $group: {
-              _id: null,
-              requests: { $sum: 1 },
-              tokens: { $sum: { $ifNull: ["$totalTokens", 0] } },
-              cost: {
-                $sum: { $ifNull: ["$totalCost", { $ifNull: ["$cost", 0] }] },
-              },
-              avgLatencyMs: {
-                $avg: { $cond: [{ $gt: [{ $ifNull: ["$latencyMs", 0] }, 0] }, "$latencyMs", null] },
-              },
-            },
-          },
-        ])
-        .toArray();
-
-      const r = rows?.[0] || {};
-      return res.json({
-        success: true,
-        range,
-        totals: {
-          requests: safeInt(r.requests, 0),
-          totalTokens: safeInt(r.tokens, 0),
-          cost: Number(r.cost || 0),
-          avgLatencyMs: Number(r.avgLatencyMs || 0),
-          cacheHitRate: 0,
-        },
-        summary: {
-          requests: safeInt(r.requests, 0),
-          tokens: safeInt(r.tokens, 0),
-          cost: Number(r.cost || 0),
-          avgLatencyMs: Number(r.avgLatencyMs || 0),
-        },
+      const payload = await getSuperadminAiCostPayload({
+        range: req.query.range || "7d",
+        tenantId: req.query.tenantId || null,
+        limit: req.query.limit || 50,
+        skip: req.query.skip || 0,
       });
+      return res.json({ success: true, ...payload });
     } catch (e) {
       console.error("ai-requests/summary error:", e);
       return res

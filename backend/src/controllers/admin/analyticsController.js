@@ -1,6 +1,7 @@
 import AIUsageLog from "../../models/aiUsage.js";
 import Submission from "../../models/Submission.js";
 import { getTenantId } from "../../middleware/authMiddleware.js";
+import { getAdminAnalyticsSummaryPayload } from "../../services/platformAnalyticsService.js";
 import { Parser } from "json2csv";
 
 function daysAgo(n) {
@@ -19,40 +20,8 @@ export async function getSummary(req, res) {
   try {
     const tenantId = getTenantId(req);
     const range = String(req.query.range || "7d");
-    const from = rangeToDate(range);
-
-    const tenantFilter = tenantId ? { tenantId } : {};
-
-    const [avgAgg, aiGraded, aiReqAgg] = await Promise.all([
-      Submission.aggregate([
-        {
-          $match: {
-            ...tenantFilter,
-            createdAt: { $gte: from },
-            gradedAt: { $ne: null },
-          },
-        },
-        { $group: { _id: null, avgScore: { $avg: "$score" } } },
-      ]),
-      Submission.countDocuments({
-        ...tenantFilter,
-        createdAt: { $gte: from },
-        gradedBy: "AI",
-      }),
-      AIUsageLog.aggregate([
-        { $match: { ...tenantFilter, createdAt: { $gte: from } } },
-        { $group: { _id: null, requests: { $sum: "$requests" } } },
-      ]),
-    ]);
-
-    const summary = {
-      avgScore: Math.round(avgAgg?.[0]?.avgScore || 0),
-      aiGraded,
-      aiRequests: aiReqAgg?.[0]?.requests || 0,
-      teacherActive: 0, // wire to your activity tracking model if you have it
-    };
-
-    return res.json({ summary });
+    const payload = await getAdminAnalyticsSummaryPayload({ range, tenantId });
+    return res.json(payload);
   } catch (e) {
     return res
       .status(500)

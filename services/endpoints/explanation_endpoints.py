@@ -43,9 +43,11 @@ def build_ctx(http_req: Request, *, endpoint: str, feature: str, session_id: str
         user_id = None
 
     client_session = http_req.headers.get("x-session-id")
+    tenant_id = http_req.headers.get("x-tenant-id")
     return {
         "request_id": request_id,
         "user_id": user_id,
+        "tenant_id": tenant_id,
         "session_id": session_id or client_session,
         "endpoint": endpoint,
         "feature": feature,
@@ -110,6 +112,7 @@ async def generate_explanation(
         log_ai_request_start(
             mongo_db,
             request_id=ctx["request_id"],
+            tenant_id=ctx.get("tenant_id"),
             user_id=ctx.get("user_id"),
             session_id=ctx.get("session_id"),
             endpoint=ctx.get("endpoint"),

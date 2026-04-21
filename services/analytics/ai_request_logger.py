@@ -52,6 +52,7 @@ def log_ai_request_start(
     mongo_db,
     *,
     request_id: str,
+    tenant_id: Optional[str] = None,
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
     endpoint: Optional[str] = None,
@@ -62,7 +63,7 @@ def log_ai_request_start(
     context_text: Optional[str] = None,
     payload: Optional[Dict[str, Any]] = None,
     meta: Optional[Dict[str, Any]] = None,
-) -> None:
+) -> Optional[str]:
     """Create/Upsert a request-level analytics doc.
 
     This should be called once near the start of an endpoint handler.
@@ -93,6 +94,8 @@ def log_ai_request_start(
     # Fill only if present (don't overwrite if caller didn't supply)
     if user_id is not None:
         updates["userId"] = user_id
+    if tenant_id is not None:
+        updates["tenantId"] = tenant_id
     if session_id is not None:
         updates["sessionId"] = session_id
     if endpoint:
@@ -126,6 +129,7 @@ def log_ai_request_start(
         {"$setOnInsert": doc_on_insert, "$set": updates},
         upsert=True,
     )
+    return request_id
 
 
 def log_ai_request_end(mongo_db, request_id: str, **fields):
@@ -156,11 +160,15 @@ def apply_usage_event(mongo_db, **kwargs) -> None:
     endpoint = kwargs.get("endpoint")
     feature = kwargs.get("feature")
     user_id = kwargs.get("user_id")
+    tenant_id = kwargs.get("tenant_id")
     session_id = kwargs.get("session_id")
 
     input_tokens = int(kwargs.get("input_tokens") or 0)
     output_tokens = int(kwargs.get("output_tokens") or 0)
-    total_tokens = input_tokens + output_tokens
+    total_tokens = int(kwargs.get("total_tokens") or (input_tokens + output_tokens))
+    input_cost = float(kwargs.get("input_cost") or 0)
+    output_cost = float(kwargs.get("output_cost") or 0)
+    total_cost = float(kwargs.get("total_cost") or (input_cost + output_cost))
     latency_ms = int(kwargs.get("latency_ms") or 0)
     status = (kwargs.get("status") or "ok").lower()
     cache_hit = bool(kwargs.get("cache_hit", False))
@@ -182,8 +190,12 @@ def apply_usage_event(mongo_db, **kwargs) -> None:
         set_fields["feature"] = feature
     if user_id is not None:
         set_fields["userId"] = user_id
+    if tenant_id is not None:
+        set_fields["tenantId"] = tenant_id
     if session_id is not None:
         set_fields["sessionId"] = session_id
+    if kwargs.get("currency"):
+        set_fields["currency"] = kwargs.get("currency")
 
     if status == "error":
         err = kwargs.get("error_message") or kwargs.get("error")
@@ -196,6 +208,9 @@ def apply_usage_event(mongo_db, **kwargs) -> None:
         "inputTokens": input_tokens,
         "outputTokens": output_tokens,
         "totalTokens": total_tokens,
+        "inputCost": input_cost,
+        "outputCost": output_cost,
+        "totalCost": total_cost,
         "okCalls": 1 if status == "ok" else 0,
         "errorCalls": 1 if status != "ok" else 0,
     }
