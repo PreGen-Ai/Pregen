@@ -115,6 +115,16 @@ class BaseAIClient:
     def _estimate_tokens(self, text: str = "") -> int:
         return (len(text or "") + 3) // 4  # ~4 chars/token fallback
 
+    def _serialize_response_for_logging(self, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        try:
+            return json.dumps(value, ensure_ascii=False, default=str)
+        except Exception:
+            return str(value)
+
     # ------------------------------------------------------------------
     # Cache (LRU + optional TTL)
     # ------------------------------------------------------------------
@@ -388,6 +398,15 @@ class BaseAIClient:
         cached = self._cache_get(cache_key)
         if cached is not None:
             provider_name = self._primary.provider_name if self._primary else "unknown"
+            cached_output = ""
+            if expect_json and isinstance(cached, (dict, list)):
+                cached_output = self._serialize_response_for_logging(cached)
+            elif isinstance(cached, dict) and "response_text" in cached:
+                cached_output = str(cached["response_text"])
+            elif isinstance(cached, str):
+                cached_output = cached
+            else:
+                cached_output = self._serialize_response_for_logging(cached)
             self._schedule_usage_log(
                 provider=provider_name,
                 user_id=user_id, session_id=session_id, request_id=request_id,
@@ -395,6 +414,7 @@ class BaseAIClient:
                 input_tokens=0, output_tokens=0, total_tokens=0,
                 latency_ms=0, status="ok",
                 prompt_chars=len(safe_prompt), completion_chars=0, cache_hit=True,
+                response_text=cached_output,
             )
             if expect_json and isinstance(cached, (dict, list)):
                 return cached  # type: ignore[return-value]
@@ -477,6 +497,7 @@ class BaseAIClient:
                         latency_ms=resp.latency_ms, status="ok",
                         prompt_chars=len(safe_prompt), completion_chars=len(resp.text),
                         cache_hit=False,
+                        response_text=resp.text,
                     )
 
                     cacheable = not (isinstance(parsed, dict) and parsed.get("error"))
@@ -546,6 +567,7 @@ class BaseAIClient:
                     latency_ms=resp.latency_ms, status="ok",
                     prompt_chars=len(safe_prompt), completion_chars=len(resp.text),
                     cache_hit=False,
+                    response_text=resp.text,
                     # Fallback metadata (stored if analytics schema supports extra fields)
                     fallback_from=primary.provider_name if primary else None,
                     fallback_to=resp.provider,
@@ -654,6 +676,7 @@ class BaseAIClient:
                 input_tokens=in_tok, output_tokens=out_tok, total_tokens=in_tok + out_tok,
                 latency_ms=resp.latency_ms, status="ok",
                 prompt_chars=len(safe_prompt), completion_chars=len(text), cache_hit=False,
+                response_text=text,
             )
             self._cache_set(cache_key, text)
             return text

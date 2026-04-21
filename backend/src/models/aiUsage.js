@@ -68,6 +68,9 @@ const AiUsageSchema = new mongoose.Schema(
     // -------- Debugging (NO prompts stored) --------
     promptChars: { type: Number, default: 0 },
     completionChars: { type: Number, default: 0 },
+    outputPreview: { type: String, default: "" },
+    outputChars: { type: Number, default: 0 },
+    outputTruncated: { type: Boolean, default: false },
 
     // explicit timestamp for old code compatibility
     timestamp: { type: Date, default: Date.now, index: true },

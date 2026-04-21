@@ -104,6 +104,9 @@ export async function createAiUsage(req, res) {
 
       promptChars,
       completionChars,
+      outputPreview,
+      outputChars,
+      outputTruncated,
 
       timestamp,
     } = req.body || {};
@@ -139,6 +142,9 @@ export async function createAiUsage(req, res) {
 
       promptChars,
       completionChars,
+      outputPreview,
+      outputChars,
+      outputTruncated,
 
       timestamp: timestamp ? new Date(timestamp) : undefined,
     });

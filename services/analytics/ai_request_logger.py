@@ -19,11 +19,13 @@ Design goals:
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 
 AI_REQUESTS_COLLECTION = "ai_requests"
+_OUTPUT_PREVIEW_LIMIT = 4000
 
 
 def _now() -> datetime:
@@ -46,6 +48,43 @@ def _sha256(text: str) -> str:
 def _estimate_tokens(text: str) -> int:
     # rough fallback: ~4 chars/token
     return (len(text or "") + 3) // 4
+
+
+def _serialize_output(
+    response_text: Optional[str] = None,
+    response_payload: Optional[Any] = None,
+) -> str:
+    raw = ""
+
+    if response_text is not None:
+        raw = str(response_text)
+    elif response_payload is not None:
+        try:
+            raw = json.dumps(response_payload, ensure_ascii=False, default=str)
+        except Exception:
+            raw = str(response_payload)
+
+    return (raw or "").strip()
+
+
+def _build_output_updates(
+    *,
+    response_text: Optional[str] = None,
+    response_payload: Optional[Any] = None,
+) -> Dict[str, Any]:
+    raw = _serialize_output(
+        response_text=response_text,
+        response_payload=response_payload,
+    )
+    if not raw:
+        return {}
+
+    preview = raw if len(raw) <= _OUTPUT_PREVIEW_LIMIT else raw[:_OUTPUT_PREVIEW_LIMIT].rstrip()
+    return {
+        "outputPreview": preview,
+        "outputChars": len(raw),
+        "outputHash": _sha256(raw),
+    }
 
 
 def log_ai_request_start(
@@ -135,9 +174,20 @@ def log_ai_request_start(
 def log_ai_request_end(mongo_db, request_id: str, **fields):
     if not mongo_db or not request_id:
         return
+    updates = {**fields, "updatedAt": datetime.utcnow()}
+
+    response_text = updates.pop("response_text", None)
+    response_payload = updates.pop("response_payload", None)
+    output_updates = _build_output_updates(
+        response_text=response_text,
+        response_payload=response_payload,
+    )
+    if output_updates:
+        updates.update(output_updates)
+
     mongo_db.ai_requests.update_one(
         {"requestId": request_id},
-        {"$set": {**fields, "updatedAt": datetime.utcnow()}},
+        {"$set": updates},
         upsert=True,
     )
 
@@ -201,6 +251,13 @@ def apply_usage_event(mongo_db, **kwargs) -> None:
         err = kwargs.get("error_message") or kwargs.get("error")
         if err:
             set_fields["lastErrorMessage"] = str(err)[:800]
+
+    output_updates = _build_output_updates(
+        response_text=kwargs.get("response_text"),
+        response_payload=kwargs.get("response_payload"),
+    )
+    if output_updates:
+        set_fields.update(output_updates)
 
     inc_fields = {
         "calls": 1,

@@ -1,10 +1,36 @@
 # analytics/ai_usage_logger.py
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 from typing import Any, Optional
 
 AI_USAGE_COLLECTION = "ai_usage"
+
+_OUTPUT_PREVIEW_LIMIT = 4000
+
+
+def _serialize_output(
+    response_text: Optional[str] = None,
+    response_payload: Optional[Any] = None,
+) -> tuple[str, int, Optional[str]]:
+    raw = ""
+
+    if response_text is not None:
+        raw = str(response_text)
+    elif response_payload is not None:
+        try:
+            raw = json.dumps(response_payload, ensure_ascii=False, default=str)
+        except Exception:
+            raw = str(response_payload)
+
+    raw = (raw or "").strip()
+    if not raw:
+        return "", 0, None
+
+    preview = raw if len(raw) <= _OUTPUT_PREVIEW_LIMIT else raw[:_OUTPUT_PREVIEW_LIMIT].rstrip()
+    return preview, len(raw), hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def log_ai_usage(
@@ -31,6 +57,8 @@ def log_ai_usage(
     output_cost: Optional[float] = None,
     total_cost: Optional[float] = None,
     currency: str = "USD",
+    response_text: Optional[str] = None,
+    response_payload: Optional[Any] = None,
     **extra: Any,
 ):
     """
@@ -58,6 +86,10 @@ def log_ai_usage(
         else computed_input_cost + computed_output_cost
     )
     metadata = {key: value for key, value in extra.items() if value is not None}
+    output_preview, output_chars, output_hash = _serialize_output(
+        response_text=response_text,
+        response_payload=response_payload,
+    )
 
     doc = {
         "provider": provider,
@@ -84,6 +116,10 @@ def log_ai_usage(
         "createdAt": datetime.utcnow(),
         "updatedAt": datetime.utcnow(),
     }
+    if output_preview:
+        doc["outputPreview"] = output_preview
+        doc["outputChars"] = output_chars
+        doc["outputHash"] = output_hash
     if metadata:
         doc["meta"] = metadata
 
