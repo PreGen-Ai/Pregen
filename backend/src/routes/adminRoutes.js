@@ -974,15 +974,51 @@ adminSystemRouter.get(
   ...requireSuperAdmin,
   async (req, res) => {
     try {
-      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const [activeTenants, totalTenants, totalStudents, aiCalls24h, aiRequestsAllTime] =
-        await Promise.all([
-          col("tenants").countDocuments({ status: { $ne: "suspended" } }),
-          col("tenants").countDocuments({}),
-          col("users").countDocuments({ role: { $in: ["STUDENT", "student"] } }),
-          col("ai_usages").countDocuments({ createdAt: { $gte: since24h } }),
-          col("ai_usages").countDocuments({}),
-        ]);
+      const now = new Date();
+      const since24h = new Date(now - 24 * 60 * 60 * 1000);
+      const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      const [
+        activeTenants,
+        totalTenants,
+        totalStudents,
+        aiCalls24h,
+        aiRequestsAllTime,
+        errorsToday,
+        costTodayRows,
+        costMTDRows,
+        latencyRows,
+      ] = await Promise.all([
+        col("tenants").countDocuments({ status: { $ne: "suspended" } }),
+        col("tenants").countDocuments({}),
+        col("users").countDocuments({ role: { $in: ["STUDENT", "student"] } }),
+        col("aiusages").countDocuments({ createdAt: { $gte: since24h } }),
+        col("aiusages").countDocuments({}),
+        col("aiusages").countDocuments({ status: "error", createdAt: { $gte: startToday } }),
+        col("aiusages").aggregate([
+          { $match: { createdAt: { $gte: startToday } } },
+          { $group: { _id: null, cost: { $sum: { $ifNull: ["$totalCost", { $ifNull: ["$cost", 0] }] } } } },
+        ]).toArray(),
+        col("aiusages").aggregate([
+          { $match: { createdAt: { $gte: startMonth } } },
+          { $group: { _id: null, cost: { $sum: { $ifNull: ["$totalCost", { $ifNull: ["$cost", 0] }] } } } },
+        ]).toArray(),
+        col("aiusages").aggregate([
+          { $match: { createdAt: { $gte: since24h }, latencyMs: { $gt: 0 } } },
+          { $sort: { latencyMs: 1 } },
+          { $group: { _id: null, arr: { $push: "$latencyMs" } } },
+        ]).toArray(),
+      ]);
+
+      const costToday = Math.round((costTodayRows?.[0]?.cost || 0) * 100) / 100;
+      const costMTD = Math.round((costMTDRows?.[0]?.cost || 0) * 100) / 100;
+      const p95LatencyMs = (() => {
+        const arr = latencyRows?.[0]?.arr || [];
+        if (!arr.length) return 0;
+        return arr[Math.max(0, Math.floor(arr.length * 0.95) - 1)] || 0;
+      })();
+      const healthStatus = errorsToday > 20 ? "degraded" : errorsToday > 0 ? "warning" : "healthy";
 
       return res.json({
         success: true,
@@ -991,12 +1027,11 @@ adminSystemRouter.get(
         totalStudents,
         aiCalls24h,
         aiRequestsAllTime,
-        // Fields that require external cost/latency tracking — default to 0 until wired
-        costToday: 0,
-        costMTD: 0,
-        p95LatencyMs: 0,
-        errorsToday: 0,
-        healthStatus: "healthy",
+        costToday,
+        costMTD,
+        p95LatencyMs,
+        errorsToday,
+        healthStatus,
         spikes: [],
       });
     } catch (e) {
@@ -1026,47 +1061,67 @@ adminSystemRouter.get(
       const { range = "7d", limit = 200 } = req.query;
       const since = sinceDate(range);
 
-      // Try common cost fields: cost, usdCost, price
-      const rows = await col("ai_usages")
-        .aggregate([
-          { $match: { createdAt: { $gte: since } } },
+      const matchStage = { $match: { createdAt: { $gte: since } } };
+      const lim = Math.min(1000, Math.max(1, safeInt(limit, 200)));
+
+      const [tenantRows, featureRows] = await Promise.all([
+        col("aiusages").aggregate([
+          matchStage,
           {
             $group: {
               _id: "$tenantId",
               requests: { $sum: 1 },
               tokens: { $sum: { $ifNull: ["$totalTokens", 0] } },
-              cost: {
-                $sum: { $ifNull: ["$cost", { $ifNull: ["$usdCost", 0] }] },
-              },
+              cost: { $sum: { $ifNull: ["$totalCost", { $ifNull: ["$cost", 0] }] } },
             },
           },
           { $sort: { cost: -1 } },
-          { $limit: Math.min(1000, Math.max(1, safeInt(limit, 200))) },
-        ])
-        .toArray();
+          { $limit: lim },
+        ]).toArray(),
+        col("aiusages").aggregate([
+          matchStage,
+          {
+            $group: {
+              _id: "$feature",
+              requests: { $sum: 1 },
+              tokens: { $sum: { $ifNull: ["$totalTokens", 0] } },
+              cost: { $sum: { $ifNull: ["$totalCost", { $ifNull: ["$cost", 0] }] } },
+            },
+          },
+          { $sort: { requests: -1 } },
+        ]).toArray(),
+      ]);
 
       // join tenant names
-      const tenantIds = rows.map((r) => r._id).filter(Boolean);
+      const tenantIds = tenantRows.map((r) => r._id).filter(Boolean);
       const tenants = await col("tenants")
         .find({ tenantId: { $in: tenantIds } })
         .project({ tenantId: 1, name: 1, plan: 1, status: 1 })
         .toArray();
 
-      const map = new Map(tenants.map((t) => [t.tenantId, t]));
-      const items = rows.map((r) => {
-        const t = map.get(r._id) || {};
+      const nameMap = new Map(tenants.map((t) => [t.tenantId, t]));
+
+      const byTenant = tenantRows.map((r) => {
+        const t = nameMap.get(r._id) || {};
         return {
           tenantId: r._id,
-          name: t.name || "-",
-          plan: t.plan || "-",
-          status: t.status || "-",
+          name: t.name || r._id || "—",
+          plan: t.plan || "—",
+          status: t.status || "—",
           requests: safeInt(r.requests, 0),
           tokens: safeInt(r.tokens, 0),
-          cost: Number(r.cost || 0),
+          cost: Math.round(Number(r.cost || 0) * 100) / 100,
         };
       });
 
-      return res.json({ success: true, range, items });
+      const byFeature = featureRows.map((r) => ({
+        feature: r._id || "unknown",
+        requests: safeInt(r.requests, 0),
+        tokens: safeInt(r.tokens, 0),
+        cost: Math.round(Number(r.cost || 0) * 100) / 100,
+      }));
+
+      return res.json({ success: true, range, byTenant, byFeature, items: byTenant });
     } catch (e) {
       console.error("ai-cost error:", e);
       return res
@@ -1131,11 +1186,17 @@ adminSystemRouter.get(
       const { range = "7d", limit = 200 } = req.query;
       const since = sinceDate(range);
 
-      const items = await col("ai_usages")
+      const raw = await col("aiusages")
         .find({ createdAt: { $gte: since } })
         .sort({ createdAt: -1 })
         .limit(Math.min(1000, Math.max(1, safeInt(limit, 200))))
         .toArray();
+      const items = raw.map((r) => ({
+        ...r,
+        lastStatus: r.status,
+        totalLatencyMs: r.latencyMs,
+        cacheHit: r.cacheHit ?? false,
+      }));
 
       return res.json({ success: true, range, items });
     } catch (e) {
@@ -1158,7 +1219,7 @@ adminSystemRouter.get(
       const { range = "7d" } = req.query;
       const since = sinceDate(range);
 
-      const rows = await col("ai_usages")
+      const rows = await col("aiusages")
         .aggregate([
           { $match: { createdAt: { $gte: since } } },
           {
@@ -1167,7 +1228,10 @@ adminSystemRouter.get(
               requests: { $sum: 1 },
               tokens: { $sum: { $ifNull: ["$totalTokens", 0] } },
               cost: {
-                $sum: { $ifNull: ["$cost", { $ifNull: ["$usdCost", 0] }] },
+                $sum: { $ifNull: ["$totalCost", { $ifNull: ["$cost", 0] }] },
+              },
+              avgLatencyMs: {
+                $avg: { $cond: [{ $gt: [{ $ifNull: ["$latencyMs", 0] }, 0] }, "$latencyMs", null] },
               },
             },
           },
@@ -1178,10 +1242,18 @@ adminSystemRouter.get(
       return res.json({
         success: true,
         range,
+        totals: {
+          requests: safeInt(r.requests, 0),
+          totalTokens: safeInt(r.tokens, 0),
+          cost: Number(r.cost || 0),
+          avgLatencyMs: Number(r.avgLatencyMs || 0),
+          cacheHitRate: 0,
+        },
         summary: {
           requests: safeInt(r.requests, 0),
           tokens: safeInt(r.tokens, 0),
           cost: Number(r.cost || 0),
+          avgLatencyMs: Number(r.avgLatencyMs || 0),
         },
       });
     } catch (e) {

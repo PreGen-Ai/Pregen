@@ -30,7 +30,9 @@
       "Bash(node --check src/controllers/ai.controller.js src/routes/ai.routes.js)",
       "Bash(python -c \"from config import GEMINI_API_KEY, PORT, ENVIRONMENT; print\\(''KEY:'', repr\\(GEMINI_API_KEY[:10]\\) if GEMINI_API_KEY else ''MISSING''\\); print\\(''PORT:'', PORT\\); print\\(''ENV:'', ENVIRONMENT\\)\")",
       "Bash(curl -s --max-time 10 \"https://pregen-xce4.onrender.com/health\")",
-      "Bash(curl -s https://pregen-xce4.onrender.com/health)"
+      "Bash(curl -s https://pregen-xce4.onrender.com/health)",
+      "Bash(find \"/c/Users/Moham/Documents/GitHub/PreGen/Pregen_lms/frontend/src/components/Dashboard/pages/SuperAdmin\" -name \"*.jsx\" -exec basename {} \\\\;)",
+      "Bash(grep -n 'tokensInput\\\\|tokensOutput\\\\|$cost\\\\|$totalCost' /c/Users/Moham/Documents/GitHub/PreGen/Pregen_lms/backend/src/controllers/superAdmin.controller.js)"
     ]
   }
 }
