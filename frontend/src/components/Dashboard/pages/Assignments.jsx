@@ -831,7 +831,7 @@ function TeacherAssignmentsView() {
     });
   };
 
-  const saveAssignment = async () => {
+  const saveAssignment = async (nextStatus = form.status) => {
     if (!selectedCourseId) return toast.error("Select a course first");
     if (!form.title.trim() || !form.description.trim() || !form.dueDate) {
       return toast.error("Title, description, and due date are required");
@@ -844,7 +844,7 @@ function TeacherAssignmentsView() {
       dueDate: new Date(form.dueDate).toISOString(),
       type: form.type,
       maxScore: Number(form.maxScore || 100),
-      status: form.status,
+      status: nextStatus,
       courseId: selectedCourseId,
       classroomId: assignMode === "class" ? emptyToNull(form.classroomId) : null,
       studentIds: assignMode === "students" ? form.studentIds : [],
@@ -1263,11 +1263,11 @@ function TeacherAssignmentsView() {
 
             <div className="d-flex gap-2">
               <button className="btn btn-outline-light flex-fill" type="button" disabled={saving}
-                onClick={() => { setForm(p => ({ ...p, status: "draft" })); saveAssignment(); }}>
+                onClick={() => { setForm(p => ({ ...p, status: "draft" })); saveAssignment("draft"); }}>
                 Save draft
               </button>
               <button className="btn btn-primary flex-fill" type="button" disabled={saving}
-                onClick={() => { setForm(p => ({ ...p, status: "published" })); saveAssignment(); }}>
+                onClick={() => { setForm(p => ({ ...p, status: "published" })); saveAssignment("published"); }}>
                 {saving ? "Saving…" : "Publish"}
               </button>
             </div>

@@ -65,6 +65,30 @@
   margin-bottom: 0;
 }
 
+/* ── Light-background card contrast fix ──────────────────────
+   bg-white / bg-light-subtle are near-white. The dark shell's
+   inherited color (#d1d5db) produces white-on-white — unreadable.
+   Override to a readable dark colour inside those surfaces.      */
+.dash-shell .bg-light-subtle,
+.dash-shell .bg-white {
+  color: #1f2937 !important;
+}
+.dash-shell .bg-light-subtle .text-muted,
+.dash-shell .bg-white     .text-muted {
+  color: #6b7280 !important;
+}
+/* Keep fw-semibold / fw-bold readable on light bg */
+.dash-shell .bg-light-subtle .fw-semibold,
+.dash-shell .bg-light-subtle .fw-bold,
+.dash-shell .bg-white     .fw-semibold,
+.dash-shell .bg-white     .fw-bold {
+  color: #111827 !important;
+}
+/* Muted helper that was assigned inline via "small text-muted" */
+.dash-card-muted {
+  color: var(--text-muted-val, rgba(156,163,175,0.85));
+}
+
 /* ── Tenant scope context banner ─────────────────────────── */
 .tenant-scope-banner {
   display: flex;

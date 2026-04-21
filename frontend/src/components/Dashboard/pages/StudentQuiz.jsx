@@ -266,6 +266,19 @@ export default function StudentQuiz() {
         config,
       );
       setAttempt(response?.attempt || attempt);
+
+      // Reload quiz content now that the attempt is final so the backend
+      // includes correctAnswer for each question (includeAnswers = true).
+      // Without this, scoreQuestions() sees correctAnswer="" → all 0/1.
+      if (activeItem?._id) {
+        try {
+          const contentRes = await api.quizzes.getAssignedContent(activeItem._id);
+          setQuestions((contentRes?.quiz?.questions || []).map(normalizeQuestion));
+        } catch {
+          // Non-fatal — review still shows attempt score, just without per-question highlights
+        }
+      }
+
       setStep("review");
       toast.success("Quiz submitted");
       await loadAssignedQuizzes();
