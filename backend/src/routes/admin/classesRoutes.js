@@ -5,6 +5,7 @@ import {
   listClasses,
   createClass,
   assignTeacher,
+  assignSubject,
   enrollStudents,
   unenrollStudents,
 } from "../../controllers/admin/classesController.js";
@@ -29,6 +30,13 @@ router.post("/", requireAdmin, createClass);
  * Teacher must have role TEACHER. Teachers can be cross-tenant.
  */
 router.post("/:id/assign-teacher", requireAdmin, assignTeacher);
+
+/**
+ * POST /api/admin/classes/:id/assign-subject
+ * Body: { subjectId }
+ * Links a subject to an existing class and provisions the Course workspace.
+ */
+router.post("/:id/assign-subject", requireAdmin, assignSubject);
 
 /**
  * POST /api/admin/classes/:id/enroll

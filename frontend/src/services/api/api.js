@@ -820,6 +820,15 @@ export const api = {
         ),
       ),
 
+    assignSubject: (classId, subjectId, config = {}) =>
+      safe(
+        apiClient.post(
+          `${ADMIN_BASE}/classes/${classId}/assign-subject`,
+          { subjectId },
+          config,
+        ),
+      ),
+
     enrollStudents: (classId, studentIds, config = {}) =>
       safe(
         apiClient.post(

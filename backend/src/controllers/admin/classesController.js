@@ -420,6 +420,68 @@ export async function assignTeacher(req, res) {
   }
 }
 
+export async function assignSubject(req, res) {
+  try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return res.status(400).json({ message: "Missing tenantId" });
+
+    const { id } = req.params;
+    const { subjectId } = req.body;
+    if (!subjectId) return res.status(400).json({ message: "subjectId is required" });
+
+    const subject = await Subject.findOne({
+      _id: subjectId,
+      tenantId,
+      deleted: false,
+    }).lean();
+    if (!subject) return res.status(404).json({ message: "Subject not found in this tenant" });
+
+    const classroom = await Classroom.findOne({
+      _id: id,
+      tenantId,
+      deletedAt: null,
+    }).lean();
+    if (!classroom) return res.status(404).json({ message: "Class not found" });
+
+    // Link classroom → subject (idempotent via $addToSet)
+    await Subject.updateOne(
+      { _id: subjectId },
+      { $addToSet: { classroomIds: classroom._id } },
+    );
+
+    // Provision the Course workspace (no-op if already exists)
+    const course = await upsertSubjectClassCourse({
+      tenantId,
+      subject,
+      classroom,
+      actorUserId: req.user?._id,
+    });
+
+    // Sync classroom teacher into the new course
+    if (classroom.teacherId) {
+      await syncTeacherMembershipsForCourses([course._id], classroom.teacherId);
+    }
+
+    // Sync enrolled students into the new course
+    if (classroom.studentIds?.length) {
+      await syncStudentMembershipsForCourses([course._id], classroom.studentIds);
+    }
+
+    await writeClassAudit(req, {
+      tenantId,
+      type: "CLASS_SUBJECT_ASSIGNED",
+      message: `Assigned subject "${subject.name}" to class "${classroom.name}"`,
+      meta: { classId: classroom._id, subjectId: subject._id, courseId: course._id },
+    });
+
+    return res.json({ message: "Subject assigned", course });
+  } catch (e) {
+    return res
+      .status(500)
+      .json({ message: "Failed to assign subject", error: String(e) });
+  }
+}
+
 export async function enrollStudents(req, res) {
   try {
     const tenantId = getTenantId(req);
@@ -432,15 +494,18 @@ export async function enrollStudents(req, res) {
       return res.status(400).json({ message: "studentIds must be non-empty array" });
     }
 
+    // Deduplicate before count check to avoid false-positive "not found" errors
+    const uniqueStudentIds = [...new Set(studentIds.map(String))];
+
     // Validate all students exist, are STUDENT role, and belong to this tenant
     const students = await User.find({
-      _id: { $in: studentIds },
+      _id: { $in: uniqueStudentIds },
       deleted: { $ne: true },
     }).lean();
 
-    if (students.length !== studentIds.length) {
+    if (students.length !== uniqueStudentIds.length) {
       return res.status(404).json({
-        message: `Some students not found. Expected ${studentIds.length}, found ${students.length}.`,
+        message: `Some students not found. Expected ${uniqueStudentIds.length}, found ${students.length}.`,
       });
     }
 
@@ -466,7 +531,7 @@ export async function enrollStudents(req, res) {
     };
     const doc = await Classroom.findOneAndUpdate(
       filter,
-      { $addToSet: { studentIds: { $each: studentIds } } },
+      { $addToSet: { studentIds: { $each: uniqueStudentIds } } },
       { new: true },
     );
     if (!doc) return res.status(404).json({ message: "Class not found" });
@@ -484,8 +549,8 @@ export async function enrollStudents(req, res) {
     await writeClassAudit(req, {
       tenantId,
       type: "CLASS_STUDENTS_ENROLLED",
-      message: `Enrolled ${studentIds.length} student(s) in class ${doc.name}`,
-      meta: { classId: doc._id, studentIds },
+      message: `Enrolled ${uniqueStudentIds.length} student(s) in class ${doc.name}`,
+      meta: { classId: doc._id, studentIds: uniqueStudentIds },
     });
 
     return res.json({ message: "Enrolled", class: doc });

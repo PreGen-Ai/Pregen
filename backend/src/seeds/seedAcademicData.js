@@ -282,33 +282,40 @@ async function seedTenant(tenant) {
   }
 
   // ── 6. Subject → Classroom + Course workspace ──────────────────
-  console.log("\n  Linking subjects → classrooms + provisioning courses:");
+  // Each class gets 2 subjects: subject_i and subject_{(i+1)%5}
+  // This ensures every class has at least 2 subjects as required.
+  console.log("\n  Linking subjects → classrooms + provisioning courses (2 subjects per class):");
   const courses = [];
   for (let i = 0; i < 5; i++) {
-    // Add classroom to subject.classroomIds
-    await Subject.updateOne(
-      { _id: subjects[i]._id },
-      { $addToSet: { classroomIds: classrooms[i]._id } },
-    );
+    const primarySubjectIdx = i;
+    const secondarySubjectIdx = (i + 1) % 5;
 
-    // Re-read classroom to guarantee fresh grade/section fields
-    const freshClass =
-      (await Classroom.findById(classrooms[i]._id).lean()) || classrooms[i];
+    for (const subjectIdx of [primarySubjectIdx, secondarySubjectIdx]) {
+      // Add classroom to subject.classroomIds (idempotent)
+      await Subject.updateOne(
+        { _id: subjects[subjectIdx]._id },
+        { $addToSet: { classroomIds: classrooms[i]._id } },
+      );
 
-    const course = await upsertCourse(
-      tenantId,
-      subjects[i],
-      freshClass,
-      teachers[i]._id,
-    );
-    courses.push(course);
+      // Re-read classroom to guarantee fresh grade/section fields
+      const freshClass =
+        (await Classroom.findById(classrooms[i]._id).lean()) || classrooms[i];
 
-    // Teacher is a CourseMember in their own course
-    await upsertMember(course._id, teachers[i]._id, "teacher");
+      const course = await upsertCourse(
+        tenantId,
+        subjects[subjectIdx],
+        freshClass,
+        teachers[i]._id,
+      );
+      courses.push(course);
 
-    console.log(
-      `    "${subjects[i].name}" (${subjects[i].code}) → "${classrooms[i].name}"`,
-    );
+      // Teacher is a CourseMember in their own course
+      await upsertMember(course._id, teachers[i]._id, "teacher");
+
+      console.log(
+        `    "${subjects[subjectIdx].name}" (${subjects[subjectIdx].code}) → "${classrooms[i].name}"`,
+      );
+    }
   }
 
   // ── 7. Enroll students: 4 per class ───────────────────────────
@@ -321,7 +328,7 @@ async function seedTenant(tenant) {
     );
   }
 
-  console.log(`\n  ✓ ${tenantId}: seeded ${teachers.length} teachers, ${students.length} students, ${classrooms.length} classes, ${subjects.length} subjects, ${courses.length} courses`);
+  console.log(`\n  ✓ ${tenantId}: seeded ${teachers.length} teachers, ${students.length} students, ${classrooms.length} classes, ${subjects.length} subjects, ${courses.length} course workspaces (2 subjects per class)`);
 }
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
@@ -356,10 +363,12 @@ async function main() {
   console.log("\n  Password for all seeded users : 12345678");
   console.log("  Teacher emails : teacher.{1-5}.{tenantSlug}@pregen.test");
   console.log("  Student emails : student.{01-20}.{tenantSlug}@pregen.test");
-  console.log("\n  Class ↔ teacher ↔ subject ↔ students mapping per tenant:");
+  console.log("\n  Class ↔ teacher ↔ subjects ↔ students mapping per tenant:");
   for (let i = 0; i < 5; i++) {
+    const subj1 = SUBJECT_SPECS[i].code;
+    const subj2 = SUBJECT_SPECS[(i + 1) % 5].code;
     console.log(
-      `    ${CLASS_SPECS[i].name.padEnd(12)}  teacher_${i + 1}  ${SUBJECT_SPECS[i].code.padEnd(5)}  students ${String(i * 4 + 1).padStart(2)}-${i * 4 + 4}`,
+      `    ${CLASS_SPECS[i].name.padEnd(12)}  teacher_${i + 1}  ${subj1}+${subj2}  students ${String(i * 4 + 1).padStart(2)}-${i * 4 + 4}`,
     );
   }
   console.log();

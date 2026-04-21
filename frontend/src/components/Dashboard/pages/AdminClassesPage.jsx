@@ -37,6 +37,9 @@ export default function AdminClassesPage() {
   // Teacher assignment in detail panel
   const [assignTeacherId, setAssignTeacherId] = useState("");
 
+  // Subject assignment in detail panel
+  const [assignSubjectId, setAssignSubjectId] = useState("");
+
   // Superadmin: tenant selector
   const [tenants, setTenants] = useState([]);
   const [selectedTenantId, setSelectedTenantId] = useState("");
@@ -149,6 +152,25 @@ export default function AdminClassesPage() {
     }
   };
 
+  const doAssignSubject = async () => {
+    if (!detailClass) return;
+    if (!assignSubjectId) {
+      toast.error("Select a subject to assign");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.admin.assignSubject(detailClass._id, assignSubjectId, cfg);
+      toast.success("Subject assigned");
+      setAssignSubjectId("");
+      await load();
+    } catch (e) {
+      toast.error(e?.message || "Failed to assign subject");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const enrollSelected = async () => {
     if (!detailClass) return;
     if (!enrollIds.length) {
@@ -242,7 +264,7 @@ export default function AdminClassesPage() {
               className={`form-select ${!selectedTenantId ? "border-warning" : ""}`}
               style={{ maxWidth: 300 }}
               value={selectedTenantId}
-              onChange={(e) => { setSelectedTenantId(e.target.value); setDetailClass(null); }}
+              onChange={(e) => { setSelectedTenantId(e.target.value); setDetailClass(null); setAssignSubjectId(""); setEnrollIds([]); }}
             >
               <option value="">— Select tenant —</option>
               {tenants.map((t) => (
@@ -369,6 +391,7 @@ export default function AdminClassesPage() {
                                 const next = detailClass?._id === cls._id ? null : cls;
                                 setDetailClass(next);
                                 setAssignTeacherId(next?.teacher?._id || "");
+                                setAssignSubjectId("");
                                 setEnrollIds([]);
                               }}
                             >
@@ -426,6 +449,48 @@ export default function AdminClassesPage() {
                     className="btn btn-primary"
                     onClick={doAssignTeacher}
                     disabled={saving || !assignTeacherId}
+                  >
+                    {saving ? "Saving…" : "Assign"}
+                  </button>
+                </div>
+
+                {/* ── Assign subject ─────────────────────────── */}
+                <h5 className="mb-2">Assigned subjects</h5>
+                <div className="mb-2">
+                  {(detailClass.subjects?.length > 0
+                    ? detailClass.subjects
+                    : detailClass.subject ? [detailClass.subject] : []
+                  ).map((s) => (
+                    <span
+                      key={s._id || s.name}
+                      className="badge bg-secondary me-1 mb-1"
+                      style={{ fontSize: "0.82rem", padding: "4px 10px" }}
+                    >
+                      {s.name}{s.code ? ` (${s.code})` : ""}
+                    </span>
+                  ))}
+                  {!detailClass.subjects?.length && !detailClass.subject && (
+                    <span className="text-muted" style={{ fontSize: "0.9rem" }}>None yet</span>
+                  )}
+                </div>
+                <div className="d-flex gap-2 align-items-center mb-4 flex-wrap">
+                  <select
+                    className="form-select"
+                    style={{ maxWidth: 260 }}
+                    value={assignSubjectId}
+                    onChange={(e) => setAssignSubjectId(e.target.value)}
+                  >
+                    <option value="">Add a subject…</option>
+                    {subjects.map((s) => (
+                      <option key={s._id} value={s._id}>
+                        {s.name}{s.code ? ` (${s.code})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn btn-primary"
+                    onClick={doAssignSubject}
+                    disabled={saving || !assignSubjectId}
                   >
                     {saving ? "Saving…" : "Assign"}
                   </button>

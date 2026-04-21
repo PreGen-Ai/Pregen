@@ -543,6 +543,202 @@ describe("Subject → Classroom assignment (Course workspace provisioning)", () 
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe("assignSubject — POST /api/admin/classes/:id/assign-subject", () => {
+  async function adminAssignSubject(adminToken, classId, subjectId) {
+    return request(app)
+      .post(`/api/admin/classes/${classId}/assign-subject`)
+      .set(authHeader(adminToken))
+      .send({ subjectId });
+  }
+
+  test("links subject to class and provisions a Course workspace", async () => {
+    const tenantId = "tenant_asubj";
+    const { token: adminToken } = await createAdmin({ tenantId });
+
+    const cr = await adminCreateClass(adminToken, { name: "Grade 9A", grade: "9", section: "A" });
+    expect(cr.status).toBe(201);
+    const classId = cr.body?.class?._id;
+
+    const subjRes = await adminCreateSubject(adminToken, { name: "Physics", code: "PHY" });
+    expect(subjRes.status).toBe(201);
+    const subjectId = subjRes.body?.subject?._id;
+
+    const res = await adminAssignSubject(adminToken, classId, subjectId);
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe("Subject assigned");
+
+    // Subject.classroomIds must include this class
+    const subj = await Subject.findById(subjectId).lean();
+    expect(subj.classroomIds.map(String)).toContain(String(classId));
+
+    // A Course workspace must have been created
+    const course = await Course.findOne({ tenantId, subjectId, classroomId: classId, deleted: false }).lean();
+    expect(course).toBeTruthy();
+    expect(course.title).toContain("Physics");
+  });
+
+  test("syncs enrolled students into the new course workspace", async () => {
+    const tenantId = "tenant_asubj2";
+    const { token: adminToken } = await createAdmin({ tenantId });
+    const { user: student } = await createStudent({ tenantId });
+
+    const cr = await adminCreateClass(adminToken, { name: "Grade 8A", grade: "8", section: "A" });
+    const classId = cr.body?.class?._id;
+
+    // Enroll student before linking subject
+    await adminEnroll(adminToken, classId, [student._id]);
+
+    const subjRes = await adminCreateSubject(adminToken, { name: "Chemistry", code: "CHEM" });
+    const subjectId = subjRes.body?.subject?._id;
+
+    await adminAssignSubject(adminToken, classId, subjectId);
+
+    const course = await Course.findOne({ tenantId, subjectId, classroomId: classId }).lean();
+    expect(course).toBeTruthy();
+
+    const membership = await CourseMember.findOne({
+      courseId: course._id,
+      userId: student._id,
+      role: "student",
+      status: "active",
+    }).lean();
+    expect(membership).toBeTruthy();
+  });
+
+  test("syncs classroom teacher into the new course workspace", async () => {
+    const tenantId = "tenant_asubj3";
+    const { token: adminToken } = await createAdmin({ tenantId });
+    const { user: teacher } = await createTeacher({ tenantId, tenantIds: [tenantId] });
+
+    const cr = await adminCreateClass(adminToken, { name: "Grade 7A", grade: "7", section: "A" });
+    const classId = cr.body?.class?._id;
+
+    await adminAssignTeacher(adminToken, classId, teacher._id);
+
+    const subjRes = await adminCreateSubject(adminToken, { name: "Art", code: "ART" });
+    const subjectId = subjRes.body?.subject?._id;
+
+    await adminAssignSubject(adminToken, classId, subjectId);
+
+    const course = await Course.findOne({ tenantId, subjectId, classroomId: classId }).lean();
+    expect(course).toBeTruthy();
+
+    const membership = await CourseMember.findOne({
+      courseId: course._id,
+      userId: teacher._id,
+      role: "teacher",
+      status: "active",
+    }).lean();
+    expect(membership).toBeTruthy();
+  });
+
+  test("is idempotent — assigning same subject twice does not create duplicate course", async () => {
+    const tenantId = "tenant_asubj4";
+    const { token: adminToken } = await createAdmin({ tenantId });
+
+    const cr = await adminCreateClass(adminToken, { name: "Grade 7B", grade: "7", section: "B" });
+    const classId = cr.body?.class?._id;
+
+    const subjRes = await adminCreateSubject(adminToken, { name: "Music", code: "MUS" });
+    const subjectId = subjRes.body?.subject?._id;
+
+    await adminAssignSubject(adminToken, classId, subjectId);
+    await adminAssignSubject(adminToken, classId, subjectId);
+
+    const count = await Course.countDocuments({ tenantId, subjectId, classroomId: classId, deleted: false });
+    expect(count).toBe(1);
+  });
+
+  test("listClasses reflects newly assigned subjects in subjects[] array", async () => {
+    const tenantId = "tenant_asubj5";
+    const { token: adminToken } = await createAdmin({ tenantId });
+
+    const cr = await adminCreateClass(adminToken, { name: "Grade 9B", grade: "9", section: "B" });
+    const classId = cr.body?.class?._id;
+
+    const subj1Res = await adminCreateSubject(adminToken, { name: "Biology", code: "BIO" });
+    const subj2Res = await adminCreateSubject(adminToken, { name: "History", code: "HIST" });
+    const subjectId1 = subj1Res.body?.subject?._id;
+    const subjectId2 = subj2Res.body?.subject?._id;
+
+    await adminAssignSubject(adminToken, classId, subjectId1);
+    await adminAssignSubject(adminToken, classId, subjectId2);
+
+    const listRes = await adminListClasses(adminToken);
+    expect(listRes.status).toBe(200);
+
+    const cls = (listRes.body?.items || []).find((c) => String(c._id) === String(classId));
+    expect(cls).toBeTruthy();
+    expect(Array.isArray(cls.subjects)).toBe(true);
+    expect(cls.subjects.length).toBeGreaterThanOrEqual(2);
+    const names = cls.subjects.map((s) => s.name);
+    expect(names).toContain("Biology");
+    expect(names).toContain("History");
+  });
+
+  test("returns 400 when subjectId is missing", async () => {
+    const tenantId = "tenant_asubj6";
+    const { token: adminToken } = await createAdmin({ tenantId });
+    const cr = await adminCreateClass(adminToken, { name: "Grade 7A", grade: "7", section: "A" });
+    const classId = cr.body?.class?._id;
+
+    const res = await request(app)
+      .post(`/api/admin/classes/${classId}/assign-subject`)
+      .set(authHeader(adminToken))
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  test("returns 404 when subject belongs to a different tenant", async () => {
+    const tenantId = "tenant_asubj7";
+    const otherTenantId = "tenant_other_asubj";
+    const { token: adminToken } = await createAdmin({ tenantId });
+    const { token: otherAdmin } = await createAdmin({ tenantId: otherTenantId });
+
+    const cr = await adminCreateClass(adminToken, { name: "Grade 7A", grade: "7", section: "A" });
+    const classId = cr.body?.class?._id;
+
+    // Create subject in the OTHER tenant
+    const subjRes = await request(app)
+      .post("/api/admin/subjects")
+      .set(authHeader(otherAdmin))
+      .send({ name: "Foreign Subject", code: "FSJ" });
+    const foreignSubjectId = subjRes.body?.subject?._id;
+
+    const res = await request(app)
+      .post(`/api/admin/classes/${classId}/assign-subject`)
+      .set(authHeader(adminToken))
+      .send({ subjectId: foreignSubjectId });
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("enrollStudents — deduplication fix", () => {
+  test("enrolling the same student ID twice in one request does not fail", async () => {
+    const tenantId = "tenant_dedup";
+    const { token: adminToken } = await createAdmin({ tenantId });
+    const { user: student } = await createStudent({ tenantId });
+
+    const cr = await adminCreateClass(adminToken, { name: "Grade 7A", grade: "7", section: "A" });
+    const classId = cr.body?.class?._id;
+
+    // Send duplicate ID — previously this would fail the strict count check
+    const res = await request(app)
+      .post(`/api/admin/classes/${classId}/enroll`)
+      .set(authHeader(adminToken))
+      .send({ studentIds: [student._id, student._id] });
+    expect(res.status).toBe(200);
+
+    const cls = await Classroom.findById(classId).lean();
+    const count = cls.studentIds.filter((id) => String(id) === String(student._id)).length;
+    expect(count).toBe(1); // stored exactly once
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 describe("RBAC on class endpoints", () => {
   test("STUDENT cannot list classes (403)", async () => {
     const { token } = await createStudent({ tenantId: "tenant_rbac" });
