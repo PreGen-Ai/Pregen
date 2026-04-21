@@ -3,41 +3,85 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import api from "../services/api/api.js";
+import AdminAIControlsPage from "../components/Dashboard/pages/AdminAIControlsPage.jsx";
+import AdminAnalyticsPage from "../components/Dashboard/pages/AdminAnalyticsPage.jsx";
 import AICostPage from "../components/Dashboard/pages/SuperAdmin/AICostPage.jsx";
 import AuditLogsPage from "../components/Dashboard/pages/SuperAdmin/AuditLogsPage.jsx";
 import FeatureFlagsPage from "../components/Dashboard/pages/SuperAdmin/FeatureFlagsPage.jsx";
+import SuperAdminAIControlsPage from "../components/Dashboard/pages/SuperAdmin/AIControlsPage.jsx";
 import SuperDashboardPage from "../components/Dashboard/pages/SuperAdmin/SuperDashboardPage.jsx";
-import AnalyticsReportsPage from "../pages/tools/AnalyticsReportsPage.jsx";
+
+const mockUseAuthContext = jest.fn();
+const mockUseActiveTenantScope = jest.fn();
 
 jest.mock("react-toastify", () => ({
   toast: {
     error: jest.fn(),
     success: jest.fn(),
+    info: jest.fn(),
   },
+}));
+
+jest.mock("../context/AuthContext.js", () => ({
+  useAuthContext: () => mockUseAuthContext(),
+}));
+
+jest.mock("../components/Dashboard/hooks/useActiveTenantScope.js", () => ({
+  __esModule: true,
+  default: () => mockUseActiveTenantScope(),
 }));
 
 jest.mock("../services/api/api.js", () => ({
   __esModule: true,
   default: {
     admin: {
-      getAnalyticsSummary: jest.fn(),
       exportAnalytics: jest.fn(),
-      listTenants: jest.fn(),
+      getAiSettings: jest.fn(),
       getAiRequestsSummary: jest.fn(),
-      listAiRequests: jest.fn(),
       getAICost: jest.fn(),
-      listFeatureFlags: jest.fn(),
-      superOverview: jest.fn(),
+      getAnalyticsSummary: jest.fn(),
+      listAiRequests: jest.fn(),
       listAuditLogs: jest.fn(),
+      listFeatureFlags: jest.fn(),
+      listTenants: jest.fn(),
+      superOverview: jest.fn(),
+      updateAiSettings: jest.fn(),
     },
   },
 }));
 
-describe("superadmin analytics pages", () => {
+function renderWithRouter(ui) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
+
+describe("admin and superadmin analytics pages", () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    api.admin.listTenants.mockResolvedValue({ items: [] });
+    mockUseAuthContext.mockReturnValue({
+      user: { role: "SUPERADMIN", tenantId: "platform" },
+      isAuthenticated: true,
+    });
+    mockUseActiveTenantScope.mockReturnValue({ tenantId: "", tenantName: "" });
+
+    api.admin.exportAnalytics.mockResolvedValue(new Blob(["test"]));
+    api.admin.getAiSettings.mockResolvedValue({
+      settings: {
+        enabled: true,
+        feedbackTone: "neutral",
+        softCapDaily: 50000,
+        softCapWeekly: 250000,
+        features: {
+          aiGrading: true,
+          aiQuizGen: true,
+          aiTutor: true,
+          aiSummaries: true,
+        },
+      },
+    });
+    api.admin.listTenants.mockResolvedValue({
+      items: [{ tenantId: "north-ridge", name: "North Ridge Academy" }],
+    });
     api.admin.getAiRequestsSummary.mockResolvedValue({
       summary: {
         requests: { value: null, state: "no_data", label: "No AI activity yet" },
@@ -57,13 +101,21 @@ describe("superadmin analytics pages", () => {
       summary: {
         requests: { value: null, state: "no_data", label: "No AI activity yet" },
         totalTokens: { value: null, state: "no_data", label: "No token data yet" },
-        estimatedCost: { value: null, state: "logging_inactive", label: "Cost logging not available yet" },
+        estimatedCost: {
+          value: null,
+          state: "logging_inactive",
+          label: "Cost logging not available yet",
+        },
       },
       charts: {
         requestsOverTime: { state: "no_data", label: "No AI activity yet", points: [] },
-        costOverTime: { state: "logging_inactive", label: "Cost logging not available yet", points: [] },
+        costOverTime: {
+          state: "logging_inactive",
+          label: "Cost logging not available yet",
+          points: [],
+        },
         latencyOverTime: { state: "no_data", label: "No latency data yet", points: [] },
-        usageByTenant: { state: "no_data", label: "No tenant usage data yet", points: [] },
+        usageByTenant: { state: "no_data", label: "No school usage data yet", points: [] },
       },
       byTenant: [],
       byFeature: [],
@@ -83,7 +135,11 @@ describe("superadmin analytics pages", () => {
         costToday: { value: null, state: "logging_inactive", label: "Cost logging not available yet" },
         costMTD: { value: null, state: "logging_inactive", label: "Cost logging not available yet" },
         p95LatencyMs: { value: null, state: "no_data", label: "No latency data yet" },
-        errors24h: { value: null, state: "logging_inactive", label: "Audit logging has no events yet" },
+        errors24h: {
+          value: null,
+          state: "logging_inactive",
+          label: "Audit logging has no events yet",
+        },
       },
       health: {
         state: "partial_telemetry",
@@ -102,9 +158,6 @@ describe("superadmin analytics pages", () => {
       items: [],
       meta: { totalAuditLogs: 0 },
     });
-  });
-
-  test("AnalyticsReportsPage renders no-data labels instead of zeros", async () => {
     api.admin.getAnalyticsSummary.mockResolvedValue({
       generatedAt: "2026-04-21T10:00:00.000Z",
       summary: {
@@ -114,8 +167,15 @@ describe("superadmin analytics pages", () => {
         activeTeachers: { value: null, state: "no_data", label: "No teacher activity in this range" },
       },
     });
+  });
 
-    render(<AnalyticsReportsPage />);
+  test("AdminAnalyticsPage renders school-scoped no-data labels instead of zeros", async () => {
+    mockUseAuthContext.mockReturnValue({
+      user: { role: "ADMIN", tenantId: "north-ridge", tenantName: "North Ridge Academy" },
+      isAuthenticated: true,
+    });
+
+    renderWithRouter(<AdminAnalyticsPage />);
 
     await waitFor(() => {
       expect(screen.getAllByText("No grading data yet").length).toBeGreaterThan(0);
@@ -125,8 +185,30 @@ describe("superadmin analytics pages", () => {
     expect(screen.queryByText(/^0%$/)).not.toBeInTheDocument();
   });
 
+  test("AdminAIControlsPage keeps school controls gated until a school is selected", async () => {
+    renderWithRouter(<AdminAIControlsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("School AI Controls")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/Choose a school before editing school-scoped AI controls/i)).toBeInTheDocument();
+    expect(screen.getByText(/School AI controls are intentionally separated from platform AI controls/i)).toBeInTheDocument();
+  });
+
+  test("SuperAdmin AI controls clearly render platform-default copy", async () => {
+    renderWithRouter(<SuperAdminAIControlsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Platform AI Controls")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/Set platform-wide defaults first/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Platform defaults/i).length).toBeGreaterThan(0);
+  });
+
   test("AICostPage shows truthful empty-state labels for missing telemetry", async () => {
-    render(<AICostPage />);
+    renderWithRouter(<AICostPage />);
 
     await waitFor(() => {
       expect(screen.getAllByText("No AI activity yet").length).toBeGreaterThan(0);
@@ -141,26 +223,22 @@ describe("superadmin analytics pages", () => {
   });
 
   test("FeatureFlagsPage keeps empty state explicit and read-only", async () => {
-    render(<FeatureFlagsPage />);
+    renderWithRouter(<FeatureFlagsPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Read-only mode")).toBeInTheDocument();
     });
 
     await waitFor(() => {
-      expect(screen.getAllByText("No feature flags have been created yet").length).toBeGreaterThan(0);
+      expect(
+        screen.getByText(/Create flags in the backend first, then return here for limited operational visibility/i),
+      ).toBeInTheDocument();
     });
-    expect(
-      screen.getByText(/Update and rollout endpoints are not wired yet/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/update and rollout endpoints are not wired yet/i)).toBeInTheDocument();
   });
 
   test("SuperDashboardPage surfaces partial telemetry instead of healthy defaults", async () => {
-    render(
-      <MemoryRouter>
-        <SuperDashboardPage />
-      </MemoryRouter>,
-    );
+    renderWithRouter(<SuperDashboardPage />);
 
     await waitFor(() => {
       expect(screen.getAllByText("No AI activity yet").length).toBeGreaterThan(0);
@@ -171,7 +249,7 @@ describe("superadmin analytics pages", () => {
   });
 
   test("AuditLogsPage shows audit empty state instead of a fake populated table", async () => {
-    render(<AuditLogsPage />);
+    renderWithRouter(<AuditLogsPage />);
 
     await waitFor(() => {
       expect(screen.getAllByText("No audit logs recorded yet").length).toBeGreaterThan(0);

@@ -122,6 +122,13 @@ export const clearToken = clearAuthToken;
  * You can set this from the Tenants page when you click "View tenant" or "Use tenant".
  */
 const ACTIVE_TENANT_KEY = "activeTenantId";
+const ACTIVE_TENANT_NAME_KEY = "activeTenantName";
+export const ACTIVE_TENANT_EVENT = "pregen:active-tenant-change";
+
+function dispatchActiveTenantEvent() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(ACTIVE_TENANT_EVENT));
+}
 
 export function getActiveTenantId() {
   if (typeof window === "undefined") return null;
@@ -129,15 +136,46 @@ export function getActiveTenantId() {
   return v ? String(v).trim() : null;
 }
 
-export function setActiveTenantId(tenantId) {
+export function getActiveTenantName() {
+  if (typeof window === "undefined") return null;
+  const v = localStorage.getItem(ACTIVE_TENANT_NAME_KEY);
+  return v ? String(v).trim() : null;
+}
+
+export function getActiveTenantContext() {
+  return {
+    tenantId: getActiveTenantId(),
+    tenantName: getActiveTenantName(),
+  };
+}
+
+export function setActiveTenantContext(tenantId, tenantName = "") {
   if (typeof window === "undefined") return;
-  if (!tenantId) return;
-  localStorage.setItem(ACTIVE_TENANT_KEY, String(tenantId).trim());
+
+  const normalizedTenantId = String(tenantId || "").trim();
+  if (!normalizedTenantId) return;
+
+  localStorage.setItem(ACTIVE_TENANT_KEY, normalizedTenantId);
+
+  const normalizedTenantName = String(tenantName || "").trim();
+  if (normalizedTenantName) {
+    localStorage.setItem(ACTIVE_TENANT_NAME_KEY, normalizedTenantName);
+  } else {
+    localStorage.removeItem(ACTIVE_TENANT_NAME_KEY);
+  }
+
+  dispatchActiveTenantEvent();
+}
+
+export function setActiveTenantId(tenantId) {
+  setActiveTenantContext(tenantId);
 }
 
 export function clearActiveTenantId() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(ACTIVE_TENANT_KEY);
+  localStorage.removeItem(ACTIVE_TENANT_NAME_KEY);
+  dispatchActiveTenantEvent();
 }
 
 /**

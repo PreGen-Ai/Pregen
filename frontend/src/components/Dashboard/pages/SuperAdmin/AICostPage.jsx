@@ -33,21 +33,16 @@ function errMsg(error, fallback) {
 function SummaryCard({ label, metric, formatter, fallback }) {
   return (
     <div className="dash-card py-3">
-      <div className="text-muted" style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-        {label}
-      </div>
+      <div className="dash-muted-label">{label}</div>
       <div
+        className={`dash-metric-value ${metric?.value === null || metric?.value === undefined ? "is-empty" : ""}`}
         style={{
-          fontSize: metric?.value === null || metric?.value === undefined ? "1rem" : "1.45rem",
-          fontWeight: 800,
-          color: metric?.value === null || metric?.value === undefined ? "var(--text-muted)" : "var(--text-heading)",
-          lineHeight: 1.2,
-          marginTop: 4,
+          marginTop: 6,
         }}
       >
         {formatMetricValue(metric, formatter, fallback)}
       </div>
-      <div className="text-muted mt-1" style={{ fontSize: "0.72rem" }}>
+      <div className="dash-supporting-text mt-2">
         {metricDescription(metric, fallback)}
       </div>
     </div>
@@ -85,7 +80,7 @@ function SourcePill({ label, status }) {
       </span>
       <div>
         <div style={{ fontWeight: 600 }}>{label}</div>
-        <div className="text-muted" style={{ fontSize: "0.75rem" }}>
+        <div className="dash-supporting-text">
           {status?.label || "No status available"}
         </div>
       </div>
@@ -291,23 +286,28 @@ export default function AICostPage() {
 
   return (
     <div className="quizzes-page">
-      <div className="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
+      <div className="dash-page-header">
         <div>
-          <h2>AI Usage and Cost</h2>
-          <p className="text-muted mb-0">
-            Truthful AI telemetry across requests, tokens, latency, cache behavior, and cost.
+          <div className="dash-page-kicker">Platform Scope</div>
+          <h2 className="dash-page-title">AI Usage & Cost</h2>
+          <p className="dash-page-subtitle">
+            Review truthful AI telemetry across requests, tokens, latency, cache
+            behavior, attribution, and cost. When telemetry is missing, the UI
+            labels that clearly instead of rendering misleading zero values.
           </p>
         </div>
-        <button
-          type="button"
-          className="btn btn-outline-secondary"
-          onClick={() => {
-            fetchRequests();
-            fetchCost();
-          }}
-        >
-          Refresh
-        </button>
+        <div className="dash-page-actions">
+          <button
+            type="button"
+            className="btn btn-outline-secondary"
+            onClick={() => {
+              fetchRequests();
+              fetchCost();
+            }}
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="dash-card mb-4">
@@ -327,10 +327,10 @@ export default function AICostPage() {
 
           <div className="col-12 col-sm-6 col-md-auto">
             <label className="form-label mb-1" style={{ fontSize: "0.82rem" }}>
-              Tenant
+              School
             </label>
             <select className="form-select" style={{ minWidth: 220 }} value={tenantFilter} onChange={(event) => setTenantFilter(event.target.value)}>
-              <option value="">All tenants</option>
+              <option value="">All schools</option>
               {tenants.map((tenant) => (
                 <option key={tenant.tenantId || tenant._id} value={tenant.tenantId}>
                   {tenant.name || tenant.tenantId}
@@ -349,17 +349,23 @@ export default function AICostPage() {
                 className={`btn btn-sm ${tab === "requests" ? "btn-primary" : "btn-outline-secondary"}`}
                 onClick={() => setTab("requests")}
               >
-                Requests
+                Requests & telemetry
               </button>
               <button
                 type="button"
                 className={`btn btn-sm ${tab === "cost" ? "btn-primary" : "btn-outline-secondary"}`}
                 onClick={() => setTab("cost")}
               >
-                Cost and charts
+                Cost & charts
               </button>
             </div>
           </div>
+        </div>
+
+        <div className="dash-supporting-text mt-3">
+          These views reflect recorded AI requests only. Missing provider cost
+          data, latency, or school attribution is shown as no data, partial
+          telemetry, or logging inactive.
         </div>
 
         <div className="mt-3 d-flex flex-wrap gap-3">
@@ -382,7 +388,7 @@ export default function AICostPage() {
           <div className="tenant-scope-banner scope-global mt-3">
             <FaGlobe />
             <span>
-              Showing data for <strong>all tenants</strong>
+              Showing data for <strong>all schools</strong>
             </span>
           </div>
         )}
@@ -408,7 +414,7 @@ export default function AICostPage() {
           <div className="dash-card mb-3">
             <div className="row g-2">
               <div className="col-12 col-md-4">
-                <input className="form-control form-control-sm" placeholder="Search request, feature, model, or tenant" value={q} onChange={(event) => setQ(event.target.value)} />
+                <input className="form-control form-control-sm" placeholder="Search request, feature, model, or school" value={q} onChange={(event) => setQ(event.target.value)} />
               </div>
               <div className="col-6 col-md-2">
                 <input className="form-control form-control-sm" placeholder="Provider" value={provider} onChange={(event) => setProvider(event.target.value)} />
@@ -438,8 +444,8 @@ export default function AICostPage() {
           <div className="dash-card">
             <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
               <div>
-                <h3 className="dash-card-title mb-0">Latest requests</h3>
-                <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+                <h3 className="dash-card-title mb-0">Latest AI requests</h3>
+                <div className="dash-supporting-text">
                   {reqListState?.label || "Recent AI requests"}
                 </div>
               </div>
@@ -452,7 +458,7 @@ export default function AICostPage() {
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>
                   Prev
                 </button>
-                <span className="text-muted" style={{ fontSize: "0.82em", whiteSpace: "nowrap" }}>
+                <span className="dash-supporting-text" style={{ whiteSpace: "nowrap" }}>
                   Page {page}
                 </span>
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setPage((current) => current + 1)} disabled={!canGoNext}>
@@ -477,7 +483,7 @@ export default function AICostPage() {
                   <thead>
                     <tr>
                       <th style={{ whiteSpace: "nowrap" }}>Time</th>
-                      <th>Tenant</th>
+                      <th>School</th>
                       <th>Provider</th>
                       <th>Model</th>
                       <th>Status</th>
@@ -493,7 +499,7 @@ export default function AICostPage() {
                         <td style={{ whiteSpace: "nowrap" }}>
                           {row.updatedAt ? new Date(row.updatedAt).toLocaleString() : row.createdAt ? new Date(row.createdAt).toLocaleString() : "-"}
                         </td>
-                        <td>{row.tenantId || "Unattributed"}</td>
+                        <td>{row.tenantName || row.tenantId || "Unattributed"}</td>
                         <td>{row.provider || "-"}</td>
                         <td>{row.model || "-"}</td>
                         <td>
@@ -552,26 +558,26 @@ export default function AICostPage() {
                   <ChartCard title="Latency over time" chart={charts.latencyOverTime} color="#fd7e14" emptyMessage="Latency appears after real AI requests complete." />
                 </div>
                 <div className="col-xl-6">
-                  <ChartCard title="Usage by tenant" chart={charts.usageByTenant} color="#6f42c1" bar emptyMessage="Tenant usage will appear once requests include tenant attribution." />
+                  <ChartCard title="Usage by school" chart={charts.usageByTenant} color="#6f42c1" bar emptyMessage="School usage appears after requests include school attribution." />
                 </div>
               </div>
 
               <div className="row g-4">
                 <div className="col-xl-6">
                   <div className="dash-card h-100">
-                    <h3 className="dash-card-title mb-3">By tenant</h3>
+                    <h3 className="dash-card-title mb-3">By school</h3>
                     {sortedTenants.length === 0 ? (
                       <EmptyState
                         icon={<FaBuilding />}
-                        title={costPayload?.charts?.usageByTenant?.label || "No tenant usage data yet"}
-                        message="Run AI features from a tenant context, then refresh to see attribution."
+                        title={costPayload?.charts?.usageByTenant?.label || "No school usage data yet"}
+                        message="Run AI features from a school context, then refresh to see attribution."
                       />
                     ) : (
                       <div className="table-responsive">
                         <table className="table table-hover align-middle mb-0" style={{ fontSize: "0.85em" }}>
                           <thead>
                             <tr>
-                              <th>Tenant</th>
+                              <th>School</th>
                               <SortTh label="Requests" sortKey="requests" currentKey={tenantSortKey} currentDir={tenantSortDir} onSort={toggleTenantSort} className="text-end" />
                               <SortTh label="Tokens" sortKey="tokens" currentKey={tenantSortKey} currentDir={tenantSortDir} onSort={toggleTenantSort} className="text-end" />
                               <SortTh label="Cost" sortKey="cost" currentKey={tenantSortKey} currentDir={tenantSortDir} onSort={toggleTenantSort} className="text-end" />
@@ -582,7 +588,7 @@ export default function AICostPage() {
                               <tr key={row.tenantId}>
                                 <td>
                                   <div style={{ fontWeight: 600 }}>{row.name || row.tenantId}</div>
-                                  <div className="text-muted" style={{ fontSize: "0.75em" }}>
+                                  <div className="dash-supporting-text">
                                     {row.tenantId}
                                     {row.plan ? ` · ${row.plan}` : ""}
                                   </div>

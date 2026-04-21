@@ -15,6 +15,7 @@ import { toast } from "react-toastify";
 
 // ✅ adjust if your path differs
 import api from "../../../../services/api/api.js";
+import { setActiveTenantContext } from "../../../../services/api/http.js";
 // ✅ uses your existing dashboard tool styling
 import "../../../styles/admin-tools.css";
 
@@ -88,6 +89,14 @@ async function copyText(text) {
     await navigator.clipboard.writeText(String(text));
   } catch {
     // ignore
+  }
+}
+
+function activateSchoolContext(tenant, { notify = true } = {}) {
+  if (!tenant?.tenantId) return;
+  setActiveTenantContext(tenant.tenantId, tenant.name || "");
+  if (notify) {
+    toast.success(`Selected school: ${tenant.name || tenant.tenantId}`);
   }
 }
 
@@ -378,8 +387,10 @@ function DetailModal({ open, onClose, tenant }) {
                     fontWeight: 1000,
                   }}
                   to={`/dashboard/superadmin/tenants/${encodeURIComponent(tenant.tenantId)}`}
+                  state={{ tenantName: tenant.name || "" }}
+                  onClick={() => activateSchoolContext(tenant, { notify: false })}
                 >
-                  View tenant
+                  Open school tools
                 </Link>
               </div>
             </div>
@@ -671,8 +682,8 @@ export default function TenantsPage() {
           <div>
             <div className="admin-title">Schools and Universities</div>
             <div style={{ color: "#D1D5DB", marginTop: 6 }}>
-              Multi-tenant control plane: status, plan, headcounts, AI cost
-              signals.
+              Platform directory for school accounts, plans, headcounts, and AI
+              telemetry signals.
             </div>
 
             <div
@@ -1001,8 +1012,20 @@ export default function TenantsPage() {
                     ? `/dashboard/superadmin/tenants/${encodeURIComponent(selectedTenant.tenantId)}`
                     : "/dashboard/admin/users"
                 }
+                state={
+                  selectedTenant?.tenantId
+                    ? { tenantName: selectedTenant?.name || "" }
+                    : undefined
+                }
+                onClick={() => {
+                  if (selectedTenant?.tenantId) {
+                    activateSchoolContext(selectedTenant, { notify: false });
+                  }
+                }}
               >
-                {selectedTenant?.tenantId ? "Manage Selected Tenant" : "Open User Tools"}
+                {selectedTenant?.tenantId
+                  ? "Open Selected School Tools"
+                  : "Open User Directory"}
               </Link>
             </div>
           </div>
@@ -1161,7 +1184,7 @@ export default function TenantsPage() {
               <table className="table" style={{ margin: 0 }}>
                 <thead>
                   <tr>
-                    <th>Tenant</th>
+                    <th>School</th>
 
                     <th
                       style={{ cursor: "pointer" }}
@@ -1244,7 +1267,7 @@ export default function TenantsPage() {
                             </div>
                             <div
                               style={{
-                                color: "#000000",
+                                color: "#a7b8cf",
                                 display: "flex",
                                 gap: 10,
                                 alignItems: "center",
@@ -1326,22 +1349,28 @@ export default function TenantsPage() {
                                   textDecoration: "none",
                                 }}
                                 to={`/dashboard/superadmin/tenants/${encodeURIComponent(t.tenantId)}`}
-                                onClick={(e) => e.stopPropagation()}
+                                state={{ tenantName: t.name || "" }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  activateSchoolContext(t, { notify: false });
+                                }}
                               >
-                                View
+                                Open Tools
                               </Link>
-                              <Link
+                              <button
+                                type="button"
                                 className="btn-ghost"
                                 style={{
                                   borderRadius: 12,
                                   padding: "8px 12px",
-                                  textDecoration: "none",
                                 }}
-                                to={`/dashboard/superadmin/tenants/${encodeURIComponent(t.tenantId)}`}
-                                onClick={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  activateSchoolContext(t);
+                                }}
                               >
-                                Users
-                              </Link>
+                                Use School
+                              </button>
 
                               <button
                                 type="button"

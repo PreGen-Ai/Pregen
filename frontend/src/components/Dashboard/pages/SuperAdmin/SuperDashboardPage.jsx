@@ -45,7 +45,7 @@ function StatCard({ title, value, sub, icon: Icon, state }) {
       <div className="d-flex align-items-start justify-content-between gap-2">
         <div>
           <div
-            className="text-muted"
+            className="dash-muted-label"
             style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.06em" }}
           >
             {title}
@@ -62,15 +62,15 @@ function StatCard({ title, value, sub, icon: Icon, state }) {
             {value}
           </div>
           {sub ? (
-            <div className="text-muted mt-1" style={{ fontSize: "0.72rem" }}>
+            <div className="dash-supporting-text mt-2">
               {sub}
             </div>
           ) : null}
         </div>
         {Icon ? (
-          <div className="text-muted" style={{ fontSize: "1.1rem", opacity: 0.45, flexShrink: 0 }}>
-            <Icon />
-          </div>
+        <div className="dash-supporting-text" style={{ fontSize: "1.1rem", flexShrink: 0 }}>
+          <Icon />
+        </div>
         ) : null}
       </div>
     </div>
@@ -146,8 +146,8 @@ export default function SuperDashboardPage() {
   const cards = useMemo(
     () => [
       {
-        title: "Active Tenants",
-        value: formatMetricValue(metrics.activeTenants, fmtInt, "No tenant data"),
+        title: "Active Schools",
+        value: formatMetricValue(metrics.activeTenants, fmtInt, "No school data"),
         sub: metricDescription(metrics.activeTenants, "Not suspended"),
         icon: FaServer,
         state: metrics.activeTenants?.state,
@@ -155,7 +155,7 @@ export default function SuperDashboardPage() {
       {
         title: "Total Students",
         value: formatMetricValue(metrics.totalStudents, fmtInt, "No student data"),
-        sub: metricDescription(metrics.totalStudents, "Across all tenants"),
+        sub: metricDescription(metrics.totalStudents, "Across all schools"),
         icon: FaUsers,
         state: metrics.totalStudents?.state,
       },
@@ -208,25 +208,39 @@ export default function SuperDashboardPage() {
   const links = useMemo(
     () => [
       {
-        title: "Tenants",
+        title: "Schools",
         icon: FaUsers,
-        desc: "Status, plan, headcounts, and AI usage signals.",
+        desc: "Operational view of plans, status, headcounts, and selected-school entry points.",
         to: "/dashboard/superadmin/tenants",
-        label: "Open Tenants",
+        label: "Open Schools",
       },
       {
-        title: "AI Cost",
+        title: "AI Usage & Cost",
         icon: FaRobot,
-        desc: "Requests over time, cost, latency, and tenant attribution.",
+        desc: "Requests over time, cost, latency, attribution, and telemetry gaps.",
         to: "/dashboard/superadmin/ai-cost",
-        label: "Open AI Cost",
+        label: "Open AI Usage & Cost",
+      },
+      {
+        title: "Platform AI Controls",
+        icon: FaMoneyBillWave,
+        desc: "Configure platform defaults and inspect school-level overrides from one control surface.",
+        to: "/dashboard/superadmin/ai-controls",
+        label: "Open Platform AI Controls",
+      },
+      {
+        title: "Audit Logs",
+        icon: FaServer,
+        desc: "Review system audit events and AI request telemetry in one observability surface.",
+        to: "/dashboard/superadmin/audit",
+        label: "Open Audit Logs",
       },
       {
         title: "Feature Flags",
-        icon: FaMoneyBillWave,
-        desc: "Read-only visibility into rollout state until mutations are wired.",
+        icon: FaBolt,
+        desc: "Limited operational visibility only. This surface remains read-only until rollout mutations are production-ready.",
         to: "/dashboard/superadmin/feature-flags",
-        label: "Open Flags",
+        label: "Open Limited View",
       },
     ],
     [],
@@ -234,27 +248,31 @@ export default function SuperDashboardPage() {
 
   return (
     <div className="quizzes-page">
-      <div className="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
+      <div className="dash-page-header">
         <div>
-          <h2>Platform Overview</h2>
-          <p className="text-muted mb-0">
-            Trustworthy platform telemetry across tenants, AI usage, cost, latency, and health.
+          <div className="dash-page-kicker">Platform Scope</div>
+          <h2 className="dash-page-title">Platform Analytics</h2>
+          <p className="dash-page-subtitle">
+            Trustworthy platform telemetry across schools, AI usage, cost,
+            latency, audit activity, and health.
           </p>
           {lastRefreshedAt ? (
-            <div className="text-muted mt-1" style={{ fontSize: "0.75rem" }}>
+            <div className="dash-supporting-text mt-2">
               Last refreshed: {lastRefreshedAt.toLocaleString()}
             </div>
           ) : null}
         </div>
-        <button
-          type="button"
-          onClick={load}
-          className="btn btn-outline-secondary d-inline-flex align-items-center gap-2"
-          disabled={loading}
-        >
-          <FaSyncAlt />
-          Refresh
-        </button>
+        <div className="dash-page-actions">
+          <button
+            type="button"
+            onClick={load}
+            className="btn btn-outline-secondary d-inline-flex align-items-center gap-2"
+            disabled={loading}
+          >
+            <FaSyncAlt />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <ErrorPanel message={error} />
@@ -292,13 +310,15 @@ export default function SuperDashboardPage() {
             <div className="col-lg-7">
               <div className="dash-card h-100">
                 <h3 className="dash-card-title mb-1 d-flex align-items-center gap-2">
-                  <FaServer /> Usage Spikes and Alerts
+                  <FaServer /> Platform Alerts
                 </h3>
-                <p className="text-muted mb-3" style={{ fontSize: "0.85em" }}>
-                  Recent notable events from audit logs and AI telemetry.
+                <p className="dash-supporting-text mb-3">
+                  Recent notable events from audit logs and AI telemetry. When
+                  telemetry is incomplete, that is reflected in the labels
+                  rather than being rendered as healthy-looking zeros.
                 </p>
                 {alerts.length === 0 ? (
-                  <div className="text-muted" style={{ fontSize: "0.85em" }}>
+                  <div className="dash-supporting-text">
                     <div style={{ fontWeight: 600, color: "var(--text-heading)" }}>
                       {overview?.alerts?.label || "No recent spikes detected"}
                     </div>
@@ -314,7 +334,7 @@ export default function SuperDashboardPage() {
                           <th>Time</th>
                           <th>Level</th>
                           <th>Type</th>
-                          <th>Tenant</th>
+                          <th>School</th>
                           <th>Details</th>
                         </tr>
                       </thead>
@@ -342,12 +362,12 @@ export default function SuperDashboardPage() {
 
           <div className="row g-3">
             {links.map((item) => (
-              <div key={item.to} className="col-md-4">
+              <div key={item.to} className="col-md-6 col-xl-3">
                 <div className="dash-card h-100">
                   <h3 className="dash-card-title mb-2 d-flex align-items-center gap-2">
                     <item.icon /> {item.title}
                   </h3>
-                  <p className="text-muted mb-3" style={{ fontSize: "0.85em" }}>
+                  <p className="dash-supporting-text mb-3">
                     {item.desc}
                   </p>
                   <Link className="btn btn-sm btn-outline-primary" to={item.to}>

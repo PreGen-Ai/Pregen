@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FaCopy, FaExclamationTriangle, FaRobot, FaSearch, FaSyncAlt } from "react-icons/fa";
+import {
+  FaCopy,
+  FaExclamationTriangle,
+  FaRobot,
+  FaSearch,
+  FaShieldAlt,
+  FaSyncAlt,
+} from "react-icons/fa";
 
 import api from "../../../../services/api/api.js";
 import EmptyState from "../../components/ui/EmptyState.jsx";
@@ -17,7 +24,7 @@ async function copyText(text) {
   try {
     await navigator.clipboard.writeText(String(text));
   } catch {
-    // ignore clipboard failures
+    // Ignore clipboard failures.
   }
 }
 
@@ -27,10 +34,8 @@ function ErrorPanel({ message }) {
     <div className="alert alert-danger d-flex align-items-start gap-2 mb-3">
       <FaExclamationTriangle className="flex-shrink-0 mt-1" />
       <div>
-        <div className="fw-semibold">Unable to load logs</div>
-        <div className="mt-1" style={{ fontSize: "0.85em" }}>
-          {message}
-        </div>
+        <div className="fw-semibold">Unable to load audit data</div>
+        <div className="dash-supporting-text mt-1">{message}</div>
       </div>
     </div>
   );
@@ -38,16 +43,17 @@ function ErrorPanel({ message }) {
 
 function DetailsModal({ open, onClose, title, data }) {
   if (!open) return null;
+
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 1060 }}>
       <button
         type="button"
-        aria-label="Close"
+        aria-label="Close details"
         onClick={onClose}
         style={{
           position: "absolute",
           inset: 0,
-          background: "rgba(0,0,0,0.45)",
+          background: "rgba(0,0,0,0.5)",
           border: "none",
           cursor: "pointer",
         }}
@@ -57,21 +63,27 @@ function DetailsModal({ open, onClose, title, data }) {
           position: "absolute",
           left: "50%",
           top: "50%",
-          transform: "translate(-50%,-50%)",
-          width: "min(95vw, 780px)",
-          borderRadius: 12,
-          border: "1px solid var(--border-color, #d0d7de)",
-          background: "var(--card-bg, #fff)",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.45)",
-          overflow: "hidden",
-          maxHeight: "90vh",
+          transform: "translate(-50%, -50%)",
+          width: "min(95vw, 820px)",
+          maxHeight: "88vh",
           display: "flex",
           flexDirection: "column",
+          borderRadius: 18,
+          overflow: "hidden",
+          border: "1px solid rgba(148, 163, 184, 0.24)",
+          background: "linear-gradient(180deg, rgba(16, 28, 44, 0.98), rgba(9, 18, 31, 0.98))",
+          boxShadow: "0 26px 70px rgba(0, 0, 0, 0.5)",
         }}
       >
-        <div className="d-flex align-items-center justify-content-between gap-3 px-4 py-3" style={{ borderBottom: "1px solid var(--border-color, #d0d7de)" }}>
-          <div className="fw-bold" style={{ fontSize: "1rem" }}>
-            {title}
+        <div
+          className="d-flex align-items-center justify-content-between gap-3 px-4 py-3"
+          style={{ borderBottom: "1px solid rgba(148, 163, 184, 0.18)" }}
+        >
+          <div>
+            <div className="dash-card-title">{title}</div>
+            <div className="dash-supporting-text mt-1">
+              Structured payload for operational review and escalation.
+            </div>
           </div>
           <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onClose}>
             Close
@@ -80,14 +92,15 @@ function DetailsModal({ open, onClose, title, data }) {
         <div className="p-4" style={{ overflowY: "auto" }}>
           <pre
             style={{
-              fontSize: "0.78rem",
-              overflow: "auto",
-              maxHeight: "60vh",
-              borderRadius: 8,
-              border: "1px solid var(--border-color, #d0d7de)",
-              background: "rgba(0,0,0,0.04)",
-              padding: 12,
               margin: 0,
+              padding: 14,
+              borderRadius: 14,
+              border: "1px solid rgba(148, 163, 184, 0.18)",
+              background: "rgba(6, 14, 25, 0.8)",
+              color: "#f3f8ff",
+              fontSize: "0.79rem",
+              lineHeight: 1.55,
+              overflow: "auto",
             }}
           >
             {safeJson(data)}
@@ -157,7 +170,7 @@ export default function AuditLogsPage() {
     () =>
       collectionItems(systemPayload).map((item) => ({
         id: item.id || item._id,
-        timestamp: item.timestamp,
+        timestamp: item.timestamp || item.createdAt,
         level: item.level || "info",
         type: item.type || "event",
         tenantId: item.tenantId || "Platform",
@@ -175,12 +188,12 @@ export default function AuditLogsPage() {
         timestamp: item.updatedAt || item.createdAt,
         level: item.status === "error" ? "error" : "info",
         type: item.feature || item.endpoint || "ai_request",
-        tenantId: item.tenantId || "Unattributed",
+        tenantId: item.tenantName || item.tenantId || "Unattributed",
         actor: item.provider || "ai",
         message:
           item.status === "error"
             ? `AI request failed for ${item.feature || item.endpoint || "unknown feature"}`
-            : `${item.feature || item.endpoint || "AI request"}${item.latencyMs ? ` · ${Math.round(item.latencyMs)} ms` : ""}`,
+            : `${item.feature || item.endpoint || "AI request"}${item.latencyMs ? ` | ${Math.round(item.latencyMs)} ms` : ""}`,
         raw: item,
       })),
     [aiPayload],
@@ -204,31 +217,58 @@ export default function AuditLogsPage() {
 
   return (
     <div className="quizzes-page">
-      <div className="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
+      <div className="dash-page-header">
         <div>
-          <h2>Platform Analytics</h2>
-          <p className="text-muted mb-0">System audit events and AI request telemetry across all tenants.</p>
+          <div className="dash-page-kicker">Observability</div>
+          <h2 className="dash-page-title">Audit Logs</h2>
+          <p className="dash-page-subtitle">
+            Review platform audit events and AI request telemetry without mixing them into
+            analytics summaries. Missing telemetry is labeled clearly so no-data states are
+            not mistaken for quiet or healthy systems.
+          </p>
         </div>
-        <button type="button" onClick={load} className="btn btn-outline-secondary d-inline-flex align-items-center gap-2" disabled={loading}>
-          <FaSyncAlt />
-          Refresh
-        </button>
+        <div className="dash-page-actions">
+          <button
+            type="button"
+            onClick={load}
+            className="btn btn-outline-secondary d-inline-flex align-items-center gap-2"
+            disabled={loading}
+          >
+            <FaSyncAlt />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="dash-card mb-4">
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
-          <div className="d-flex gap-2">
-            <button type="button" className={`btn btn-sm ${tab === "system" ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setTab("system")}>
-              System logs
+          <div className="btn-group" role="group" aria-label="Audit views">
+            <button
+              type="button"
+              className={`btn btn-sm ${tab === "system" ? "btn-primary" : "btn-outline-secondary"}`}
+              onClick={() => setTab("system")}
+            >
+              System audit events
             </button>
-            <button type="button" className={`btn btn-sm ${tab === "ai" ? "btn-primary" : "btn-outline-secondary"}`} onClick={() => setTab("ai")}>
-              AI requests
+            <button
+              type="button"
+              className={`btn btn-sm ${tab === "ai" ? "btn-primary" : "btn-outline-secondary"}`}
+              onClick={() => setTab("ai")}
+            >
+              AI request telemetry
             </button>
           </div>
-          <div className="text-muted" style={{ fontSize: "0.8rem" }}>
+
+          <div className="dash-supporting-text">
             {currentLabel || "Recent platform events"}
-            {tab === "ai" ? ` · ${currentTotal} total` : ""}
+            {tab === "ai" ? ` | ${currentTotal} total records` : ""}
           </div>
+        </div>
+
+        <div className="dash-inline-note mb-3">
+          Use system audit events for operational review and compliance traces. Use AI request
+          telemetry to inspect provider behavior, latency, and errors without treating missing
+          logs as real zero activity.
         </div>
 
         <div className="row g-2">
@@ -241,12 +281,21 @@ export default function AuditLogsPage() {
                 className="form-control"
                 value={q}
                 onChange={(event) => setQ(event.target.value)}
-                placeholder={tab === "system" ? "Search by tenant, actor, type, or message" : "Search request, feature, provider, model, or tenant"}
+                placeholder={
+                  tab === "system"
+                    ? "Search by school, actor, event type, or message"
+                    : "Search request, feature, provider, model, or school"
+                }
               />
             </div>
           </div>
           <div className="col-12 col-md-3">
-            <input className="form-control form-control-sm" value={tenantId} onChange={(event) => setTenantId(event.target.value)} placeholder="Filter by tenant" />
+            <input
+              className="form-control form-control-sm"
+              value={tenantId}
+              onChange={(event) => setTenantId(event.target.value)}
+              placeholder="Filter by school"
+            />
           </div>
           <div className="col-6 col-md-2">
             {tab === "system" ? (
@@ -267,10 +316,20 @@ export default function AuditLogsPage() {
           </div>
           {tab === "ai" ? (
             <div className="col-6 col-md-2 d-flex gap-2">
-              <button type="button" className="btn btn-sm btn-outline-secondary flex-fill" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={loading || page <= 1}>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary flex-fill"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={loading || page <= 1}
+              >
                 Prev
               </button>
-              <button type="button" className="btn btn-sm btn-outline-secondary flex-fill" onClick={() => setPage((current) => current + 1)} disabled={loading || !canGoNext}>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary flex-fill"
+                onClick={() => setPage((current) => current + 1)}
+                disabled={loading || !canGoNext}
+              >
                 Next
               </button>
             </div>
@@ -282,10 +341,10 @@ export default function AuditLogsPage() {
 
       <div className="dash-card">
         {loading ? (
-          <div className="text-muted py-4 text-center">Loading...</div>
+          <div className="dash-supporting-text py-4 text-center">Loading audit data...</div>
         ) : rows.length === 0 ? (
           <EmptyState
-            icon={<FaRobot />}
+            icon={tab === "system" ? <FaShieldAlt /> : <FaRobot />}
             title={currentLabel || "No logs found"}
             message={
               tab === "system"
@@ -297,13 +356,13 @@ export default function AuditLogsPage() {
           />
         ) : (
           <div className="table-responsive">
-            <table className="table table-hover align-middle mb-0" style={{ fontSize: "0.83em" }}>
+            <table className="table table-hover align-middle mb-0">
               <thead>
                 <tr>
                   <th style={{ whiteSpace: "nowrap" }}>Time</th>
                   <th>Level</th>
                   <th>Type</th>
-                  <th>Tenant</th>
+                  <th>School</th>
                   <th>Actor</th>
                   <th>Message</th>
                   <th>Actions</th>
@@ -312,14 +371,20 @@ export default function AuditLogsPage() {
               <tbody>
                 {rows.map((row, index) => (
                   <tr key={row.id || index}>
-                    <td style={{ whiteSpace: "nowrap" }}>{row.timestamp ? new Date(row.timestamp).toLocaleString() : "-"}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {row.timestamp ? new Date(row.timestamp).toLocaleString() : "-"}
+                    </td>
                     <td>
                       <span className={`badge ${sourceBadgeClass(row.level)}`}>{row.level || "-"}</span>
                     </td>
                     <td>{row.type || "-"}</td>
                     <td>{row.tenantId || "-"}</td>
-                    <td style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.actor || "-"}</td>
-                    <td style={{ maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.message || "-"}</td>
+                    <td style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {row.actor || "-"}
+                    </td>
+                    <td style={{ maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {row.message || "-"}
+                    </td>
                     <td>
                       <div className="d-flex align-items-center gap-2">
                         <button type="button" className="btn btn-sm btn-outline-secondary" onClick={() => setSelected(row)}>
@@ -348,7 +413,7 @@ export default function AuditLogsPage() {
       <DetailsModal
         open={!!selected}
         onClose={() => setSelected(null)}
-        title={selected ? `${tab === "system" ? "System log" : "AI request"} details` : "Details"}
+        title={selected ? `${tab === "system" ? "System audit event" : "AI request"} details` : "Details"}
         data={selected?.raw || selected}
       />
     </div>

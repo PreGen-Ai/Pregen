@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { FaExclamationTriangle, FaSyncAlt } from "react-icons/fa";
+import { FaExclamationTriangle, FaEye, FaSyncAlt } from "react-icons/fa";
 
 import api from "../../../../services/api/api.js";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 
-const Pill = ({ children, tone = "neutral" }) => {
+function Pill({ children, tone = "neutral" }) {
   const cls =
     tone === "success"
       ? "bg-success-subtle text-success"
@@ -15,22 +15,30 @@ const Pill = ({ children, tone = "neutral" }) => {
           : "bg-secondary-subtle text-secondary-emphasis";
 
   return <span className={`badge ${cls}`}>{children}</span>;
-};
+}
 
-const Toggle = ({ checked }) => (
-  <button type="button" disabled aria-disabled="true" className={`btn btn-sm ${checked ? "btn-success" : "btn-outline-secondary"}`}>
-    {checked ? "Enabled" : "Disabled"}
-  </button>
-);
+function ReadOnlyToggle({ checked }) {
+  return (
+    <button
+      type="button"
+      disabled
+      aria-disabled="true"
+      className={`btn btn-sm ${checked ? "btn-outline-success" : "btn-outline-secondary"}`}
+    >
+      {checked ? "Enabled by default" : "Disabled by default"}
+    </button>
+  );
+}
 
 function ErrorPanel({ message }) {
   if (!message) return null;
   return (
     <div className="alert alert-danger">
       <div className="fw-semibold d-flex align-items-center gap-2">
-        <FaExclamationTriangle /> {message}
+        <FaExclamationTriangle />
+        {message}
       </div>
-      <div className="small mt-2">
+      <div className="dash-supporting-text mt-2">
         Expected endpoint: <code>/api/admin/system/super/feature-flags</code>
       </div>
     </div>
@@ -124,42 +132,65 @@ export default function FeatureFlagsPage() {
 
   return (
     <div className="quizzes-page">
-      <div className="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
+      <div className="dash-page-header">
         <div>
-          <h2>Feature Flags</h2>
-          <p className="text-muted mb-0">Read-only rollout visibility for platform and tenant flags.</p>
-          <div className="d-flex flex-wrap gap-2 mt-2">
-            <Pill>{stats.globalCount} global</Pill>
-            <Pill>{stats.tenantCount} tenant</Pill>
+          <div className="dash-page-kicker">Limited Visibility</div>
+          <h2 className="dash-page-title">Feature Flags</h2>
+          <p className="dash-page-subtitle">
+            Read-only operational visibility for platform and school-scoped flags. This surface
+            is intentionally hidden from primary navigation until rollout mutation flows are ready
+            for production customers.
+          </p>
+          <div className="d-flex flex-wrap gap-2 mt-3">
+            <Pill>{stats.globalCount} platform</Pill>
+            <Pill>{stats.tenantCount} school</Pill>
             <Pill>{stats.enabledDefaults} default enabled</Pill>
           </div>
         </div>
 
-        <button type="button" onClick={load} className="btn btn-outline-secondary d-inline-flex align-items-center gap-2" disabled={loading}>
-          <FaSyncAlt />
-          Refresh
-        </button>
+        <div className="dash-page-actions">
+          <button
+            type="button"
+            onClick={load}
+            className="btn btn-outline-secondary d-inline-flex align-items-center gap-2"
+            disabled={loading}
+          >
+            <FaSyncAlt />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="dash-card mb-4">
+        <div className="alert alert-secondary mb-0">
+          <div className="fw-semibold d-flex align-items-center gap-2">
+            <FaEye />
+            Read-only mode
+          </div>
+          <div className="dash-supporting-text mt-2">
+            Backend list support is available, but update and rollout endpoints are not wired yet.
+            This page intentionally avoids implying that live flag mutations are production-ready.
+          </div>
+        </div>
       </div>
 
       <div className="dash-card">
-        <div className="alert alert-secondary mb-3">
-          <div className="fw-semibold">Read-only mode</div>
-          <div className="small mt-1">
-            Backend list support is available. Update and rollout endpoints are not wired yet, so this page intentionally avoids implying live mutations.
-          </div>
-        </div>
-
         <div className="row g-3 align-items-end mb-3">
           <div className="col-md-5">
             <label className="form-label mb-1">Search</label>
-            <input value={q} onChange={(event) => setQ(event.target.value)} className="form-control" placeholder="Search by key or description" />
+            <input
+              value={q}
+              onChange={(event) => setQ(event.target.value)}
+              className="form-control"
+              placeholder="Search by flag key or description"
+            />
           </div>
           <div className="col-md-3">
             <label className="form-label mb-1">Scope</label>
             <select value={scope} onChange={(event) => setScope(event.target.value)} className="form-select">
               <option value="all">All scopes</option>
-              <option value="global">Global</option>
-              <option value="tenant">Tenant</option>
+              <option value="global">Platform</option>
+              <option value="tenant">School</option>
             </select>
           </div>
           <div className="col-md-4 d-flex justify-content-md-end gap-2">
@@ -171,11 +202,11 @@ export default function FeatureFlagsPage() {
         <ErrorPanel message={error} />
 
         {loading ? (
-          <div className="text-muted">Loading...</div>
+          <div className="dash-supporting-text">Loading feature flags...</div>
         ) : sorted.length === 0 ? (
           <EmptyState
             title={payload?.label || "No feature flags have been created yet"}
-            message="Create flags in the backend first, then return here for read-only visibility across global and tenant scope."
+            message="Create flags in the backend first, then return here for limited operational visibility across platform and school scope."
             action="Refresh"
             onAction={load}
           />
@@ -184,16 +215,16 @@ export default function FeatureFlagsPage() {
             <table className="table align-middle mb-0">
               <thead>
                 <tr>
-                  <th className="cursor-pointer" onClick={() => onSort("key")}>
+                  <th style={{ cursor: "pointer" }} onClick={() => onSort("key")}>
                     Key {sortKey === "key" ? (sortDir === "desc" ? "↓" : "↑") : ""}
                   </th>
                   <th>Description</th>
                   <th>Default</th>
-                  <th className="text-end cursor-pointer" onClick={() => onSort("overrides")}>
+                  <th className="text-end" style={{ cursor: "pointer" }} onClick={() => onSort("overrides")}>
                     Overrides {sortKey === "overrides" ? (sortDir === "desc" ? "↓" : "↑") : ""}
                   </th>
                   <th>Scope</th>
-                  <th className="cursor-pointer" onClick={() => onSort("updatedAt")}>
+                  <th style={{ cursor: "pointer" }} onClick={() => onSort("updatedAt")}>
                     Updated {sortKey === "updatedAt" ? (sortDir === "desc" ? "↓" : "↑") : ""}
                   </th>
                 </tr>
@@ -206,8 +237,8 @@ export default function FeatureFlagsPage() {
                     </td>
                     <td>{flag.description || "-"}</td>
                     <td>
-                      <div className="d-flex align-items-center gap-2">
-                        <Toggle checked={!!flag.defaultEnabled} />
+                      <div className="d-flex align-items-center gap-2 flex-wrap">
+                        <ReadOnlyToggle checked={!!flag.defaultEnabled} />
                         <Pill tone={flag.defaultEnabled ? "success" : "danger"}>
                           {flag.defaultEnabled ? "enabled" : "disabled"}
                         </Pill>
@@ -215,7 +246,9 @@ export default function FeatureFlagsPage() {
                     </td>
                     <td className="text-end">{flag.tenantOverridesCount ?? 0}</td>
                     <td>
-                      <Pill tone={flag.scope === "tenant" ? "warning" : "neutral"}>{flag.scope || "-"}</Pill>
+                      <Pill tone={flag.scope === "tenant" ? "warning" : "neutral"}>
+                        {flag.scope === "tenant" ? "school" : flag.scope || "-"}
+                      </Pill>
                     </td>
                     <td>{flag.updatedAt ? new Date(flag.updatedAt).toLocaleString() : "-"}</td>
                   </tr>

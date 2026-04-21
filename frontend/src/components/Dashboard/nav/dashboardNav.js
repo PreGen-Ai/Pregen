@@ -1,6 +1,7 @@
 import { ROLES } from "./roles";
 
-// Sidebar config (ONE sidebar). Items are filtered by allowedRoles.
+// Sidebar config (single sidebar). Items are filtered by allowedRoles and
+// optionally disabled until a superadmin selects a school context.
 export const dashboardNav = [
   {
     section: "Learning",
@@ -72,47 +73,64 @@ export const dashboardNav = [
     ],
   },
   {
-    section: "Administration",
+    section: "School Administration",
     items: [
       {
         key: "users",
         label: "Users",
         to: "/dashboard/admin/users",
-        allowedRoles: [ROLES.ADMIN, ROLES.SUPERADMIN],
+        allowedRoles: [ROLES.ADMIN],
       },
       {
         key: "workspace",
         label: "Academic Structure",
         to: "/dashboard/admin/workspace",
-        allowedRoles: [ROLES.ADMIN, ROLES.SUPERADMIN],
+        allowedRoles: [ROLES.ADMIN],
       },
       {
         key: "subjects",
         label: "Subjects",
         to: "/dashboard/admin/subjects",
-        allowedRoles: [ROLES.ADMIN, ROLES.SUPERADMIN],
+        allowedRoles: [ROLES.ADMIN],
       },
       {
         key: "branding",
         label: "Branding",
         to: "/dashboard/admin/branding",
-        allowedRoles: [ROLES.ADMIN, ROLES.SUPERADMIN],
+        allowedRoles: [ROLES.ADMIN],
       },
       {
         key: "tenantAiControls",
-        label: "Tenant AI Controls",
+        label: "AI Controls",
         to: "/dashboard/admin/ai-controls",
-        allowedRoles: [ROLES.ADMIN, ROLES.SUPERADMIN],
+        allowedRoles: [ROLES.ADMIN],
+      },
+      {
+        key: "schoolAnalytics",
+        label: "Analytics",
+        to: "/dashboard/admin/analytics",
+        allowedRoles: [ROLES.ADMIN],
+      },
+    ],
+  },
+  {
+    section: "Platform",
+    items: [
+      {
+        key: "platformAnalytics",
+        label: "Platform Analytics",
+        to: "/dashboard/superadmin/analytics",
+        allowedRoles: [ROLES.SUPERADMIN],
       },
       {
         key: "tenants",
-        label: "Schools / Universities",
+        label: "Schools",
         to: "/dashboard/superadmin/tenants",
         allowedRoles: [ROLES.SUPERADMIN],
       },
       {
-        key: "aiControls",
-        label: "AI Controls",
+        key: "platformAiControls",
+        label: "Platform AI Controls",
         to: "/dashboard/superadmin/ai-controls",
         allowedRoles: [ROLES.SUPERADMIN],
       },
@@ -123,22 +141,58 @@ export const dashboardNav = [
         allowedRoles: [ROLES.SUPERADMIN],
       },
       {
-        key: "analytics",
-        label: "Analytics",
-        to: "/dashboard/superadmin/analytics",
-        allowedRoles: [ROLES.SUPERADMIN],
-      },
-      {
-        key: "featureFlags",
-        label: "Feature Flags",
-        to: "/dashboard/superadmin/feature-flags",
-        allowedRoles: [ROLES.SUPERADMIN],
-      },
-      {
         key: "audit",
         label: "Audit Logs",
         to: "/dashboard/superadmin/audit",
         allowedRoles: [ROLES.SUPERADMIN],
+      },
+    ],
+  },
+  {
+    section: "Selected School",
+    helper: "Select a school from Schools to unlock school-scoped tools.",
+    items: [
+      {
+        key: "selectedSchoolUsers",
+        label: "School Users",
+        to: "/dashboard/admin/users",
+        allowedRoles: [ROLES.SUPERADMIN],
+        requiresActiveTenant: true,
+      },
+      {
+        key: "selectedSchoolWorkspace",
+        label: "Academic Structure",
+        to: "/dashboard/admin/workspace",
+        allowedRoles: [ROLES.SUPERADMIN],
+        requiresActiveTenant: true,
+      },
+      {
+        key: "selectedSchoolSubjects",
+        label: "Subjects",
+        to: "/dashboard/admin/subjects",
+        allowedRoles: [ROLES.SUPERADMIN],
+        requiresActiveTenant: true,
+      },
+      {
+        key: "selectedSchoolBranding",
+        label: "Branding",
+        to: "/dashboard/admin/branding",
+        allowedRoles: [ROLES.SUPERADMIN],
+        requiresActiveTenant: true,
+      },
+      {
+        key: "selectedSchoolAiControls",
+        label: "School AI Controls",
+        to: "/dashboard/admin/ai-controls",
+        allowedRoles: [ROLES.SUPERADMIN],
+        requiresActiveTenant: true,
+      },
+      {
+        key: "selectedSchoolAnalytics",
+        label: "School Analytics",
+        to: "/dashboard/admin/analytics",
+        allowedRoles: [ROLES.SUPERADMIN],
+        requiresActiveTenant: true,
       },
     ],
   },

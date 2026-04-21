@@ -327,6 +327,74 @@ describe("SuperAdmin — User Management (System-Wide)", () => {
       });
     expect(res.status).not.toBe(403);
   });
+
+  test("GET /api/admin/system/users supports tenantId, status, role, and search filters", async () => {
+    const { token } = await createSuperAdmin();
+
+    await Tenant.create([
+      {
+        tenantId: "north-ridge",
+        name: "North Ridge Academy",
+        status: "active",
+        plan: "pro",
+      },
+      {
+        tenantId: "south-bay",
+        name: "South Bay School",
+        status: "trial",
+        plan: "basic",
+      },
+    ]);
+
+    await createTeacher({
+      tenantId: "north-ridge",
+      email: "teacher@north.test",
+      firstName: "Ava",
+      lastName: "North",
+      enabled: true,
+    });
+    await createStudent({
+      tenantId: "north-ridge",
+      email: "blocked@north.test",
+      firstName: "Blake",
+      lastName: "Blocked",
+      enabled: true,
+      blocked: true,
+    });
+    await createAdmin({
+      tenantId: "south-bay",
+      email: "disabled@south.test",
+      firstName: "Dana",
+      lastName: "Disabled",
+      enabled: false,
+    });
+
+    const teacherRes = await request(app)
+      .get("/api/admin/system/users?tenantId=north-ridge&status=enabled&role=teacher&q=North%20Ridge")
+      .set(authHeader(token));
+
+    expect(teacherRes.status).toBe(200);
+    expect(teacherRes.body?.items).toHaveLength(1);
+    expect(teacherRes.body?.items?.[0]?.email).toBe("teacher@north.test");
+    expect(teacherRes.body?.items?.[0]?.tenantName).toBe("North Ridge Academy");
+    expect(teacherRes.body?.items?.[0]?.status).toBe("enabled");
+
+    const blockedRes = await request(app)
+      .get("/api/admin/system/users?tenantId=north-ridge&status=blocked")
+      .set(authHeader(token));
+
+    expect(blockedRes.status).toBe(200);
+    expect(blockedRes.body?.items).toHaveLength(1);
+    expect(blockedRes.body?.items?.[0]?.email).toBe("blocked@north.test");
+
+    const disabledRes = await request(app)
+      .get("/api/admin/system/users?status=disabled")
+      .set(authHeader(token));
+
+    expect(disabledRes.status).toBe(200);
+    expect(disabledRes.body?.items).toHaveLength(1);
+    expect(disabledRes.body?.items?.[0]?.email).toBe("disabled@south.test");
+  });
 });
 
 describe("Admin analytics summary payload", () => {

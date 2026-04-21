@@ -22,6 +22,10 @@ import {
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuthContext } from "../../context/AuthContext";
 import { useLogout } from "../../hooks/useLogout";
+import {
+  ACTIVE_TENANT_EVENT,
+  getActiveTenantContext,
+} from "../../services/api/http";
 import Login from "../LOGIN&REGISTRATION/Login/Login";
 
 import Logo320 from "../../assets/logo-320.webp";
@@ -36,6 +40,9 @@ const NavBar = () => {
   const [expanded, setExpanded] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeTenantContext, setActiveTenantContextState] = useState(() =>
+    getActiveTenantContext(),
+  );
 
   const navRef = useRef(null);
 
@@ -91,6 +98,20 @@ const NavBar = () => {
   useEffect(() => {
     if (isAuthenticated) setShowLoginModal(false);
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    const syncActiveTenant = () => {
+      setActiveTenantContextState(getActiveTenantContext());
+    };
+
+    window.addEventListener("storage", syncActiveTenant);
+    window.addEventListener(ACTIVE_TENANT_EVENT, syncActiveTenant);
+
+    return () => {
+      window.removeEventListener("storage", syncActiveTenant);
+      window.removeEventListener(ACTIVE_TENANT_EVENT, syncActiveTenant);
+    };
+  }, []);
 
   /* ============================ */
   /* Helpers */
@@ -151,6 +172,9 @@ const NavBar = () => {
   const avatarSrc =
     user?.profilePhoto ||
     `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}`;
+
+  const selectedSchoolLabel =
+    activeTenantContext?.tenantName || activeTenantContext?.tenantId || "";
 
   return (
     <>
@@ -283,6 +307,12 @@ const NavBar = () => {
                       {roleLabel}
                     </Dropdown.Header>
 
+                    {role === "superadmin" && selectedSchoolLabel ? (
+                      <Dropdown.Header className="small text-secondary border-top border-secondary-subtle">
+                        Selected School: {selectedSchoolLabel}
+                      </Dropdown.Header>
+                    ) : null}
+
                     <Dropdown.Item
                       as={Link}
                       to="/dashboard/settings"
@@ -338,7 +368,9 @@ const NavBar = () => {
                         to="/dashboard/admin/users"
                         onClick={closeNav}
                       >
-                        Admin Panel
+                        {role === "superadmin"
+                          ? "Platform User Directory"
+                          : "School User Management"}
                       </Dropdown.Item>
                     )}
 
@@ -346,25 +378,48 @@ const NavBar = () => {
                       <>
                         <Dropdown.Item
                           as={Link}
+                          to="/dashboard/superadmin/analytics"
+                          onClick={closeNav}
+                        >
+                          Platform Analytics
+                        </Dropdown.Item>
+                        <Dropdown.Item
+                          as={Link}
                           to="/dashboard/superadmin/tenants"
                           onClick={closeNav}
                         >
-                          Tenants
+                          Schools
                         </Dropdown.Item>
                         <Dropdown.Item
                           as={Link}
                           to="/dashboard/superadmin/ai-controls"
                           onClick={closeNav}
                         >
-                          AI Controls
+                          Platform AI Controls
                         </Dropdown.Item>
                         <Dropdown.Item
                           as={Link}
-                          to="/dashboard/superadmin/analytics"
+                          to="/dashboard/superadmin/ai-cost"
                           onClick={closeNav}
                         >
-                          Analytics
+                          AI Usage & Cost
                         </Dropdown.Item>
+                        <Dropdown.Item
+                          as={Link}
+                          to="/dashboard/superadmin/audit"
+                          onClick={closeNav}
+                        >
+                          Audit Logs
+                        </Dropdown.Item>
+                        {selectedSchoolLabel ? (
+                          <Dropdown.Item
+                            as={Link}
+                            to="/dashboard/admin/users"
+                            onClick={closeNav}
+                          >
+                            Selected School Tools
+                          </Dropdown.Item>
+                        ) : null}
                       </>
                     )}
 

@@ -48,18 +48,24 @@ const DashboardLayout = lazyPage(
   () => import("./components/Dashboard/layout/DashboardLayout"),
 );
 
-// pages/tools (from your screenshot)
-const UserManagementPage = lazyPage(
-  () => import("./pages/tools/UserManagementPage"),
+// school-scoped admin pages
+const AdminUsersPage = lazyPage(
+  () => import("./components/Dashboard/pages/AdminUsersPage"),
 );
-const AcademicStructurePage = lazyPage(
-  () => import("./pages/tools/AcademicStructurePage"),
+const AdminClassesPage = lazyPage(
+  () => import("./components/Dashboard/pages/AdminClassesPage"),
 );
-const SubjectsPage = lazyPage(() => import("./pages/tools/SubjectsPage"));
-const BrandingPage = lazyPage(() => import("./pages/tools/BrandingPage"));
-const AIControlsPage = lazyPage(() => import("./pages/tools/AIControlsPage"));
-const AnalyticsReportsPage = lazyPage(
-  () => import("./pages/tools/AnalyticsReportsPage"),
+const AdminSubjectsPage = lazyPage(
+  () => import("./components/Dashboard/pages/AdminSubjectsPage"),
+);
+const AdminBrandingPage = lazyPage(
+  () => import("./components/Dashboard/pages/AdminBrandingPage"),
+);
+const AdminAIControlsPage = lazyPage(
+  () => import("./components/Dashboard/pages/AdminAIControlsPage"),
+);
+const AdminAnalyticsPage = lazyPage(
+  () => import("./components/Dashboard/pages/AdminAnalyticsPage"),
 );
 
 // portals (from your screenshot)
@@ -80,6 +86,9 @@ const AuditLogsPage = lazyPage(
 );
 const FeatureFlagsPage = lazyPage(
   () => import("./components/Dashboard/pages/SuperAdmin/FeatureFlagsPage"),
+);
+const SuperAdminAIControlsPage = lazyPage(
+  () => import("./components/Dashboard/pages/SuperAdmin/AIControlsPage"),
 );
 const TenantScopeRedirect = lazyPage(
   () => import("./components/Dashboard/pages/SuperAdmin/TenantScopeRedirect"),
@@ -329,7 +338,7 @@ export default function App() {
                 path="admin/users"
                 element={
                   <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-                    <UserManagementPage />
+                    <AdminUsersPage />
                   </RequireRole>
                 }
               />
@@ -337,7 +346,7 @@ export default function App() {
                 path="admin/workspace"
                 element={
                   <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-                    <AcademicStructurePage />
+                    <AdminClassesPage />
                   </RequireRole>
                 }
               />
@@ -345,7 +354,7 @@ export default function App() {
                 path="admin/subjects"
                 element={
                   <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-                    <SubjectsPage />
+                    <AdminSubjectsPage />
                   </RequireRole>
                 }
               />
@@ -353,7 +362,7 @@ export default function App() {
                 path="admin/branding"
                 element={
                   <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-                    <BrandingPage />
+                    <AdminBrandingPage />
                   </RequireRole>
                 }
               />
@@ -361,7 +370,7 @@ export default function App() {
                 path="admin/ai-controls"
                 element={
                   <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-                    <AIControlsPage />
+                    <AdminAIControlsPage />
                   </RequireRole>
                 }
               />
@@ -369,7 +378,7 @@ export default function App() {
                 path="admin/analytics"
                 element={
                   <RequireRole allowedRoles={[ROLES.ADMIN, ROLES.SUPERADMIN]}>
-                    <AnalyticsReportsPage />
+                    <AdminAnalyticsPage />
                   </RequireRole>
                 }
               />
@@ -380,7 +389,7 @@ export default function App() {
                 path="superadmin/dashboard"
                 element={
                   <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
-                    <SuperDashboardPage />
+                    <Navigate to="/dashboard/superadmin/analytics" replace />
                   </RequireRole>
                 }
               />
@@ -428,7 +437,7 @@ export default function App() {
                 path="superadmin/ai-controls"
                 element={
                   <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
-                    <AIControlsPage />
+                    <SuperAdminAIControlsPage />
                   </RequireRole>
                 }
               />
@@ -436,7 +445,7 @@ export default function App() {
                 path="superadmin/analytics"
                 element={
                   <RequireRole allowedRoles={[ROLES.SUPERADMIN]}>
-                    <AnalyticsReportsPage />
+                    <SuperDashboardPage />
                   </RequireRole>
                 }
               />

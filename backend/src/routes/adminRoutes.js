@@ -129,6 +129,19 @@ function upper(v) {
 function lower(v) {
   return v === undefined || v === null ? v : String(v).trim().toLowerCase();
 }
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function applyUserStatusFilter(filter, statusValue) {
+  const status = lower(statusValue) || "";
+  if (status === "active" || status === "enabled") {
+    filter.enabled = { $ne: false };
+    filter.blocked = { $ne: true };
+  }
+  if (status === "disabled") filter.enabled = false;
+  if (status === "blocked") filter.blocked = true;
+  return filter;
+}
 function pickUser(u) {
   if (!u) return u;
   return {
@@ -141,6 +154,7 @@ function pickUser(u) {
     role: u.role,
     enabled: u.enabled !== false,
     blocked: !!u.blocked,
+    status: u.blocked ? "blocked" : u.enabled === false ? "disabled" : "enabled",
     tenantId: u.tenantId || u.orgId || null,
     createdAt: u.createdAt,
     updatedAt: u.updatedAt,
@@ -256,19 +270,18 @@ adminRouter.get("/users", async (req, res) => {
 
     const filter = { tenantId };
 
-    if (role) filter.role = upper(role);
+    if (role) filter.role = { $regex: `^${escapeRegex(role)}$`, $options: "i" };
 
-    if (status === "active") filter.enabled = { $ne: false };
-    if (status === "disabled") filter.enabled = false;
-    if (status === "blocked") filter.blocked = true;
+    applyUserStatusFilter(filter, status);
 
     if (q) {
+      const qRegex = { $regex: escapeRegex(q), $options: "i" };
       filter.$or = [
-        { email: { $regex: q, $options: "i" } },
-        { username: { $regex: q, $options: "i" } },
-        { name: { $regex: q, $options: "i" } },
-        { firstName: { $regex: q, $options: "i" } },
-        { lastName: { $regex: q, $options: "i" } },
+        { email: qRegex },
+        { username: qRegex },
+        { name: qRegex },
+        { firstName: qRegex },
+        { lastName: qRegex },
       ];
     }
 
@@ -1175,15 +1188,39 @@ adminSystemRouter.get("/users", ...requireSuperAdmin, async (req, res) => {
 
     const q = String(req.query.q || "").trim();
     const role = String(req.query.role || "").trim();
+    const status = String(req.query.status || "").trim();
+    const tenantId = String(req.query.tenantId || "").trim();
 
     const filter = {};
-    if (role) filter.role = upper(role);
+    if (role) filter.role = { $regex: `^${escapeRegex(role)}$`, $options: "i" };
+    if (tenantId) filter.tenantId = tenantId;
+
+    applyUserStatusFilter(filter, status);
 
     if (q) {
+      const qRegex = { $regex: escapeRegex(q), $options: "i" };
+      const matchingTenants = await col("tenants")
+        .find({
+          $or: [{ name: qRegex }, { tenantId: qRegex }],
+        })
+        .project({ tenantId: 1 })
+        .limit(50)
+        .toArray();
+      const matchingTenantIds = matchingTenants
+        .map((item) => item?.tenantId)
+        .filter(Boolean);
+
       filter.$or = [
-        { email: { $regex: q, $options: "i" } },
-        { username: { $regex: q, $options: "i" } },
-        { name: { $regex: q, $options: "i" } },
+        { email: qRegex },
+        { username: qRegex },
+        { name: qRegex },
+        { firstName: qRegex },
+        { lastName: qRegex },
+        { tenantId: qRegex },
+        { orgId: qRegex },
+        ...(matchingTenantIds.length
+          ? [{ tenantId: { $in: matchingTenantIds } }]
+          : []),
       ];
     }
 
@@ -1197,12 +1234,28 @@ adminSystemRouter.get("/users", ...requireSuperAdmin, async (req, res) => {
       col("users").countDocuments(filter),
     ]);
 
+    const tenantIds = Array.from(
+      new Set(itemsRaw.map((item) => item?.tenantId).filter(Boolean)),
+    );
+    const tenants = tenantIds.length
+      ? await col("tenants")
+          .find({ tenantId: { $in: tenantIds } })
+          .project({ tenantId: 1, name: 1 })
+          .toArray()
+      : [];
+    const tenantNameMap = new Map(
+      tenants.map((tenant) => [tenant.tenantId, tenant.name || tenant.tenantId]),
+    );
+
     return res.json({
       success: true,
       page,
       limit,
       total,
-      items: itemsRaw.map(pickUser),
+      items: itemsRaw.map((item) => ({
+        ...pickUser(item),
+        tenantName: tenantNameMap.get(item.tenantId) || null,
+      })),
     });
   } catch (e) {
     console.error("system users error:", e);

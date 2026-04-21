@@ -1005,6 +1005,14 @@ export const api = {
         }),
       ),
 
+    listSystemUsers: (params, config = {}) =>
+      safe(
+        apiClient.get(`${ADMIN_SYSTEM_BASE}/users`, {
+          ...config,
+          params: cleanParams(params),
+        }),
+      ),
+
     listTenantUsers: (params, config = {}) =>
       safe(
         apiClient.get(`${ADMIN_SYSTEM_BASE}/users`, {

@@ -1,16 +1,23 @@
-// Admin Subjects — CRUD via /api/admin/subjects
 import React, { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import api from "../../../services/api/api.js";
-import { useAuthContext } from "../../../context/AuthContext.js";
-import LoadingSpinner from "../components/ui/LoadingSpinner.jsx";
-import EmptyState from "../components/ui/EmptyState.jsx";
 
-const emptyForm = { name: "", code: "", description: "" };
+import { useAuthContext } from "../../../context/AuthContext.js";
+import api from "../../../services/api/api.js";
+import useActiveTenantScope from "../hooks/useActiveTenantScope.js";
+import EmptyState from "../components/ui/EmptyState.jsx";
+import LoadingSpinner from "../components/ui/LoadingSpinner.jsx";
+
+const EMPTY_FORM = { name: "", code: "", description: "" };
 
 export default function AdminSubjectsPage() {
   const { user } = useAuthContext() || {};
+  const navigate = useNavigate();
   const isSuperAdmin = String(user?.role || "").toUpperCase() === "SUPERADMIN";
+  const institutionName =
+    user?.tenantName || user?.institutionName || user?.tenantId || "";
+  const { tenantId: activeTenantId, tenantName: activeTenantName } =
+    useActiveTenantScope();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -18,32 +25,21 @@ export default function AdminSubjectsPage() {
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(EMPTY_FORM);
 
-  // Superadmin: tenant selector
-  const [tenants, setTenants] = useState([]);
-  const [selectedTenantId, setSelectedTenantId] = useState("");
-
-  useEffect(() => {
-    if (!isSuperAdmin) return;
-    api.admin.listTenants().then((res) => {
-      setTenants(Array.isArray(res?.items) ? res.items : []);
-    }).catch(() => {});
-  }, [isSuperAdmin]);
-
-  const cfg = isSuperAdmin && selectedTenantId
-    ? { headers: { "x-tenant-id": selectedTenantId } }
-    : {};
+  const schoolLabel =
+    activeTenantName || activeTenantId || institutionName || "your school";
 
   const load = useCallback(async () => {
-    if (isSuperAdmin && !selectedTenantId) {
+    if (isSuperAdmin && !activeTenantId) {
       setSubjects([]);
       setLoading(false);
       return;
     }
+
     setLoading(true);
     try {
-      const res = await api.admin.listSubjects({ limit: 200 }, cfg);
+      const res = await api.admin.listSubjects({ limit: 200 });
       setSubjects(
         Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [],
       );
@@ -52,34 +48,38 @@ export default function AdminSubjectsPage() {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSuperAdmin, selectedTenantId]);
+  }, [activeTenantId, isSuperAdmin]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const resetForm = () => {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setShowCreate(false);
+  };
 
   const save = async () => {
     if (!form.name.trim()) {
       toast.error("Subject name is required");
       return;
     }
-    if (isSuperAdmin && !selectedTenantId) {
-      toast.error("Select a tenant before saving");
+    if (isSuperAdmin && !activeTenantId) {
+      toast.error("Select a school before saving a subject");
       return;
     }
+
     setSaving(true);
     try {
       if (editingId) {
-        await api.admin.updateSubject(editingId, form, cfg);
+        await api.admin.updateSubject(editingId, form);
         toast.success("Subject updated");
       } else {
-        await api.admin.createSubject(form, cfg);
+        await api.admin.createSubject(form);
         toast.success("Subject created");
       }
-      setForm(emptyForm);
-      setEditingId(null);
-      setShowCreate(false);
+      resetForm();
       await load();
     } catch (e) {
       toast.error(e?.message || "Failed to save subject");
@@ -99,9 +99,10 @@ export default function AdminSubjectsPage() {
   };
 
   const deleteSubject = async (subject) => {
-    if (!window.confirm(`Delete subject "${subject.name}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete subject "${subject.name}"?`)) return;
+
     try {
-      await api.admin.deleteSubject(subject._id, cfg);
+      await api.admin.deleteSubject(subject._id);
       toast.success("Subject deleted");
       await load();
     } catch (e) {
@@ -109,183 +110,224 @@ export default function AdminSubjectsPage() {
     }
   };
 
-  const cancelEdit = () => {
-    setEditingId(null);
-    setForm(emptyForm);
-    setShowCreate(false);
-  };
-
   const visible = subjects.filter(
-    (s) =>
+    (subject) =>
       !search.trim() ||
-      String(s.name || "").toLowerCase().includes(search.toLowerCase()),
+      String(subject.name || "").toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
     <div className="quizzes-page">
-      <div className="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-3">
+      <div className="dash-page-header">
         <div>
-          <h2>Subjects</h2>
-          <p className="text-muted mb-0">
-            Manage the subjects available in your institution.
+          <div className="dash-page-kicker">School Scope</div>
+          <h2 className="dash-page-title">Subjects</h2>
+          <p className="dash-page-subtitle">
+            Maintain the subject catalog used by <strong>{schoolLabel}</strong>.
           </p>
         </div>
-        <button
-          className="btn btn-primary"
-          onClick={() => {
-            if (showCreate && !editingId) {
-              setShowCreate(false);
-            } else {
-              cancelEdit();
-              setShowCreate(true);
-            }
-          }}
-        >
-          {showCreate && !editingId ? "Cancel" : "+ Add subject"}
-        </button>
+        <div className="dash-page-actions">
+          <button
+            type="button"
+            className="btn btn-outline-secondary"
+            onClick={load}
+            disabled={loading || saving}
+          >
+            Reload
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              if (showCreate && !editingId) {
+                setShowCreate(false);
+              } else {
+                setEditingId(null);
+                setForm(EMPTY_FORM);
+                setShowCreate(true);
+              }
+            }}
+          >
+            {showCreate && !editingId ? "Cancel" : "Add Subject"}
+          </button>
+        </div>
       </div>
 
-      {/* Superadmin: tenant selector */}
-      {isSuperAdmin && (
-        <div className="dash-card mb-4">
-          <div className="d-flex align-items-center gap-3 flex-wrap">
-            <label className="fw-semibold mb-0" style={{ minWidth: 90 }}>Tenant</label>
-            <select
-              className={`form-select ${!selectedTenantId ? "border-warning" : ""}`}
-              style={{ maxWidth: 300 }}
-              value={selectedTenantId}
-              onChange={(e) => setSelectedTenantId(e.target.value)}
-            >
-              <option value="">— Select tenant —</option>
-              {tenants.map((t) => (
-                <option key={t._id} value={t.tenantId}>
-                  {t.name || t.tenantId}
-                </option>
-              ))}
-            </select>
-            {!selectedTenantId && (
-              <small className="text-warning">Select a tenant to manage subjects</small>
+      {isSuperAdmin ? (
+        <div
+          className={`tenant-scope-banner mb-4 ${
+            activeTenantId ? "scope-tenant" : "scope-global"
+          }`}
+        >
+          <span>
+            {activeTenantId ? (
+              <>
+                Subject changes apply only to <strong>{schoolLabel}</strong>.
+              </>
+            ) : (
+              <>Choose a school before managing school-scoped subjects.</>
             )}
-          </div>
+          </span>
+          {!activeTenantId ? (
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary ms-auto"
+              onClick={() => navigate("/dashboard/superadmin/tenants")}
+            >
+              Choose a School
+            </button>
+          ) : null}
         </div>
-      )}
+      ) : null}
 
-      {showCreate && (!isSuperAdmin || selectedTenantId) && (
-        <div className="dash-card mb-4">
-          <h3 className="dash-card-title mb-3">
-            {editingId ? "Edit subject" : "Add subject"}
-          </h3>
-          <div className="row g-3">
-            <div className="col-md-5">
-              <input
-                className="form-control"
-                placeholder="Subject name *"
-                value={form.name}
-                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-              />
-            </div>
-            <div className="col-md-2">
-              <input
-                className="form-control"
-                placeholder="Code (optional)"
-                value={form.code}
-                onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
-              />
-            </div>
-            <div className="col-md-5">
-              <input
-                className="form-control"
-                placeholder="Description (optional)"
-                value={form.description}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, description: e.target.value }))
-                }
-              />
-            </div>
-            <div className="col-auto d-flex gap-2">
-              <button
-                className="btn btn-primary"
-                onClick={save}
-                disabled={saving}
-              >
-                {saving ? "Saving…" : editingId ? "Update" : "Create"}
-              </button>
-              <button className="btn btn-outline-secondary" onClick={cancelEdit}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {(!isSuperAdmin || selectedTenantId) ? (
-        <div className="dash-card">
-          <div className="mb-3">
-            <input
-              className="form-control"
-              style={{ maxWidth: 320 }}
-              placeholder="Search subjects…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          {loading ? (
-            <LoadingSpinner message="Loading subjects…" />
-          ) : visible.length === 0 ? (
-            <EmptyState
-              title="No subjects found"
-              message="Add your first subject to get started."
-            />
-          ) : (
-            <div className="table-responsive">
-              <table className="table table-hover align-middle mb-0">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Code</th>
-                    <th>Description</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visible.map((s) => (
-                    <tr key={s._id}>
-                      <td className="fw-semibold">{s.name}</td>
-                      <td>
-                        <code>{s.code || "—"}</code>
-                      </td>
-                      <td className="text-muted">{s.description || "—"}</td>
-                      <td>
-                        <div className="d-flex gap-2">
-                          <button
-                            className="btn btn-sm btn-outline-light"
-                            onClick={() => startEdit(s)}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="btn btn-sm btn-outline-danger"
-                            onClick={() => deleteSubject(s)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+      {isSuperAdmin && !activeTenantId ? (
+        <div className="dash-card dash-empty-shell">
+          <h3 className="dash-card-title mb-2">No school selected</h3>
+          <p className="dash-supporting-text mb-0">
+            Subjects are school-scoped. Select a school from the Schools page,
+            then return here to manage its catalog.
+          </p>
         </div>
       ) : (
-        <div
-          className="dash-card text-muted text-center py-4"
-          style={{ fontSize: "0.9em" }}
-        >
-          Select a tenant above to view and manage subjects.
-        </div>
+        <>
+          {showCreate ? (
+            <div className="dash-card mb-4">
+              <h3 className="dash-card-title mb-3">
+                {editingId ? "Edit Subject" : "Add Subject"}
+              </h3>
+              <div className="row g-3">
+                <div className="col-lg-4">
+                  <label className="form-label fw-semibold">
+                    Subject name
+                  </label>
+                  <input
+                    className="form-control"
+                    placeholder="e.g. Mathematics"
+                    value={form.name}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, name: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="col-lg-2">
+                  <label className="form-label fw-semibold">Code</label>
+                  <input
+                    className="form-control"
+                    placeholder="Optional"
+                    value={form.code}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, code: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="col-lg-4">
+                  <label className="form-label fw-semibold">Description</label>
+                  <input
+                    className="form-control"
+                    placeholder="Optional context for admins and teachers"
+                    value={form.description}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        description: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="col-lg-2 d-flex align-items-end gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-primary flex-fill"
+                    onClick={save}
+                    disabled={saving}
+                  >
+                    {saving ? "Saving..." : editingId ? "Update" : "Create"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    onClick={resetForm}
+                    disabled={saving}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="dash-card">
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+              <div>
+                <h3 className="dash-card-title mb-1">Subject Catalog</h3>
+                <div className="dash-supporting-text">
+                  Keep codes and descriptions clear so teachers can assign the
+                  right materials and classes.
+                </div>
+              </div>
+              <input
+                className="form-control"
+                style={{ maxWidth: 320 }}
+                placeholder="Search subjects"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            {loading ? (
+              <LoadingSpinner message="Loading subjects..." />
+            ) : visible.length === 0 ? (
+              <EmptyState
+                title="No subjects found"
+                message="Add your first subject to give teachers a consistent catalog."
+              />
+            ) : (
+              <div className="table-responsive">
+                <table className="table table-hover align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Code</th>
+                      <th>Description</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visible.map((subject) => (
+                      <tr key={subject._id}>
+                        <td className="fw-semibold">{subject.name}</td>
+                        <td>
+                          <code>{subject.code || "—"}</code>
+                        </td>
+                        <td className="text-muted">
+                          {subject.description || "—"}
+                        </td>
+                        <td>
+                          <div className="d-flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-secondary"
+                              onClick={() => startEdit(subject)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={() => deleteSubject(subject)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
