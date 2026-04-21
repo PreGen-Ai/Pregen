@@ -313,10 +313,13 @@ export async function createClass(req, res) {
           );
 
           // Provision the Course workspace for subject+classroom
+          // Use toObject() so schema fields (name, grade, _id) are plain-object
+          // properties — spreading a Mongoose Document doesn't copy schema fields.
+          const classroomPlain = doc.toObject ? doc.toObject() : { ...doc };
           const course = await upsertSubjectClassCourse({
             tenantId,
             subject,
-            classroom: { ...doc, grade, section },
+            classroom: classroomPlain,
             actorUserId: req.user?._id,
           });
 
