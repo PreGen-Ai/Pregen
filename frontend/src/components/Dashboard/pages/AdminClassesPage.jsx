@@ -34,6 +34,9 @@ export default function AdminClassesPage() {
   const [detailClass, setDetailClass] = useState(null);
   const [enrollIds, setEnrollIds] = useState([]);
 
+  // Teacher assignment in detail panel
+  const [assignTeacherId, setAssignTeacherId] = useState("");
+
   // Superadmin: tenant selector
   const [tenants, setTenants] = useState([]);
   const [selectedTenantId, setSelectedTenantId] = useState("");
@@ -93,6 +96,13 @@ export default function AdminClassesPage() {
     load();
   }, [load]);
 
+  // Keep detailClass in sync with freshly loaded classes
+  useEffect(() => {
+    if (!detailClass) return;
+    const updated = classes.find((c) => c._id === detailClass._id);
+    if (updated) setDetailClass(updated);
+  }, [classes]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const createClass = async () => {
     if (!form.name.trim()) {
       toast.error("Class name is required");
@@ -115,6 +125,25 @@ export default function AdminClassesPage() {
       await load();
     } catch (e) {
       toast.error(e?.message || "Failed to create class");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const doAssignTeacher = async () => {
+    if (!detailClass) return;
+    if (!assignTeacherId) {
+      toast.error("Select a teacher to assign");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.admin.assignTeacher(detailClass._id, assignTeacherId, cfg);
+      toast.success("Teacher assigned");
+      setAssignTeacherId("");
+      await load();
+    } catch (e) {
+      toast.error(e?.message || "Failed to assign teacher");
     } finally {
       setSaving(false);
     }
@@ -159,10 +188,14 @@ export default function AdminClassesPage() {
     String(c.name || "").toLowerCase().includes(search.toLowerCase()),
   );
 
-  const enrolledIds = new Set(
-    (detailClass?.students || []).map((s) => String(s._id || s)),
-  );
+  // Use populated `students[]` from backend; fall back to raw studentIds count
+  const enrolledStudents = detailClass?.students || [];
+  const enrolledIds = new Set(enrolledStudents.map((s) => String(s._id || s)));
   const notEnrolled = students.filter((s) => !enrolledIds.has(String(s._id)));
+
+  // Helper: count students for a class row (populated or raw IDs)
+  const studentCount = (cls) =>
+    (cls.students || []).length || (cls.studentIds || []).length || 0;
 
   return (
     <div className="quizzes-page">
@@ -304,6 +337,7 @@ export default function AdminClassesPage() {
                     <thead>
                       <tr>
                         <th>Name</th>
+                        <th>Teacher</th>
                         <th>Subject</th>
                         <th>Students</th>
                         <th></th>
@@ -316,16 +350,26 @@ export default function AdminClassesPage() {
                           className={detailClass?._id === cls._id ? "table-active" : ""}
                         >
                           <td>{cls.name}</td>
-                          <td>{cls.subject?.name || cls.subjectName || "—"}</td>
-                          <td>{(cls.students || []).length}</td>
+                          <td>
+                            {cls.teacher
+                              ? nameOf(cls.teacher)
+                              : <span className="text-muted">—</span>}
+                          </td>
+                          <td>
+                            {cls.subject?.name ||
+                              (cls.subjects?.length > 0
+                                ? cls.subjects.map((s) => s.name).join(", ")
+                                : <span className="text-muted">—</span>)}
+                          </td>
+                          <td>{studentCount(cls)}</td>
                           <td>
                             <button
                               className="btn btn-sm btn-outline-light"
-                              onClick={() =>
-                                setDetailClass(
-                                  detailClass?._id === cls._id ? null : cls,
-                                )
-                              }
+                              onClick={() => {
+                                const next = detailClass?._id === cls._id ? null : cls;
+                                setDetailClass(next);
+                                setAssignTeacherId(next?.teacher?._id || "");
+                              }}
                             >
                               {detailClass?._id === cls._id ? "Close" : "Manage"}
                             </button>
@@ -345,25 +389,64 @@ export default function AdminClassesPage() {
                 <h3 className="dash-card-title mb-1">{detailClass.name}</h3>
                 <p className="text-muted mb-4">
                   Subject:{" "}
-                  {detailClass.subject?.name || detailClass.subjectName || "—"}
+                  {detailClass.subject?.name ||
+                    (detailClass.subjects?.length > 0
+                      ? detailClass.subjects.map((s) => s.name).join(", ")
+                      : "—")}
                 </p>
 
+                {/* ── Assign teacher ─────────────────────────── */}
+                <h5 className="mb-2">Assigned teacher</h5>
+                <div className="d-flex gap-2 align-items-center mb-4 flex-wrap">
+                  {detailClass.teacher && (
+                    <span className="badge bg-secondary px-3 py-2" style={{ fontSize: "0.85rem" }}>
+                      {nameOf(detailClass.teacher)}
+                      <span className="ms-2 text-white-50" style={{ fontSize: "0.75rem" }}>
+                        {detailClass.teacher.email}
+                      </span>
+                    </span>
+                  )}
+                  <select
+                    className="form-select"
+                    style={{ maxWidth: 260 }}
+                    value={assignTeacherId}
+                    onChange={(e) => setAssignTeacherId(e.target.value)}
+                  >
+                    <option value="">
+                      {detailClass.teacher ? "Change teacher…" : "Select teacher…"}
+                    </option>
+                    {teachers.map((t) => (
+                      <option key={t._id} value={t._id}>
+                        {nameOf(t)} ({t.email})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn btn-primary"
+                    onClick={doAssignTeacher}
+                    disabled={saving || !assignTeacherId}
+                  >
+                    {saving ? "Saving…" : "Assign"}
+                  </button>
+                </div>
+
+                {/* ── Enrolled students ──────────────────────── */}
                 <h5 className="mb-3">
-                  Enrolled students ({(detailClass.students || []).length})
+                  Enrolled students ({enrolledStudents.length})
                 </h5>
-                {(detailClass.students || []).length === 0 ? (
+                {enrolledStudents.length === 0 ? (
                   <p className="text-muted mb-4">No students enrolled yet.</p>
                 ) : (
                   <div className="table-responsive mb-4">
                     <table className="table table-sm align-middle mb-0">
                       <tbody>
-                        {(detailClass.students || []).map((s) => {
+                        {enrolledStudents.map((s) => {
                           const student =
                             typeof s === "object"
                               ? s
-                              : students.find((u) => u._id === s);
+                              : students.find((u) => u._id === String(s));
                           return (
-                            <tr key={student?._id || s}>
+                            <tr key={student?._id || String(s)}>
                               <td>{nameOf(student) || String(s)}</td>
                               <td>{student?.email || ""}</td>
                               <td>

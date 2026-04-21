@@ -2,6 +2,7 @@ import Classroom from "../../models/Classroom.js";
 import User from "../../models/userModel.js";
 import Course from "../../models/CourseModel.js";
 import CourseMember from "../../models/CourseMember.js";
+import Subject from "../../models/Subject.js";
 import { getTenantId } from "../../middleware/authMiddleware.js";
 import { writeAuditLog } from "../../services/auditLogService.js";
 
@@ -129,13 +130,112 @@ async function syncStudentMembershipsForCourses(courseIds, studentIds = []) {
   await CourseMember.bulkWrite(ops, { ordered: false });
 }
 
+/**
+ * Create (or update) a Course record linking a subject to a classroom.
+ * Safe to call even if the course already exists — returns existing or newly created.
+ */
+async function upsertSubjectClassCourse({ tenantId, subject, classroom, actorUserId }) {
+  const existing = await Course.findOne({
+    tenantId,
+    subjectId: subject._id,
+    classroomId: classroom._id,
+    deleted: false,
+  }).lean();
+
+  if (existing) return existing;
+
+  const classLabel = [classroom.name, classroom.grade, classroom.section]
+    .filter(Boolean)
+    .join(" ");
+  const title = classLabel ? `${subject.name} - ${classLabel}` : subject.name;
+  const shortName = `${subject.code || subject.name} - ${classroom.name}`.slice(0, 50);
+
+  return Course.create({
+    title,
+    shortName,
+    description: subject.description || "",
+    tenantId,
+    subjectId: subject._id,
+    classroomId: classroom._id,
+    createdBy: actorUserId,
+    visibility: "private",
+    type: "course",
+  });
+}
+
 export async function listClasses(req, res) {
   try {
     const tenantId = getTenantId(req);
     const filter = { ...(tenantId ? { tenantId } : {}), deletedAt: null };
 
     const items = await Classroom.find(filter).sort({ createdAt: -1 }).lean();
-    return res.json({ items });
+
+    // --- Batch-fetch related users (teachers + students) ---
+    const allTeacherIds = [...new Set(
+      items.map((cls) => cls.teacherId).filter(Boolean).map(String),
+    )];
+    const allStudentIds = [...new Set(
+      items.flatMap((cls) => (cls.studentIds || []).map(String)),
+    )];
+
+    const [teacherDocs, studentDocs] = await Promise.all([
+      allTeacherIds.length
+        ? User.find({ _id: { $in: allTeacherIds } })
+            .select("firstName lastName email role")
+            .lean()
+        : [],
+      allStudentIds.length
+        ? User.find({ _id: { $in: allStudentIds } })
+            .select("firstName lastName email role")
+            .lean()
+        : [],
+    ]);
+
+    const teacherById = new Map(teacherDocs.map((t) => [String(t._id), t]));
+    const studentById = new Map(studentDocs.map((s) => [String(s._id), s]));
+
+    // --- Build classroom → subject map via Subject.classroomIds ---
+    // (Subjects store classroomIds[], not the other way round)
+    const subjectDocs = tenantId
+      ? await Subject.find({ tenantId, deleted: false })
+          .select("name code classroomIds")
+          .lean()
+      : [];
+
+    const classroomSubjectMap = new Map();
+    for (const subj of subjectDocs) {
+      for (const clsId of subj.classroomIds || []) {
+        // A classroom may appear in multiple subjects; keep the first match
+        if (!classroomSubjectMap.has(String(clsId))) {
+          classroomSubjectMap.set(String(clsId), subj);
+        }
+      }
+    }
+
+    // --- Build classroom → all subjects map (one-to-many) ---
+    const classroomSubjectsMap = new Map();
+    for (const subj of subjectDocs) {
+      for (const clsId of subj.classroomIds || []) {
+        const key = String(clsId);
+        if (!classroomSubjectsMap.has(key)) classroomSubjectsMap.set(key, []);
+        classroomSubjectsMap.get(key).push(subj);
+      }
+    }
+
+    // --- Enrich each classroom ---
+    const enriched = items.map((cls) => ({
+      ...cls,
+      teacher: cls.teacherId ? (teacherById.get(String(cls.teacherId)) || null) : null,
+      students: (cls.studentIds || [])
+        .map((id) => studentById.get(String(id)))
+        .filter(Boolean),
+      // Primary subject (backwards-compat with frontend `cls.subject?.name`)
+      subject: classroomSubjectMap.get(String(cls._id)) || null,
+      // All subjects assigned to this class
+      subjects: classroomSubjectsMap.get(String(cls._id)) || [],
+    }));
+
+    return res.json({ items: enriched });
   } catch (e) {
     return res
       .status(500)
@@ -149,10 +249,12 @@ export async function createClass(req, res) {
     if (!tenantId) {
       return res.status(400).json({ message: "Missing tenantId" });
     }
-    const { name, grade = "", section = "" } = req.body;
+
+    const { name, grade = "", section = "", teacherId, subjectId } = req.body;
     if (!name?.trim())
       return res.status(400).json({ message: "Class name is required" });
 
+    // --- Create the classroom ---
     const doc = await Classroom.create({
       tenantId,
       name: name.trim(),
@@ -162,11 +264,77 @@ export async function createClass(req, res) {
       deletedAt: null,
     });
 
+    // --- Optionally assign teacher inline ---
+    if (teacherId) {
+      try {
+        // BUG FIX: validate teacher exists AND belongs to this tenant
+        const teacher = await User.findOne({
+          _id: teacherId,
+          deleted: { $ne: true },
+          $or: [{ tenantId }, { tenantIds: tenantId }],
+        }).lean();
+
+        if (teacher && String(teacher.role || "").toUpperCase() === "TEACHER") {
+          await Classroom.updateOne({ _id: doc._id }, { teacherId: teacher._id });
+          doc.teacherId = teacher._id;
+
+          await User.updateOne(
+            { _id: teacherId },
+            { $addToSet: { tenantIds: tenantId } },
+          );
+
+          // Sync CourseMember in any courses already linked to this classroom
+          const linkedCourses = await listLinkedCourses(doc._id);
+          await syncTeacherMembershipsForCourses(
+            linkedCourses.map((c) => c._id),
+            teacher._id,
+          );
+        }
+      } catch (err) {
+        // Non-fatal — class is created, teacher assignment failed silently
+        console.error("createClass: teacher assignment failed:", err.message);
+      }
+    }
+
+    // --- Optionally link to subject and provision Course ---
+    if (subjectId) {
+      try {
+        const subject = await Subject.findOne({
+          _id: subjectId,
+          tenantId,
+          deleted: false,
+        }).lean();
+
+        if (subject) {
+          // Add this classroom to the Subject's classroomIds
+          await Subject.updateOne(
+            { _id: subjectId },
+            { $addToSet: { classroomIds: doc._id } },
+          );
+
+          // Provision the Course workspace for subject+classroom
+          const course = await upsertSubjectClassCourse({
+            tenantId,
+            subject,
+            classroom: { ...doc, grade, section },
+            actorUserId: req.user?._id,
+          });
+
+          // Sync teacher into course if we just assigned one
+          if (doc.teacherId) {
+            await syncTeacherMembershipsForCourses([course._id], doc.teacherId);
+          }
+        }
+      } catch (err) {
+        console.error("createClass: subject linkage failed:", err.message);
+      }
+    }
+
     await writeClassAudit(req, {
       tenantId,
       type: "CLASS_CREATED",
       message: `Created class ${doc.name}`,
-      meta: { classId: doc._id, grade, section },
+      meta: { classId: doc._id, grade, section, teacherId, subjectId },
     });
 
     return res.status(201).json({ message: "Created", class: doc });
@@ -188,14 +356,16 @@ export async function assignTeacher(req, res) {
     if (!teacherId)
       return res.status(400).json({ message: "teacherId is required" });
 
-    // Validate teacher exists and has TEACHER role
+    // BUG FIX: validate teacher exists AND belongs to this tenant
+    // (teachers can be multi-tenant so check both tenantId and tenantIds)
     const teacher = await User.findOne({
       _id: teacherId,
       deleted: { $ne: true },
+      $or: [{ tenantId }, { tenantIds: tenantId }],
     }).lean();
 
     if (!teacher) {
-      return res.status(404).json({ message: "Teacher not found" });
+      return res.status(404).json({ message: "Teacher not found in this tenant" });
     }
     if (String(teacher.role || "").toUpperCase() !== "TEACHER") {
       return res
@@ -222,8 +392,6 @@ export async function assignTeacher(req, res) {
     );
 
     // Auto-enroll teacher as CourseMember in any course linked to this classroom.
-    // This ensures the teacher's course list is populated so they can create
-    // assignments without the "Select a course first" error.
     try {
       const linkedCourses = await listLinkedCourses(doc._id);
       await syncTeacherMembershipsForCourses(
@@ -231,7 +399,6 @@ export async function assignTeacher(req, res) {
         teacher._id,
       );
     } catch (memberErr) {
-      // Non-fatal: log but don't fail the overall assignment
       console.error("assignTeacher: failed to sync CourseMember records:", memberErr);
     }
 

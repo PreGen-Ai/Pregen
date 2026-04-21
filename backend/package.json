@@ -9,6 +9,7 @@
     "start": "node src/server.js",
     "doctor": "node scripts/doctor.mjs",
     "seed": "node src/seeds/seed.js",
+    "seed:academic": "node src/seeds/seedAcademicData.js",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.config.cjs",
     "test:watch": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.config.cjs --watch",
     "test:coverage": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.config.cjs --coverage",
