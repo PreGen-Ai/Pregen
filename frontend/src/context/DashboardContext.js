@@ -9,7 +9,7 @@ import {
 } from "react";
 import PropTypes from "prop-types";
 import axios from "axios";
-import toast from "react-hot-toast";
+import { toast } from "react-toastify";
 import { useAuthContext } from "./AuthContext";
 
 // Create context with proper default value
@@ -20,8 +20,6 @@ const API_CONFIG = {
   baseURL:
     window.location.hostname === "localhost"
       ? "http://localhost:4000"
-      : window.location.hostname.includes("preprod")
-      ? "https://pregen.onrender.com"
       : "https://pregen.onrender.com",
   withCredentials: true,
 };
@@ -38,12 +36,6 @@ const createApiService = () => {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
-      console.log("API Request:", {
-        url: config.url,
-        method: config.method,
-        headers: config.headers,
-        hasToken: !!token,
-      });
       return config;
     },
     (error) => {
@@ -53,21 +45,8 @@ const createApiService = () => {
 
   // Response interceptor to handle auth errors
   axiosInstance.interceptors.response.use(
-    (response) => {
-      console.log("API Response Success:", {
-        url: response.config.url,
-        status: response.status,
-        data: response.data,
-      });
-      return response;
-    },
+    (response) => response,
     (error) => {
-      console.log("API Response Error:", {
-        url: error.config?.url,
-        status: error.response?.status,
-        message: error.message,
-      });
-
       if (error.response?.status === 401) {
         // Token expired or invalid
         localStorage.removeItem("token");
@@ -619,7 +598,6 @@ export const DashboardProvider = ({ children }) => {
 
     try {
       actions.setProfileLoading(true);
-      console.log("Fetching profile with token:", getJwtToken() ? "Yes" : "No");
       const response = await apiService.getProfile(user._id);
       actions.setProfileData(response.data);
     } catch (err) {

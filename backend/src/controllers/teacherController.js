@@ -396,6 +396,87 @@ async function resolveTargetStudentIds({
   return Array.from(directStudentIds);
 }
 
+async function batchFetchResolutionCache(items, getTargetRows, getCourseId, getClassroomId) {
+  const allClassIds = new Set();
+  const allCourseIds = new Set();
+
+  for (const item of items) {
+    const targetRows = getTargetRows(item);
+    const courseId = getCourseId(item);
+    const classroomId = getClassroomId(item);
+    for (const row of targetRows || []) {
+      const classId = toId(row.classId);
+      const workspaceId = toId(row.workspaceId);
+      if (toId(row.studentId)) continue;
+      if (classId) allClassIds.add(classId);
+      else if (workspaceId || courseId) allCourseIds.add(workspaceId || courseId);
+    }
+    if (classroomId) allClassIds.add(classroomId);
+    if (courseId) allCourseIds.add(courseId);
+  }
+
+  const [classrooms, memberships] = await Promise.all([
+    allClassIds.size
+      ? Classroom.find({ _id: { $in: Array.from(allClassIds) }, deletedAt: null })
+          .select("studentIds")
+          .lean()
+      : Promise.resolve([]),
+    allCourseIds.size
+      ? CourseMember.find({
+          courseId: { $in: Array.from(allCourseIds) },
+          role: "student",
+          status: "active",
+        })
+          .select("userId courseId")
+          .lean()
+      : Promise.resolve([]),
+  ]);
+
+  const classroomStudentsMap = new Map();
+  for (const c of classrooms)
+    classroomStudentsMap.set(String(c._id), (c.studentIds || []).map(toId).filter(Boolean));
+
+  const courseStudentsMap = new Map();
+  for (const m of memberships) {
+    const cId = String(m.courseId);
+    if (!courseStudentsMap.has(cId)) courseStudentsMap.set(cId, []);
+    const uid = toId(m.userId);
+    if (uid) courseStudentsMap.get(cId).push(uid);
+  }
+
+  return { classroomStudentsMap, courseStudentsMap };
+}
+
+function resolveTargetStudentIdsSync({
+  targetRows,
+  courseId,
+  classroomId,
+  classroomStudentsMap,
+  courseStudentsMap,
+}) {
+  const directStudentIds = new Set();
+
+  for (const row of targetRows || []) {
+    const studentId = toId(row.studentId);
+    const classId = toId(row.classId);
+    const workspaceId = toId(row.workspaceId);
+    if (studentId) {
+      directStudentIds.add(studentId);
+    } else if (classId) {
+      for (const id of classroomStudentsMap.get(classId) || []) directStudentIds.add(id);
+    } else if (workspaceId || courseId) {
+      const effectiveId = workspaceId || courseId;
+      for (const id of courseStudentsMap.get(effectiveId) || []) directStudentIds.add(id);
+    }
+  }
+
+  if (classroomId) {
+    for (const id of classroomStudentsMap.get(classroomId) || []) directStudentIds.add(id);
+  }
+
+  return Array.from(directStudentIds);
+}
+
 function groupRowsByOwner(rows, key) {
   return rows.reduce((map, row) => {
     const ownerId = toId(row[key]);
@@ -884,26 +965,31 @@ export const listTeacherAssignments = async (req, res) => {
     const targetsByAssignmentId = groupRowsByOwner(targetRows, "assignmentId");
     const submissionsByAssignmentId = groupRowsByOwner(submissions, "assignmentId");
 
-    const items = await Promise.all(
-      assignments.map(async (assignment) => {
-        const ownerId = String(assignment._id);
-        const targetRowsForAssignment = targetsByAssignmentId.get(ownerId) || [];
-        const targetStudentIds = await resolveTargetStudentIds({
-          targetRows: targetRowsForAssignment,
-          courseId: toId(assignment.workspace),
-          classroomId: toId(assignment.class),
-        });
-        const summary = summarizeSubmissionState({
-          targetStudentIds,
-          studentWork: submissionsByAssignmentId.get(ownerId) || [],
-        });
-
-        return serializeAssignment(assignment, {
-          selectedStudentIds: pickSelectedStudentIds(targetRowsForAssignment),
-          counts: summary,
-        });
-      }),
+    const resCache = await batchFetchResolutionCache(
+      assignments,
+      (a) => targetsByAssignmentId.get(String(a._id)) || [],
+      (a) => toId(a.workspace),
+      (a) => toId(a.class),
     );
+    const items = assignments.map((assignment) => {
+      const ownerId = String(assignment._id);
+      const targetRowsForAssignment = targetsByAssignmentId.get(ownerId) || [];
+      const targetStudentIds = resolveTargetStudentIdsSync({
+        targetRows: targetRowsForAssignment,
+        courseId: toId(assignment.workspace),
+        classroomId: toId(assignment.class),
+        ...resCache,
+      });
+      const summary = summarizeSubmissionState({
+        targetStudentIds,
+        studentWork: submissionsByAssignmentId.get(ownerId) || [],
+      });
+
+      return serializeAssignment(assignment, {
+        selectedStudentIds: pickSelectedStudentIds(targetRowsForAssignment),
+        counts: summary,
+      });
+    });
 
     return res.json({
       success: true,
@@ -1367,31 +1453,35 @@ export const listTeacherQuizzes = async (req, res) => {
     const targetsByQuizId = groupRowsByOwner(targetRows, "quizId");
     const attemptsByQuizId = groupRowsByOwner(attempts, "quizId");
 
-    const items = await Promise.all(
-      quizzes.map(async (quiz) => {
-        const ownerId = String(quiz._id);
-        const quizTargetRows = targetsByQuizId.get(ownerId) || [];
-        const targetStudentIds = await resolveTargetStudentIds({
-          targetRows: quizTargetRows,
-          courseId: toId(quiz.workspace),
-          classroomId: toId(quiz.class),
-        });
-        const summary = summarizeSubmissionState({
-          targetStudentIds,
-          studentWork: attemptsByQuizId.get(ownerId) || [],
-        });
-
-        return serializeQuiz(quiz, {
-          includeAnswers: true,
-          extras: {
-            selectedStudentIds: pickSelectedStudentIds(quizTargetRows),
-            counts: summary,
-            dueDate:
-              quizTargetRows.find((row) => row.dueDate)?.dueDate || null,
-          },
-        });
-      }),
+    const resCache = await batchFetchResolutionCache(
+      quizzes,
+      (q) => targetsByQuizId.get(String(q._id)) || [],
+      (q) => toId(q.workspace),
+      (q) => toId(q.class),
     );
+    const items = quizzes.map((quiz) => {
+      const ownerId = String(quiz._id);
+      const quizTargetRows = targetsByQuizId.get(ownerId) || [];
+      const targetStudentIds = resolveTargetStudentIdsSync({
+        targetRows: quizTargetRows,
+        courseId: toId(quiz.workspace),
+        classroomId: toId(quiz.class),
+        ...resCache,
+      });
+      const summary = summarizeSubmissionState({
+        targetStudentIds,
+        studentWork: attemptsByQuizId.get(ownerId) || [],
+      });
+
+      return serializeQuiz(quiz, {
+        includeAnswers: true,
+        extras: {
+          selectedStudentIds: pickSelectedStudentIds(quizTargetRows),
+          counts: summary,
+          dueDate: quizTargetRows.find((row) => row.dueDate)?.dueDate || null,
+        },
+      });
+    });
 
     return res.json({
       success: true,
