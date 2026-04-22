@@ -11,6 +11,7 @@ import QuizAttempt from "../models/QuizAttempt.js";
 import Submission from "../models/Submission.js";
 import Tenant from "../models/Tenant.js";
 import User from "../models/userModel.js";
+import { estimateUsageCost } from "./ai/modelPricing.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -37,6 +38,57 @@ function toNullableString(value) {
 function boolOrNull(value) {
   if (typeof value !== "boolean") return null;
   return value;
+}
+
+function resolveRecordedCost({
+  totalCost,
+  inputCost,
+  outputCost,
+} = {}) {
+  const recordedInputCost = toNumber(inputCost);
+  const recordedOutputCost = toNumber(outputCost);
+  const recordedTotalCost =
+    toNumber(totalCost) ??
+    (
+      recordedInputCost !== null || recordedOutputCost !== null
+        ? Number(recordedInputCost || 0) + Number(recordedOutputCost || 0)
+        : null
+    );
+
+  if (
+    recordedTotalCost === null &&
+    recordedInputCost === null &&
+    recordedOutputCost === null
+  ) {
+    return null;
+  }
+
+  return {
+    inputCost: recordedInputCost,
+    outputCost: recordedOutputCost,
+    totalCost: recordedTotalCost,
+  };
+}
+
+function estimateRowCost(row) {
+  const inputTokens = Math.max(0, Number(row.inputTokens || 0));
+  const outputTokens = Math.max(0, Number(row.outputTokens || 0));
+  if (inputTokens <= 0 && outputTokens <= 0) return null;
+
+  const estimate = estimateUsageCost({
+    provider: row.provider,
+    model: row.model,
+    inputTokens,
+    outputTokens,
+  });
+  if (!estimate) return null;
+
+  return {
+    inputCost: Number(estimate.inputCost || 0),
+    outputCost: Number(estimate.outputCost || 0),
+    totalCost: Number(estimate.totalCost || 0),
+    currency: estimate.currency || "USD",
+  };
 }
 
 function pickLatest(...values) {
@@ -389,12 +441,15 @@ async function loadMergedAiRequests({ from, to, tenantId = null }) {
       endpoint: 1,
       requestId: 1,
       requests: 1,
+      inputTokens: 1,
+      outputTokens: 1,
       tokens: 1,
       totalTokens: 1,
       cost: 1,
       totalCost: 1,
       inputCost: 1,
       outputCost: 1,
+      currency: 1,
       latencyMs: 1,
       cacheHit: 1,
       status: 1,
@@ -444,10 +499,13 @@ async function loadMergedAiRequests({ from, to, tenantId = null }) {
       calls: 1,
       okCalls: 1,
       errorCalls: 1,
+      inputTokens: 1,
+      outputTokens: 1,
       totalTokens: 1,
       totalCost: 1,
       inputCost: 1,
       outputCost: 1,
+      currency: 1,
       totalLatencyMs: 1,
       cacheHit: 1,
       lastStatus: 1,
@@ -470,8 +528,13 @@ async function loadMergedAiRequests({ from, to, tenantId = null }) {
         feature: null,
         endpoint: null,
         status: null,
+        inputTokens: null,
+        outputTokens: null,
         totalTokens: null,
+        inputCost: null,
+        outputCost: null,
         totalCost: null,
+        currency: null,
         latencyMs: null,
         cacheHit: null,
         requestCount: 1,
@@ -498,12 +561,23 @@ async function loadMergedAiRequests({ from, to, tenantId = null }) {
       doc.lastStatus === "error" || row.status === "error"
         ? "error"
         : row.status || toNullableString(doc.lastStatus) || "ok";
+    row.inputTokens =
+      row.inputTokens ?? toNumber(doc.inputTokens) ?? null;
+    row.outputTokens =
+      row.outputTokens ?? toNumber(doc.outputTokens) ?? null;
     row.totalTokens =
-      row.totalTokens ?? toNumber(doc.totalTokens) ?? null;
+      row.totalTokens ??
+      toNumber(doc.totalTokens) ??
+      (
+        row.inputTokens !== null || row.outputTokens !== null
+          ? Number(row.inputTokens || 0) + Number(row.outputTokens || 0)
+          : null
+      );
     row.latencyMs =
       row.latencyMs ?? toNumber(doc.totalLatencyMs) ?? null;
     row.cacheHit =
       row.cacheHit === null ? boolOrNull(doc.cacheHit) : row.cacheHit;
+    row.currency = row.currency || toNullableString(doc.currency);
     row.callCount = Math.max(
       Number(row.callCount || 1),
       Number(doc.calls || 1),
@@ -511,12 +585,15 @@ async function loadMergedAiRequests({ from, to, tenantId = null }) {
     row.createdAt = pickEarliest(row.createdAt, doc.createdAt, doc.updatedAt);
     row.updatedAt = pickLatest(row.updatedAt, doc.updatedAt, doc.createdAt);
 
-    const explicitCost =
-      toNumber(doc.totalCost) ??
-      toNumber(doc.inputCost) ??
-      toNumber(doc.outputCost);
-    if (explicitCost !== null) {
-      row.totalCost = row.totalCost ?? explicitCost;
+    const recordedCost = resolveRecordedCost({
+      totalCost: doc.totalCost,
+      inputCost: doc.inputCost,
+      outputCost: doc.outputCost,
+    });
+    if (recordedCost) {
+      row.inputCost = row.inputCost ?? recordedCost.inputCost;
+      row.outputCost = row.outputCost ?? recordedCost.outputCost;
+      row.totalCost = row.totalCost ?? recordedCost.totalCost;
       row.hasExplicitCost = true;
     }
 
@@ -538,12 +615,25 @@ async function loadMergedAiRequests({ from, to, tenantId = null }) {
       doc.status === "error" || row.status === "error"
         ? "error"
         : row.status || toNullableString(doc.status) || (doc.success === false ? "error" : "ok");
+    row.inputTokens =
+      row.inputTokens ?? toNumber(doc.inputTokens) ?? null;
+    row.outputTokens =
+      row.outputTokens ?? toNumber(doc.outputTokens) ?? null;
     row.totalTokens =
-      row.totalTokens ?? toNumber(doc.totalTokens) ?? toNumber(doc.tokens) ?? null;
+      row.totalTokens ??
+      toNumber(doc.totalTokens) ??
+      (
+        row.inputTokens !== null || row.outputTokens !== null
+          ? Number(row.inputTokens || 0) + Number(row.outputTokens || 0)
+          : null
+      ) ??
+      toNumber(doc.tokens) ??
+      null;
     row.latencyMs =
       row.latencyMs ?? toNumber(doc.latencyMs) ?? null;
     row.cacheHit =
       row.cacheHit === null ? boolOrNull(doc.cacheHit) : row.cacheHit;
+    row.currency = row.currency || toNullableString(doc.currency);
     row.callCount = Math.max(
       Number(row.callCount || 1),
       Number(doc.requests || 1),
@@ -551,19 +641,36 @@ async function loadMergedAiRequests({ from, to, tenantId = null }) {
     row.createdAt = pickEarliest(row.createdAt, doc.createdAt, doc.timestamp);
     row.updatedAt = pickLatest(row.updatedAt, doc.updatedAt, doc.createdAt, doc.timestamp);
 
-    const costValue =
-      toNumber(doc.totalCost) ??
-      toNumber(doc.cost) ??
-      toNumber(doc.inputCost) ??
-      toNumber(doc.outputCost);
-    if (costValue !== null && costValue > 0) {
-      row.totalCost = row.totalCost ?? costValue;
+    const recordedCost =
+      resolveRecordedCost({
+        totalCost: doc.totalCost,
+        inputCost: doc.inputCost,
+        outputCost: doc.outputCost,
+      }) ||
+      resolveRecordedCost({ totalCost: doc.cost });
+    if (recordedCost) {
+      row.inputCost = row.inputCost ?? recordedCost.inputCost;
+      row.outputCost = row.outputCost ?? recordedCost.outputCost;
+      row.totalCost = row.totalCost ?? recordedCost.totalCost;
       row.hasExplicitCost = true;
     }
 
     if (!row.sourceKinds.includes("node_ai_usage")) {
       row.sourceKinds.push("node_ai_usage");
     }
+  }
+
+  for (const row of merged.values()) {
+    if (row.hasExplicitCost) continue;
+
+    const estimatedCost = estimateRowCost(row);
+    if (!estimatedCost) continue;
+
+    row.inputCost = row.inputCost ?? estimatedCost.inputCost;
+    row.outputCost = row.outputCost ?? estimatedCost.outputCost;
+    row.totalCost = row.totalCost ?? estimatedCost.totalCost;
+    row.currency = row.currency || estimatedCost.currency;
+    row.hasExplicitCost = true;
   }
 
   const rows = [...merged.values()]
@@ -946,7 +1053,7 @@ export async function getSuperadminOverviewPayload() {
             },
           }),
     costToday:
-      telemetryToday.totalCost !== null && telemetryToday.totalCost > 0
+      telemetryToday.totalCost !== null
         ? metric({
             value: round(telemetryToday.totalCost, 4),
             state: "ok",
@@ -960,7 +1067,7 @@ export async function getSuperadminOverviewPayload() {
               telemetryToday.requestCount > 0 ? "logging_inactive" : "no_data",
             label:
               telemetryToday.requestCount > 0
-                ? "Cost logging not available yet"
+                ? "Cost data not available yet"
                 : "No AI cost data yet",
             lastUpdated,
             meta: {
@@ -969,7 +1076,7 @@ export async function getSuperadminOverviewPayload() {
             },
           }),
     costMTD:
-      telemetryMonth.totalCost !== null && telemetryMonth.totalCost > 0
+      telemetryMonth.totalCost !== null
         ? metric({
             value: round(telemetryMonth.totalCost, 4),
             state: "ok",
@@ -983,7 +1090,7 @@ export async function getSuperadminOverviewPayload() {
               telemetryMonth.requestCount > 0 ? "logging_inactive" : "no_data",
             label:
               telemetryMonth.requestCount > 0
-                ? "Cost logging not available yet"
+                ? "Cost data not available yet"
                 : "No MTD cost data yet",
             lastUpdated,
             meta: {
@@ -1054,7 +1161,7 @@ export async function getSuperadminOverviewPayload() {
           lastUpdated,
         }),
     costOverTime:
-      telemetryMonth.totalCost !== null && telemetryMonth.totalCost > 0
+      telemetryMonth.totalCost !== null
         ? chartState({
             state: "ok",
             label: "Cost over time",
@@ -1070,7 +1177,7 @@ export async function getSuperadminOverviewPayload() {
               telemetryMonth.requestCount > 0 ? "logging_inactive" : "no_data",
             label:
               telemetryMonth.requestCount > 0
-                ? "Cost logging not available yet"
+                ? "Cost data not available yet"
                 : "No cost chart data yet",
             points: [],
             lastUpdated,
@@ -1234,7 +1341,7 @@ export async function getSuperadminAiCostPayload({
           lastUpdated,
         }),
     costOverTime:
-      summary.totalCost !== null && summary.totalCost > 0
+      summary.totalCost !== null
         ? chartState({
             state: "ok",
             label: "Cost over time",
@@ -1249,7 +1356,7 @@ export async function getSuperadminAiCostPayload({
             state: rows.length ? "logging_inactive" : "no_data",
             label:
               rows.length
-                ? "Cost logging not available yet"
+                ? "Cost data not available yet"
                 : "No cost data for this range",
             points: [],
             lastUpdated,
@@ -1362,7 +1469,7 @@ export async function getSuperadminAiCostPayload({
               lastUpdated,
             }),
       estimatedCost:
-        summary.totalCost !== null && summary.totalCost > 0
+        summary.totalCost !== null
           ? metric({
               value: round(summary.totalCost, 4),
               state: "ok",
@@ -1375,7 +1482,7 @@ export async function getSuperadminAiCostPayload({
               state: rows.length ? "logging_inactive" : "no_data",
               label:
                 rows.length
-                  ? "Cost logging not available yet"
+                  ? "Cost data not available yet"
                   : "No cost data for this range",
               lastUpdated,
               meta: { explicitCostSamples: summary.explicitCostSamples },

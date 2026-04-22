@@ -66,6 +66,13 @@ describe("AI bridge usage logging", () => {
     expect(saved.inputTokens).toBe(123);
     expect(saved.outputTokens).toBe(45);
     expect(saved.totalTokens).toBe(168);
+    expect(saved.inputCost).toBeCloseTo((123 * 0.2) / 1_000_000, 10);
+    expect(saved.outputCost).toBeCloseTo((45 * 1.25) / 1_000_000, 10);
+    expect(saved.totalCost).toBeCloseTo(
+      ((123 * 0.2) + (45 * 1.25)) / 1_000_000,
+      10,
+    );
+    expect(saved.currency).toBe("USD");
     expect(saved.outputPreview).toContain("Plants use sunlight to make food.");
     expect(saved.outputChars).toBeGreaterThan(0);
     expect(saved.outputTruncated).toBe(false);
@@ -103,6 +110,8 @@ describe("AI bridge usage logging", () => {
     expect(saved.inputTokens).toBeGreaterThan(0);
     expect(saved.outputTokens).toBeGreaterThan(0);
     expect(saved.totalTokens).toBe(saved.inputTokens + saved.outputTokens);
+    expect(saved.totalCost).toBeGreaterThan(0);
+    expect(saved.currency).toBe("USD");
     expect(saved.outputPreview).toContain("discriminant");
     expect(saved.outputChars).toBeGreaterThan(0);
   });

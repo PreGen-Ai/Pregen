@@ -37,6 +37,7 @@ from analytics.ai_request_logger import (
     log_ai_request_start,
     log_ai_request_end,
 )
+from analytics.model_pricing import estimate_usage_cost
 from models.enums import AIError
 from providers.provider_factory import get_active_providers
 from providers.base_provider import ProviderResponse
@@ -219,10 +220,32 @@ class BaseAIClient:
         mongo_db = getattr(config, "mongo_db", None)
         if mongo_db is None:
             return
+        prepared_payload = dict(payload)
+
+        if (
+            prepared_payload.get("input_cost") is None
+            and prepared_payload.get("output_cost") is None
+            and prepared_payload.get("total_cost") is None
+            and str(prepared_payload.get("status") or "ok").lower() == "ok"
+            and not prepared_payload.get("cache_hit")
+        ):
+            estimated_cost = estimate_usage_cost(
+                provider=prepared_payload.get("provider"),
+                model=prepared_payload.get("model"),
+                input_tokens=prepared_payload.get("input_tokens"),
+                output_tokens=prepared_payload.get("output_tokens"),
+            )
+            if estimated_cost is not None:
+                prepared_payload["input_cost"] = estimated_cost["input_cost"]
+                prepared_payload["output_cost"] = estimated_cost["output_cost"]
+                prepared_payload["total_cost"] = estimated_cost["total_cost"]
+                prepared_payload["currency"] = estimated_cost["currency"]
+                prepared_payload["pricing_source"] = estimated_cost["source"]
+                prepared_payload["pricing_model"] = estimated_cost["canonical_model"]
 
         async def _run():
-            await self._safe_fire_and_forget(log_ai_usage, mongo_db, **payload)
-            await self._safe_fire_and_forget(apply_usage_event, mongo_db, **payload)
+            await self._safe_fire_and_forget(log_ai_usage, mongo_db, **prepared_payload)
+            await self._safe_fire_and_forget(apply_usage_event, mongo_db, **prepared_payload)
 
         try:
             asyncio.get_running_loop()

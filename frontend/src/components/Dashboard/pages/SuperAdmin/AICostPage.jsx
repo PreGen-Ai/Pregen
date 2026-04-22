@@ -537,7 +537,7 @@ export default function AICostPage() {
               <SummaryCard label="Total tokens" metric={costSummary.totalTokens} formatter={fmtInt} fallback="No token data yet" />
             </div>
             <div className="col-12 col-sm-6 col-xl-4">
-              <SummaryCard label="Estimated cost" metric={costSummary.estimatedCost} formatter={(value) => `$${fmtMoney(value)}`} fallback="Cost logging not available yet" />
+              <SummaryCard label="Estimated cost" metric={costSummary.estimatedCost} formatter={(value) => `$${fmtMoney(value)}`} fallback="Cost data not available yet" />
             </div>
           </div>
 
@@ -552,7 +552,7 @@ export default function AICostPage() {
                   <ChartCard title="Requests over time" chart={charts.requestsOverTime} color="#0d6efd" emptyMessage="No request chart data yet. Generate a quiz or open AI tutor, then refresh." />
                 </div>
                 <div className="col-xl-6">
-                  <ChartCard title="Cost over time" chart={charts.costOverTime} color="#198754" emptyMessage="Cost data only appears when explicit cost logging is available." />
+                  <ChartCard title="Cost over time" chart={charts.costOverTime} color="#198754" emptyMessage="Cost data appears when token logging and model pricing are available." />
                 </div>
                 <div className="col-xl-6">
                   <ChartCard title="Latency over time" chart={charts.latencyOverTime} color="#fd7e14" emptyMessage="Latency appears after real AI requests complete." />

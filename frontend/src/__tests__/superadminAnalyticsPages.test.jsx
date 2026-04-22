@@ -104,14 +104,14 @@ describe("admin and superadmin analytics pages", () => {
         estimatedCost: {
           value: null,
           state: "logging_inactive",
-          label: "Cost logging not available yet",
+          label: "Cost data not available yet",
         },
       },
       charts: {
         requestsOverTime: { state: "no_data", label: "No AI activity yet", points: [] },
         costOverTime: {
           state: "logging_inactive",
-          label: "Cost logging not available yet",
+          label: "Cost data not available yet",
           points: [],
         },
         latencyOverTime: { state: "no_data", label: "No latency data yet", points: [] },
@@ -132,8 +132,8 @@ describe("admin and superadmin analytics pages", () => {
         activeTenants: { value: 3, state: "ok", label: "Active tenants available" },
         totalStudents: { value: 120, state: "ok", label: "Student totals available" },
         aiCalls24h: { value: null, state: "logging_inactive", label: "No AI activity yet" },
-        costToday: { value: null, state: "logging_inactive", label: "Cost logging not available yet" },
-        costMTD: { value: null, state: "logging_inactive", label: "Cost logging not available yet" },
+        costToday: { value: null, state: "logging_inactive", label: "Cost data not available yet" },
+        costMTD: { value: null, state: "logging_inactive", label: "Cost data not available yet" },
         p95LatencyMs: { value: null, state: "no_data", label: "No latency data yet" },
         errors24h: {
           value: null,

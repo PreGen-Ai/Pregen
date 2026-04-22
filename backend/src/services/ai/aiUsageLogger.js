@@ -1,7 +1,9 @@
 import AiUsage from "../../models/aiUsage.js";
 import { getTenantId } from "../../middleware/authMiddleware.js";
+import { estimateUsageCost } from "./modelPricing.js";
 
 const OUTPUT_PREVIEW_LIMIT = 4000;
+const DEFAULT_CURRENCY = "USD";
 
 function estimateChars(value) {
   if (value === undefined || value === null) return 0;
@@ -39,6 +41,16 @@ function firstFiniteNumber(values = []) {
     const parsed = Number(value);
     if (Number.isFinite(parsed) && parsed >= 0) {
       return Math.round(parsed);
+    }
+  }
+  return null;
+}
+
+function firstFiniteValue(values = []) {
+  for (const value of values) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
     }
   }
   return null;
@@ -128,6 +140,66 @@ function buildOutputSnapshot(responseData = null) {
   };
 }
 
+function readExplicitCost(responseData = null) {
+  if (!responseData || typeof responseData !== "object") {
+    return null;
+  }
+
+  const candidates = [
+    responseData,
+    responseData.cost,
+    responseData.meta?.cost,
+    responseData.metadata?.cost,
+    responseData.usage,
+    responseData.meta?.usage,
+    responseData.metadata?.usage,
+  ].filter(Boolean);
+
+  const pick = (...keys) =>
+    firstFiniteValue(
+      candidates.flatMap((candidate) => keys.map((key) => candidate?.[key])),
+    );
+
+  const inputCost = pick(
+    "inputCost",
+    "input_cost",
+    "promptCost",
+    "prompt_cost",
+  );
+  const outputCost = pick(
+    "outputCost",
+    "output_cost",
+    "completionCost",
+    "completion_cost",
+  );
+  const totalCost = pick(
+    "totalCost",
+    "total_cost",
+    "cost",
+  );
+
+  const currency =
+    responseData?.currency ||
+    responseData?.metadata?.currency ||
+    responseData?.meta?.currency ||
+    DEFAULT_CURRENCY;
+
+  if (inputCost === null && outputCost === null && totalCost === null) {
+    return null;
+  }
+
+  return {
+    inputCost,
+    outputCost,
+    totalCost:
+      totalCost ??
+      ((inputCost ?? null) !== null && (outputCost ?? null) !== null
+        ? inputCost + outputCost
+        : null),
+    currency: String(currency || DEFAULT_CURRENCY).toUpperCase(),
+  };
+}
+
 export async function logAiBridgeUsage({
   req,
   feature,
@@ -150,6 +222,25 @@ export async function logAiBridgeUsage({
     const totalTokens =
       normalizedUsage.totalTokens ?? Math.max(0, inputTokens + outputTokens);
     const outputSnapshot = buildOutputSnapshot(responseData);
+    const resolvedProvider =
+      responseData?.provider ||
+      responseData?.metadata?.provider ||
+      provider;
+    const resolvedModel =
+      responseData?.model ||
+      responseData?.metadata?.model ||
+      model;
+    const explicitCost = readExplicitCost(responseData);
+    const estimatedCost =
+      explicitCost ||
+      (success
+        ? estimateUsageCost({
+            provider: resolvedProvider,
+            model: resolvedModel,
+            inputTokens,
+            outputTokens,
+          })
+        : null);
 
     await AiUsage.create({
       tenantId: getTenantId(req),
@@ -160,14 +251,8 @@ export async function logAiBridgeUsage({
         req.body?.sessionId ||
         req.get?.("x-session-id") ||
         undefined,
-      provider:
-        responseData?.provider ||
-        responseData?.metadata?.provider ||
-        provider,
-      model:
-        responseData?.model ||
-        responseData?.metadata?.model ||
-        model,
+      provider: resolvedProvider,
+      model: resolvedModel,
       feature,
       endpoint,
       requestId,
@@ -175,6 +260,10 @@ export async function logAiBridgeUsage({
       inputTokens,
       outputTokens,
       totalTokens,
+      inputCost: estimatedCost?.inputCost ?? estimatedCost?.input_cost ?? undefined,
+      outputCost: estimatedCost?.outputCost ?? estimatedCost?.output_cost ?? undefined,
+      totalCost: estimatedCost?.totalCost ?? estimatedCost?.total_cost ?? undefined,
+      currency: estimatedCost?.currency || undefined,
       promptChars: estimateChars(req.body),
       completionChars: estimateChars(responseData),
       outputPreview: outputSnapshot.outputPreview,
