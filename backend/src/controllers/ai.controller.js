@@ -10,6 +10,12 @@ import {
   AiUpstreamError,
   callAiService,
 } from "../services/ai/fastapiClient.js";
+import {
+  applyAiTokenPolicy,
+  assertAiAccess,
+  buildAiPolicyHeaders,
+  resolveAiSettingsBundle,
+} from "../services/ai/tenantAiSettingsService.js";
 import Assignment from "../models/Assignment.js";
 
 const LMS_AI_ROLES = new Set(["STUDENT", "TEACHER", "ADMIN", "SUPERADMIN"]);
@@ -241,15 +247,33 @@ function buildMultipartForm(file, fields = {}) {
   return form;
 }
 
+async function resolveAiRuntimeContext(req, routeFeature, payload = null) {
+  const tenantId = getTenantId(req);
+  const bundle = await resolveAiSettingsBundle({
+    tenantId,
+    createPlatformIfMissing: true,
+  });
+  const access = assertAiAccess(bundle.effective, routeFeature);
+
+  return {
+    aiSettings: access.settings,
+    payload: applyAiTokenPolicy(payload, access.settings),
+    headers: buildAiPolicyHeaders(access.settings, routeFeature),
+  };
+}
+
 async function respondWithJsonProxy(req, res, options) {
   const startedAt = Date.now();
   let requestId = getRequestId(req);
   let payload;
+  let aiContext;
 
   try {
     requireRoleSet(req, options.allowedRoles || LMS_AI_ROLES);
 
     payload = options.buildPayload ? options.buildPayload(req) : req.body;
+    aiContext = await resolveAiRuntimeContext(req, options.feature, payload);
+    payload = aiContext.payload;
 
     if (options.realtime) {
       emitAiWorkflowEvent({
@@ -268,7 +292,10 @@ async function respondWithJsonProxy(req, res, options) {
       path: options.path,
       body: payload,
       query: options.query ? options.query(req) : undefined,
-      headers: buildForwardHeaders(req, requestId, options.headers || {}),
+      headers: buildForwardHeaders(req, requestId, {
+        ...(options.headers || {}),
+        ...(aiContext?.headers || {}),
+      }),
       timeoutMs: options.timeoutMs,
     });
 
@@ -333,15 +360,20 @@ async function respondWithJsonProxy(req, res, options) {
 async function respondWithBinaryProxy(req, res, options) {
   const startedAt = Date.now();
   let requestId = getRequestId(req);
+  let aiContext;
 
   try {
     requireRoleSet(req, options.allowedRoles || LMS_AI_ROLES);
+    aiContext = await resolveAiRuntimeContext(req, options.feature);
 
     const upstream = await callAiService({
       method: options.method || "GET",
       path: options.path,
       query: options.query ? options.query(req) : undefined,
-      headers: buildForwardHeaders(req, requestId, options.headers || {}),
+      headers: buildForwardHeaders(req, requestId, {
+        ...(options.headers || {}),
+        ...(aiContext?.headers || {}),
+      }),
       responseType: "binary",
       timeoutMs: options.timeoutMs,
     });
@@ -508,11 +540,12 @@ export async function gradeSingleQuestion(req, res) {
 export async function getGradingHealth(req, res) {
   try {
     requireRoleSet(req, LMS_AI_ROLES);
+    const aiContext = await resolveAiRuntimeContext(req, "quiz-grade");
 
     const upstream = await callAiService({
       method: "GET",
       path: "/api/grade/health",
-      headers: buildForwardHeaders(req, getRequestId(req)),
+      headers: buildForwardHeaders(req, getRequestId(req), aiContext.headers),
       timeoutMs: 15000,
     });
 
@@ -589,6 +622,7 @@ export async function uploadAssignmentFile(req, res) {
 
   try {
     requireRoleSet(req, LMS_AI_ROLES);
+    const aiContext = await resolveAiRuntimeContext(req, "assignment-generate");
 
     if (!req.file) {
       throw createValidationError("file is required");
@@ -602,7 +636,7 @@ export async function uploadAssignmentFile(req, res) {
         assignment_id: req.body?.assignment_id,
         purpose: req.body?.purpose,
       }),
-      headers: buildForwardHeaders(req, requestId),
+      headers: buildForwardHeaders(req, requestId, aiContext.headers),
     });
 
     await logAiBridgeUsage({
@@ -741,11 +775,12 @@ export async function listAssignments(req, res) {
 export async function getAssignmentsHealth(req, res) {
   try {
     requireRoleSet(req, LMS_AI_ROLES);
+    const aiContext = await resolveAiRuntimeContext(req, "assignment-generate");
 
     const upstream = await callAiService({
       method: "GET",
       path: "/api/assignments/health",
-      headers: buildForwardHeaders(req, getRequestId(req)),
+      headers: buildForwardHeaders(req, getRequestId(req), aiContext.headers),
       timeoutMs: 15000,
     });
 
@@ -778,6 +813,7 @@ export async function uploadTutorMaterial(req, res) {
 
   try {
     requireRoleSet(req, LMS_AI_ROLES);
+    const aiContext = await resolveAiRuntimeContext(req, "tutor-material");
 
     if (!req.file) {
       throw createValidationError("file is required");
@@ -788,7 +824,7 @@ export async function uploadTutorMaterial(req, res) {
       method: "POST",
       path: `/api/tutor/material/${encodeURIComponent(sessionId)}`,
       body: buildMultipartForm(req.file),
-      headers: buildForwardHeaders(req, requestId),
+      headers: buildForwardHeaders(req, requestId, aiContext.headers),
     });
 
     await logAiBridgeUsage({
@@ -832,17 +868,18 @@ export async function tutorChat(req, res) {
     const message = ensureString(req.body?.message, "message", {
       max: 10000,
     });
+    const aiContext = await resolveAiRuntimeContext(req, "tutor-chat");
 
     if (req.file) {
       await callAiService({
         method: "POST",
         path: `/api/tutor/material/${encodeURIComponent(sessionId)}`,
         body: buildMultipartForm(req.file),
-        headers: buildForwardHeaders(req, requestId),
+        headers: buildForwardHeaders(req, requestId, aiContext.headers),
       });
     }
 
-    const payload = {
+    let payload = {
       session_id: sessionId,
       message,
       ...(req.body?.subject ? { subject: String(req.body.subject) } : {}),
@@ -853,12 +890,13 @@ export async function tutorChat(req, res) {
         : {}),
       user_profile: req.user?._id ? { _id: String(req.user._id) } : undefined,
     };
+    payload = applyAiTokenPolicy(payload, aiContext.aiSettings);
 
     const upstream = await callAiService({
       method: "POST",
       path: "/api/tutor/chat",
       body: payload,
-      headers: buildForwardHeaders(req, requestId),
+      headers: buildForwardHeaders(req, requestId, aiContext.headers),
     });
 
     await logAiBridgeUsage({

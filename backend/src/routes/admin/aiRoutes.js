@@ -2,6 +2,7 @@
 import { Router } from "express";
 import {
   getAiSettings,
+  resetAiSettings,
   updateAiSettings,
 } from "../../controllers/admin/aiController.js";
 import { requireAuth, requireRole } from "../../middleware/authMiddleware.js";
@@ -20,6 +21,13 @@ router.put(
   requireAuth,
   requireRole("ADMIN", "SUPERADMIN"),
   updateAiSettings,
+);
+
+router.delete(
+  "/settings",
+  requireAuth,
+  requireRole("ADMIN", "SUPERADMIN"),
+  resetAiSettings,
 );
 
 export default router;

@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import api from "../services/api/api.js";
@@ -44,6 +44,7 @@ jest.mock("../services/api/api.js", () => ({
       listAuditLogs: jest.fn(),
       listFeatureFlags: jest.fn(),
       listTenants: jest.fn(),
+      resetAiSettings: jest.fn(),
       superOverview: jest.fn(),
       updateAiSettings: jest.fn(),
     },
@@ -69,6 +70,22 @@ describe("admin and superadmin analytics pages", () => {
       settings: {
         enabled: true,
         feedbackTone: "neutral",
+        minTokens: 256,
+        maxTokens: 4096,
+        softCapDaily: 50000,
+        softCapWeekly: 250000,
+        features: {
+          aiGrading: true,
+          aiQuizGen: true,
+          aiTutor: true,
+          aiSummaries: true,
+        },
+      },
+      effective: {
+        enabled: true,
+        feedbackTone: "neutral",
+        minTokens: 256,
+        maxTokens: 4096,
         softCapDaily: 50000,
         softCapWeekly: 250000,
         features: {
@@ -81,6 +98,51 @@ describe("admin and superadmin analytics pages", () => {
     });
     api.admin.listTenants.mockResolvedValue({
       items: [{ tenantId: "north-ridge", name: "North Ridge Academy" }],
+    });
+    api.admin.resetAiSettings.mockResolvedValue({
+      settings: {
+        enabled: true,
+        feedbackTone: "neutral",
+        minTokens: 256,
+        maxTokens: 4096,
+        softCapDaily: 50000,
+        softCapWeekly: 250000,
+        features: {
+          aiGrading: true,
+          aiQuizGen: true,
+          aiTutor: true,
+          aiSummaries: true,
+        },
+      },
+      effective: {
+        enabled: true,
+        feedbackTone: "neutral",
+        minTokens: 256,
+        maxTokens: 4096,
+        softCapDaily: 50000,
+        softCapWeekly: 250000,
+        features: {
+          aiGrading: true,
+          aiQuizGen: true,
+          aiTutor: true,
+          aiSummaries: true,
+        },
+      },
+      platformDefaults: {
+        enabled: true,
+        feedbackTone: "neutral",
+        minTokens: 256,
+        maxTokens: 4096,
+        softCapDaily: 50000,
+        softCapWeekly: 250000,
+        features: {
+          aiGrading: true,
+          aiQuizGen: true,
+          aiTutor: true,
+          aiSummaries: true,
+        },
+      },
+      override: null,
     });
     api.admin.getAiRequestsSummary.mockResolvedValue({
       summary: {
@@ -203,8 +265,165 @@ describe("admin and superadmin analytics pages", () => {
       expect(screen.getByText("Platform AI Controls")).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/Set platform-wide defaults first/i)).toBeInTheDocument();
+    expect(screen.getByText(/Edit platform defaults directly, or switch to a tenant/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Platform defaults/i).length).toBeGreaterThan(0);
+  });
+
+  test("SuperAdmin AI controls distinguish inherited and overridden tenant values and save tenant overrides", async () => {
+    api.admin.getAiSettings.mockImplementation((config = {}) => {
+      const tenantId = config?.headers?.["x-tenant-id"];
+      if (tenantId === "north-ridge") {
+        return Promise.resolve({
+          settings: {
+            enabled: true,
+            feedbackTone: "neutral",
+            minTokens: 512,
+            maxTokens: 1024,
+            softCapDaily: 50000,
+            softCapWeekly: 250000,
+            features: {
+              aiGrading: true,
+              aiQuizGen: true,
+              aiTutor: false,
+              aiSummaries: true,
+            },
+          },
+          effective: {
+            enabled: true,
+            feedbackTone: "neutral",
+            minTokens: 512,
+            maxTokens: 1024,
+            softCapDaily: 50000,
+            softCapWeekly: 250000,
+            features: {
+              aiGrading: true,
+              aiQuizGen: true,
+              aiTutor: false,
+              aiSummaries: true,
+            },
+          },
+          platformDefaults: {
+            enabled: true,
+            feedbackTone: "neutral",
+            minTokens: 256,
+            maxTokens: 4096,
+            softCapDaily: 50000,
+            softCapWeekly: 250000,
+            features: {
+              aiGrading: true,
+              aiQuizGen: true,
+              aiTutor: true,
+              aiSummaries: true,
+            },
+          },
+          override: {
+            minTokens: 512,
+            maxTokens: 1024,
+            features: {
+              aiTutor: false,
+            },
+          },
+        });
+      }
+
+      return Promise.resolve({
+        settings: {
+          enabled: true,
+          feedbackTone: "neutral",
+          minTokens: 256,
+          maxTokens: 4096,
+          softCapDaily: 50000,
+          softCapWeekly: 250000,
+          features: {
+            aiGrading: true,
+            aiQuizGen: true,
+            aiTutor: true,
+            aiSummaries: true,
+          },
+        },
+        effective: {
+          enabled: true,
+          feedbackTone: "neutral",
+          minTokens: 256,
+          maxTokens: 4096,
+          softCapDaily: 50000,
+          softCapWeekly: 250000,
+          features: {
+            aiGrading: true,
+            aiQuizGen: true,
+            aiTutor: true,
+            aiSummaries: true,
+          },
+        },
+        platformDefaults: {
+          enabled: true,
+          feedbackTone: "neutral",
+          minTokens: 256,
+          maxTokens: 4096,
+          softCapDaily: 50000,
+          softCapWeekly: 250000,
+          features: {
+            aiGrading: true,
+            aiQuizGen: true,
+            aiTutor: true,
+            aiSummaries: true,
+          },
+        },
+        override: null,
+      });
+    });
+
+    renderWithRouter(<SuperAdminAIControlsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Platform AI Controls")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Editing scope"), {
+      target: { value: "north-ridge" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Tenant override: North Ridge Academy/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByText(/Inherited from platform/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Overridden for this tenant/i).length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(/Platform default: 256 tokens. Effective for this tenant: 512 tokens\./i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Platform default: Enabled. Effective for this tenant: Disabled\./i),
+    ).toBeInTheDocument();
+
+    const enabledPanel = screen
+      .getByText("AI enabled")
+      .closest(".dash-surface-panel");
+    const sourceSelect = within(enabledPanel).getByDisplayValue("Inherited from platform");
+    fireEvent.change(sourceSelect, { target: { value: "override" } });
+
+    const enabledToggle = within(enabledPanel).getByLabelText("Enabled");
+    fireEvent.click(enabledToggle);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Save Tenant Override for North Ridge Academy/i }),
+    );
+
+    await waitFor(() => {
+      expect(api.admin.updateAiSettings).toHaveBeenCalledWith(
+        {
+          override: {
+            enabled: false,
+            minTokens: 512,
+            maxTokens: 1024,
+            features: {
+              aiTutor: false,
+            },
+          },
+        },
+        { headers: { "x-tenant-id": "north-ridge" } },
+      );
+    });
   });
 
   test("AICostPage shows truthful empty-state labels for missing telemetry", async () => {

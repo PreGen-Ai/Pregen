@@ -10,6 +10,8 @@ import LoadingSpinner from "../components/ui/LoadingSpinner.jsx";
 const DEFAULTS = {
   enabled: true,
   feedbackTone: "neutral",
+  minTokens: 256,
+  maxTokens: 4096,
   softCapDaily: 50000,
   softCapWeekly: 250000,
   features: {
@@ -91,6 +93,12 @@ export default function AdminAIControlsPage() {
     );
   }, [settings.softCapDaily, settings.softCapWeekly]);
 
+  const tokensOutOfOrder = useMemo(() => {
+    const minTokens = Number(settings.minTokens || 0);
+    const maxTokens = Number(settings.maxTokens || 0);
+    return maxTokens > 0 && minTokens > maxTokens;
+  }, [settings.maxTokens, settings.minTokens]);
+
   const load = useCallback(async () => {
     if (isSuperAdmin && !activeTenantId) {
       setSettings(DEFAULTS);
@@ -102,7 +110,7 @@ export default function AdminAIControlsPage() {
     setLoading(true);
     try {
       const res = await api.admin.getAiSettings();
-      const merged = mergeSettings(res?.settings || {});
+      const merged = mergeSettings(res?.effective || res?.settings || {});
       setSettings(merged);
       setBaseline(merged);
       setLastSavedAt(null);
@@ -136,15 +144,24 @@ export default function AdminAIControlsPage() {
       return;
     }
 
+    if (tokensOutOfOrder) {
+      toast.error(
+        "Maximum token threshold must be greater than or equal to the minimum token threshold.",
+      );
+      return;
+    }
+
     setSaving(true);
     try {
       const payload = {
         ...settings,
+        minTokens: Number(settings.minTokens || 0),
+        maxTokens: Number(settings.maxTokens || 0),
         softCapDaily: Number(settings.softCapDaily || 0),
         softCapWeekly: Number(settings.softCapWeekly || 0),
       };
       const res = await api.admin.updateAiSettings(payload);
-      const merged = mergeSettings(res?.settings || payload);
+      const merged = mergeSettings(res?.effective || res?.settings || payload);
       setSettings(merged);
       setBaseline(merged);
       setLastSavedAt(new Date());
@@ -173,6 +190,10 @@ export default function AdminAIControlsPage() {
             Configure AI access, feedback tone, and usage warnings for{" "}
             <strong>{schoolLabel}</strong>.
           </p>
+          <div className="dash-supporting-text mt-2">
+            Saves are stored as school-specific overrides relative to the platform
+            defaults, while this page always shows the current effective school policy.
+          </div>
         </div>
         <div className="dash-page-actions">
           <button
@@ -187,7 +208,7 @@ export default function AdminAIControlsPage() {
             type="button"
             className="btn btn-primary"
             onClick={save}
-            disabled={saving || !isDirty}
+            disabled={saving || !isDirty || weeklyIsLower || tokensOutOfOrder}
           >
             {saving ? "Saving..." : "Save School Controls"}
           </button>
@@ -278,6 +299,44 @@ export default function AdminAIControlsPage() {
               <div className="col-lg-6">
                 <div className="mb-3">
                   <label className="form-label fw-semibold">
+                    Minimum token threshold
+                  </label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    min={0}
+                    step={1}
+                    value={settings.minTokens}
+                    onChange={(e) =>
+                      setField("minTokens", Number(e.target.value || 0))
+                    }
+                  />
+                  <div className="form-text">
+                    Lower-bound token floor used when a request exposes an adjustable token budget.
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label fw-semibold">
+                    Maximum token threshold
+                  </label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    min={0}
+                    step={1}
+                    value={settings.maxTokens}
+                    onChange={(e) =>
+                      setField("maxTokens", Number(e.target.value || 0))
+                    }
+                  />
+                  <div className="form-text">
+                    Upper-bound token ceiling used when a request exposes an adjustable token budget.
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label fw-semibold">
                     Daily token soft cap
                   </label>
                   <input
@@ -317,6 +376,13 @@ export default function AdminAIControlsPage() {
                 {weeklyIsLower ? (
                   <div className="alert alert-danger mb-0">
                     Weekly token soft cap is lower than the daily soft cap.
+                    Saving is blocked until that is corrected.
+                  </div>
+                ) : null}
+
+                {tokensOutOfOrder ? (
+                  <div className="alert alert-danger mt-3 mb-0">
+                    Maximum token threshold is lower than the minimum token threshold.
                     Saving is blocked until that is corrected.
                   </div>
                 ) : null}
@@ -399,7 +465,7 @@ export default function AdminAIControlsPage() {
                   type="button"
                   className="btn btn-primary"
                   onClick={save}
-                  disabled={!isDirty || saving}
+                  disabled={!isDirty || saving || weeklyIsLower || tokensOutOfOrder}
                 >
                   {saving ? "Saving..." : "Save School Controls"}
                 </button>

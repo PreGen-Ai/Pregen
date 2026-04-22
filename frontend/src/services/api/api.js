@@ -539,6 +539,8 @@ export const api = {
       safe(apiClient.get(`${ADMIN_BASE}/ai/settings`, config)),
     updateAiSettings: (payload, config = {}) =>
       safe(apiClient.put(`${ADMIN_BASE}/ai/settings`, payload, config)),
+    resetAiSettings: (config = {}) =>
+      safe(apiClient.delete(`${ADMIN_BASE}/ai/settings`, config)),
 
     // Canonical Node -> FastAPI bridge
     // Quiz gen and assignment gen use extended timeouts: the AI quality-gate
@@ -887,6 +889,8 @@ export const api = {
       safe(apiClient.get(`${ADMIN_BASE}/ai/settings`, config)),
     updateAiSettings: (payload, config = {}) =>
       safe(apiClient.put(`${ADMIN_BASE}/ai/settings`, payload, config)),
+    resetAiSettings: (config = {}) =>
+      safe(apiClient.delete(`${ADMIN_BASE}/ai/settings`, config)),
 
     // Analytics
     getAnalyticsSummary: (params, config = {}) =>

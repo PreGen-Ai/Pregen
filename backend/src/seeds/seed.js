@@ -116,6 +116,8 @@ async function upsertTenantSettings() {
     ai: {
       enabled: true,
       feedbackTone: "neutral",
+      minTokens: 256,
+      maxTokens: 4096,
       softCapDaily: 50000,
       softCapWeekly: 250000,
       features: {
