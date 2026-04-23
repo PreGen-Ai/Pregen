@@ -7,6 +7,8 @@ import {
   approveQuizAttempt,
   updateQuizAttemptGrade,
   updateSubmissionGrade,
+  getSubmissionDetail,
+  getQuizAttemptDetail,
 } from "../controllers/gradebook.controller.js";
 import { auth, authorizeRoles } from "../middleware/authMiddleware.js";
 
@@ -18,6 +20,20 @@ router.get(
   "/",
   authorizeRoles("STUDENT", "TEACHER", "ADMIN", "SUPERADMIN"),
   listGradebook,
+);
+
+// Full detail view for teacher review of a single submission
+router.get(
+  "/submissions/:submissionId",
+  authorizeRoles("TEACHER", "ADMIN", "SUPERADMIN"),
+  getSubmissionDetail,
+);
+
+// Full detail view for teacher review of a single quiz attempt
+router.get(
+  "/quiz-attempts/:attemptId",
+  authorizeRoles("TEACHER", "ADMIN", "SUPERADMIN"),
+  getQuizAttemptDetail,
 );
 
 // Draft a teacher review (sets score/feedback, status = teacher_reviewed — not yet final)

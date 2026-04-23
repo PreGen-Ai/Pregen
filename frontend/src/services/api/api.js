@@ -275,6 +275,42 @@ export const api = {
           params: cleanParams(params),
         }),
       ),
+    getSubmission: (submissionId, config = {}) =>
+      safe(apiClient.get(`/api/gradebook/submissions/${submissionId}`, config)),
+    getQuizAttempt: (attemptId, config = {}) =>
+      safe(apiClient.get(`/api/gradebook/quiz-attempts/${attemptId}`, config)),
+    reviewSubmission: (submissionId, payload, config = {}) =>
+      safe(
+        apiClient.patch(
+          `/api/gradebook/submissions/${submissionId}/review`,
+          payload,
+          config,
+        ),
+      ),
+    approveSubmission: (submissionId, payload, config = {}) =>
+      safe(
+        apiClient.patch(
+          `/api/gradebook/submissions/${submissionId}/approve`,
+          payload,
+          config,
+        ),
+      ),
+    reviewQuizAttempt: (attemptId, payload, config = {}) =>
+      safe(
+        apiClient.patch(
+          `/api/gradebook/quiz-attempts/${attemptId}/review`,
+          payload,
+          config,
+        ),
+      ),
+    approveQuizAttempt: (attemptId, payload, config = {}) =>
+      safe(
+        apiClient.patch(
+          `/api/gradebook/quiz-attempts/${attemptId}/approve`,
+          payload,
+          config,
+        ),
+      ),
     updateSubmission: (submissionId, payload, config = {}) =>
       safe(
         apiClient.patch(

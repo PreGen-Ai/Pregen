@@ -733,3 +733,145 @@ export async function updateSubmissionGrade(req, res) {
 export async function updateQuizAttemptGrade(req, res) {
   return approveQuizAttempt(req, res);
 }
+
+export async function getSubmissionDetail(req, res) {
+  try {
+    if (!isTeacherLike(req)) {
+      return res.status(403).json({ message: "Only teachers and admins can view submission details" });
+    }
+
+    const { submissionId } = req.params;
+    if (!isValidObjectId(submissionId)) {
+      return res.status(400).json({ message: "Invalid submission id" });
+    }
+
+    const found = await loadSubmissionContext(req, submissionId);
+    if (found?.error) {
+      return res.status(found.error.status).json({ message: found.error.message });
+    }
+
+    const submission = await Submission.findById(submissionId)
+      .populate("assignmentId", "title description instructions maxScore type")
+      .populate("studentId", userFields)
+      .populate("workspaceId", "title")
+      .lean();
+
+    const gradingStatus = normalizeReviewStatus(submission.gradingStatus, GRADING_STATUS.SUBMITTED);
+
+    return res.json({
+      submission: {
+        _id: toId(submission._id),
+        kind: "assignment",
+        title: submission.assignmentId?.title || "Assignment",
+        courseTitle: submission.workspaceId?.title || "",
+        student: submission.studentId || null,
+        assignment: submission.assignmentId || null,
+        textSubmission: submission.textSubmission || "",
+        answers: submission.answers || null,
+        files: submission.files || [],
+        submittedAt: submission.submittedAt || submission.createdAt || null,
+        gradingStatus,
+        status: gradingStatus,
+        released: gradingStatus === GRADING_STATUS.FINAL,
+        score: getCurrentScore(submission),
+        maxScore: Number(submission.assignmentId?.maxScore || 100),
+        feedback: getCurrentFeedback(submission),
+        aiScore: submission.aiScore ?? null,
+        aiFeedback: submission.aiFeedback || "",
+        aiGradedAt: submission.aiGradedAt || null,
+        teacherAdjustedScore: submission.teacherAdjustedScore ?? null,
+        teacherAdjustedFeedback: submission.teacherAdjustedFeedback || "",
+        finalScore: submission.finalScore ?? null,
+        finalFeedback: submission.finalFeedback || "",
+        adjustedByTeacher: Boolean(submission.adjustedByTeacher),
+        teacherApprovedAt: submission.teacherApprovedAt || null,
+        gradingAudit: (submission.gradingAudit || []).slice(-10),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to load submission detail", error: error.message });
+  }
+}
+
+export async function getQuizAttemptDetail(req, res) {
+  try {
+    if (!isTeacherLike(req)) {
+      return res.status(403).json({ message: "Only teachers and admins can view attempt details" });
+    }
+
+    const { attemptId } = req.params;
+    if (!isValidObjectId(attemptId)) {
+      return res.status(400).json({ message: "Invalid attempt id" });
+    }
+
+    const found = await loadQuizAttemptContext(req, attemptId);
+    if (found?.error) {
+      return res.status(found.error.status).json({ message: found.error.message });
+    }
+
+    const [attempt, quiz] = await Promise.all([
+      QuizAttempt.findById(attemptId)
+        .populate("studentId", userFields)
+        .populate("workspaceId", "title")
+        .lean(),
+      Quiz.findById(found.attempt.quizId)
+        .select("+questions.correctAnswer")
+        .lean(),
+    ]);
+
+    const gradingStatus = normalizeReviewStatus(attempt.status, ATTEMPT_STATUS.SUBMITTED);
+
+    const answerMap = {};
+    for (const a of attempt.answers || []) {
+      answerMap[String(a.questionId)] = a;
+    }
+
+    const questions = (quiz?.questions || []).map((q) => {
+      const ans = answerMap[String(q._id)] || null;
+      return {
+        _id: toId(q._id),
+        questionText: q.questionText,
+        questionType: q.questionType,
+        options: q.options || [],
+        correctAnswer: q.correctAnswer ?? null,
+        points: q.points || 1,
+        explanation: q.explanation || "",
+        studentAnswer: ans?.answer ?? null,
+        uploadedFiles: ans?.uploadedFiles || [],
+        isCorrect: ans?.isCorrect ?? null,
+        pointsEarned: ans?.pointsEarned ?? 0,
+      };
+    });
+
+    return res.json({
+      attempt: {
+        _id: toId(attempt._id),
+        kind: "quiz",
+        title: quiz?.title || "Quiz",
+        courseTitle: attempt.workspaceId?.title || "",
+        student: attempt.studentId || null,
+        questions,
+        timeSpent: attempt.timeSpent || 0,
+        submittedAt: attempt.submittedAt || attempt.createdAt || null,
+        gradingStatus,
+        status: gradingStatus,
+        released: gradingStatus === GRADING_STATUS.FINAL,
+        score: getCurrentScore(attempt),
+        maxScore: Number(attempt.maxScore || quiz?.totalPoints || 0),
+        feedback: getCurrentFeedback(attempt),
+        aiScore: attempt.aiScore ?? null,
+        aiFeedback: attempt.aiFeedback || "",
+        aiGradedAt: attempt.aiGradedAt || null,
+        teacherAdjustedScore: attempt.teacherAdjustedScore ?? null,
+        teacherAdjustedFeedback: attempt.teacherAdjustedFeedback || "",
+        finalScore: attempt.finalScore ?? null,
+        finalFeedback: attempt.finalFeedback || "",
+        adjustedByTeacher: Boolean(attempt.adjustedByTeacher),
+        teacherApprovedAt: attempt.teacherApprovedAt || null,
+        gradingAudit: (attempt.gradingAudit || []).slice(-10),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to load quiz attempt detail", error: error.message });
+  }
+}

@@ -4,6 +4,7 @@ import api from "../../../services/api/api";
 import useRealtimeRefresh from "../../../hooks/useRealtimeRefresh";
 import { withRequestId } from "../../../utils/requestId";
 import { useAuthContext } from "../../../context/AuthContext";
+import GradeReviewPanel from "./GradeReviewPanel";
 
 const asCourses = (value) => {
   if (Array.isArray(value?.courses)) return value.courses;
@@ -31,10 +32,22 @@ const kindLabel = (kind) => (kind === "quiz" ? "Quiz" : "Assignment");
 
 const statusBadgeClass = (status) => {
   const normalized = String(status || "").trim().toLowerCase();
-  if (normalized === "graded") return "bg-success";
-  if (normalized === "submitted") return "bg-warning text-dark";
-  if (normalized === "grading") return "bg-info text-dark";
+  if (normalized === "final" || normalized === "graded") return "bg-success";
+  if (normalized === "ai_graded") return "bg-warning text-dark";
+  if (normalized === "pending_teacher_review") return "bg-warning text-dark";
+  if (normalized === "submitted") return "bg-info text-dark";
+  if (normalized === "grading_delayed" || normalized === "failed") return "bg-danger";
   return "bg-secondary";
+};
+
+const STATUS_DISPLAY = {
+  final: "Finalized",
+  graded: "Graded",
+  ai_graded: "AI Graded",
+  pending_teacher_review: "Needs Review",
+  submitted: "Submitted",
+  grading_delayed: "Delayed",
+  failed: "Failed",
 };
 
 function SummaryCard({ title, value, subtitle }) {
@@ -65,6 +78,7 @@ export default function GradebookPage() {
   const [bulkSelected, setBulkSelected] = useState([]);
   const [bulkForm, setBulkForm] = useState({ score: "", feedback: "" });
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [reviewItem, setReviewItem] = useState(null);
 
   const editingItem = useMemo(
     () => items.find((item) => item._id === editingId) || null,
@@ -540,8 +554,13 @@ export default function GradebookPage() {
                   <td>{formatScore(item)}</td>
                   <td>
                     <span className={`badge ${statusBadgeClass(item.status)}`}>
-                      {item.status || "pending"}
+                      {STATUS_DISPLAY[item.status] || item.status || "pending"}
                     </span>
+                    {item.aiScore !== null && item.aiScore !== undefined && (
+                      <div className="text-muted mt-1" style={{ fontSize: "0.75em" }}>
+                        AI: {Number(item.aiScore).toFixed(0)}%
+                      </div>
+                    )}
                   </td>
                   <td>
                     <span style={{ maxWidth: 240, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -551,10 +570,10 @@ export default function GradebookPage() {
                   {canEdit ? (
                     <td>
                       <button
-                        className="btn btn-outline-light btn-sm"
-                        onClick={() => startEdit(item)}
+                        className="btn btn-outline-primary btn-sm"
+                        onClick={() => setReviewItem(item)}
                       >
-                        Grade
+                        Review
                       </button>
                     </td>
                   ) : null}
@@ -563,6 +582,14 @@ export default function GradebookPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {reviewItem && (
+        <GradeReviewPanel
+          item={reviewItem}
+          onClose={() => setReviewItem(null)}
+          onSaved={() => load(selectedCourseId)}
+        />
       )}
     </div>
   );
