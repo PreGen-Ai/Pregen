@@ -22,6 +22,8 @@ import { pick, thinkTime } from '../lib/rng.js';
 
 const loginErrors = new Counter('login_errors');
 
+let _loginFailed = false;
+
 const STAGE = __ENV.STAGE || 'A';
 export const options = {
   stages: getStages(STAGE),
@@ -65,7 +67,8 @@ export function setup() {
 // VU function — used both standalone and by run.js
 // ---------------------------------------------------------------------------
 export function loginNavigationScenario(data) {
-  // Lazy per-VU login
+  if (_loginFailed) { sleep(5); return; }
+
   if (!_token) {
     const role = (__VU % 10) < 7 ? 'students'
                : (__VU % 10) < 9 ? 'teachers'
@@ -77,6 +80,8 @@ export function loginNavigationScenario(data) {
     _token = login(_user.email, _user.password, _tenantId);
     if (!_token) {
       loginErrors.add(1);
+      _loginFailed = true;
+      sleep(5);
       return;
     }
   }

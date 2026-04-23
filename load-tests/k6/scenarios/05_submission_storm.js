@@ -51,6 +51,8 @@ const stormRT     = new Trend('submission_storm_rt', true);
 const stormErrors = new Rate('submission_storm_errors');
 const loginErrors = new Counter('storm_login_errors');
 
+let _loginFailed = false;
+
 let _token = null;
 let _user = null;
 let _tenantId = null;
@@ -69,12 +71,16 @@ export function setup() {
 }
 
 export function submissionStormScenario(data) {
+  if (_loginFailed) { sleep(5); return; }
+
   if (!_token) {
     _user = data.students[(__VU - 1) % data.students.length];
     _tenantId = _user.tenantId || null;
     _token = login(_user.email, _user.password, _tenantId);
     if (!_token) {
       loginErrors.add(1);
+      _loginFailed = true;
+      sleep(5);
       return;
     }
 

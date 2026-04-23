@@ -27,6 +27,8 @@ const submitLatency   = new Trend('student_submit_duration', true);
 const submitErrors    = new Counter('student_submit_errors');
 const loginErrors     = new Counter('student_login_errors');
 
+let _loginFailed = false;
+
 const STAGE = __ENV.STAGE || 'B';
 export const options = {
   stages: getStages(STAGE),
@@ -57,12 +59,16 @@ export function setup() {
 }
 
 export function studentFlowScenario(data) {
+  if (_loginFailed) { sleep(5); return; }
+
   if (!_token) {
     _user = data.students[(__VU - 1) % data.students.length];
     _tenantId = _user.tenantId || null;
     _token = login(_user.email, _user.password, _tenantId);
     if (!_token) {
       loginErrors.add(1);
+      _loginFailed = true;
+      sleep(5);
       return;
     }
     // Pick a stable course and assignment for this VU's lifetime

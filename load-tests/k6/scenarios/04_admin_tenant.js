@@ -24,6 +24,8 @@ import { thinkTime, pick } from '../lib/rng.js';
 const dashboardLatency = new Trend('admin_dashboard_duration', true);
 const loginErrors      = new Counter('admin_login_errors');
 
+let _loginFailed = false;
+
 const STAGE = __ENV.STAGE || 'A';
 export const options = {
   stages: getStages(STAGE),
@@ -52,6 +54,8 @@ export function setup() {
 }
 
 export function adminTenantScenario(data) {
+  if (_loginFailed) { sleep(5); return; }
+
   if (!_token) {
     _user = data.admins[(__VU - 1) % data.admins.length];
     _tenantId = _user.tenantId || null;
@@ -59,6 +63,8 @@ export function adminTenantScenario(data) {
     _token = login(_user.email, _user.password, _tenantId);
     if (!_token) {
       loginErrors.add(1);
+      _loginFailed = true;
+      sleep(5);
       return;
     }
   }

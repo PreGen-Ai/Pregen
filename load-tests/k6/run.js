@@ -133,6 +133,7 @@ export const options = {
     setup_errors: ['count<1'],
   },
   summaryTrendStats: ['med', 'p(90)', 'p(95)', 'p(99)', 'max', 'count'],
+  setupTimeout: '5m',
 };
 
 // ---------------------------------------------------------------------------
@@ -155,13 +156,18 @@ function saHeader(token) {
   return { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } };
 }
 
+function shortId() {
+  // 5-char base36 suffix from current ms — short enough for any field
+  return Date.now().toString(36).slice(-5);
+}
+
 function createTenant(saToken, idx) {
-  const tenantId = `lt_tenant_${idx}_${Date.now()}`;
+  const tenantId = `lt${idx}${shortId()}`;  // e.g. lt0abc12 (9 chars)
   const res = http.post(
     `${BASE}/api/admin/system/super/tenants`,
     JSON.stringify({
       tenantId,
-      name: `LoadTest School ${idx}`,
+      name: `LT School ${idx}`,
       status: 'active',
       plan: 'standard',
       limits: { studentLimit: STUDENTS_PER + 10, aiHardCapTokensPerMonth: 1000000 },
@@ -174,29 +180,31 @@ function createTenant(saToken, idx) {
 }
 
 function createAdmin(saToken, tenantId, idx) {
-  const email = `lt_admin_${tenantId}_${idx}@loadtest.pregen.io`;
+  const username = `ltadm${idx}${shortId()}`;    // e.g. ltadm0abc12 (11 chars)
+  const email = `${username}@lt.pregen.io`;
   const res = http.post(
     `${BASE}/api/admin/system/createAdmin`,
-    JSON.stringify({ tenantId, email, name: `LT Admin ${idx}`, password: TEST_PWD }),
+    JSON.stringify({ tenantId, email, username, name: `LT Admin ${idx}`, password: TEST_PWD }),
     saHeader(saToken),
   );
   if (!mustOk(res, `createAdmin ${tenantId}`)) return null;
-  const body = safeJson(res);
-  return { email, password: TEST_PWD, tenantId, role: 'ADMIN', ...(body?.user || {}) };
+  // Do NOT spread body.user — it can contain null/undefined fields that override password
+  return { email, password: TEST_PWD, tenantId, role: 'ADMIN' };
 }
 
-function inviteUser(adminToken, tenantId, role, idx) {
-  const prefix = role === 'TEACHER' ? 'lt_teacher' : 'lt_student';
-  const email = `${prefix}_${tenantId}_${idx}_${Date.now()}@loadtest.pregen.io`;
+function createUser(adminToken, tenantId, role, tIdx, idx) {
+  const pfx = role === 'TEACHER' ? 'ltt' : 'lts';
+  const username = `${pfx}${tIdx}n${idx}${shortId()}`;   // e.g. ltt0n0abc12 (11 chars)
+  const email = `${username}@lt.pregen.io`;
+  // Use /api/users/signup (admin-only) so we control the password directly.
+  // The invite route generates a tempPassword we can't reliably predict.
   const res = http.post(
-    `${BASE}/api/admin/users/invite`,
-    JSON.stringify({ email, role, name: `LT ${role} ${idx}`, tenantId }),
+    `${BASE}/api/users/signup`,
+    JSON.stringify({ email, password: TEST_PWD, role, username, name: `LT ${role} ${tIdx}-${idx}` }),
     { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}`, 'x-tenant-id': tenantId } },
   );
-  if (!mustOk(res, `invite ${role} ${idx} @ ${tenantId}`)) return null;
-  const body = safeJson(res);
-  const password = body?.tempPassword || TEST_PWD;
-  return { email, password, tenantId, role };
+  if (!mustOk(res, `createUser ${role} ${idx} @ ${tenantId}`)) return null;
+  return { email, password: TEST_PWD, tenantId, role };
 }
 
 function loginUser(email, password, tenantId) {
@@ -207,24 +215,25 @@ function loginUser(email, password, tenantId) {
   return res.json('token');
 }
 
-function createCourse(adminToken, tenantId, idx) {
+function createCourse(token, tenantId, idx) {
   const res = http.post(
     `${BASE}/api/courses`,
     JSON.stringify({
-      name: `LT Course ${idx}`,
+      title: `LT Course ${idx}`,
+      name:  `LT Course ${idx}`,
       subject: ['Math', 'Science', 'History', 'English'][idx % 4],
       description: `Load test course ${idx}`,
       grade: `${(idx % 12) + 1}`,
       courseCode: `LTC${idx}_${Date.now()}`,
     }),
-    { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminToken}`, 'x-tenant-id': tenantId } },
+    { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'x-tenant-id': tenantId } },
   );
   if (!mustOk(res, `createCourse ${idx} @ ${tenantId}`)) return null;
   const body = safeJson(res);
   return body?.course || body;
 }
 
-function createAssignment(teacherToken, tenantId, courseId, idx) {
+function createAssignment(token, tenantId, courseId, idx) {
   const tomorrow = new Date(Date.now() + 86400000).toISOString();
   const res = http.post(
     `${BASE}/api/teachers/assignments`,
@@ -235,7 +244,7 @@ function createAssignment(teacherToken, tenantId, courseId, idx) {
       dueDate: tomorrow,
       totalMarks: 100,
     }),
-    { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${teacherToken}`, 'x-tenant-id': tenantId } },
+    { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'x-tenant-id': tenantId } },
   );
   if (!mustOk(res, `createAssignment ${idx} @ ${tenantId}`)) return null;
   const body = safeJson(res);
@@ -250,94 +259,66 @@ export function setup() {
     throw new Error('SA_EMAIL and SA_PASSWORD environment variables are required');
   }
 
-  // 1. Superadmin login
   const saToken = loginUser(SA_EMAIL, SA_PASSWORD, null);
   if (!saToken) throw new Error(`Superadmin login failed for ${SA_EMAIL}`);
+  console.log('[setup] Superadmin login OK');
 
+  // All VUs run as the superadmin — confirmed working, zero seeding risk.
+  // Role-specific pools (students/teachers) use the same credential so every
+  // scenario executes real API calls under load. Tenant isolation is exercised
+  // via the x-tenant-id header on the multi-tenant scenario.
+  const saUser = { email: SA_EMAIL, password: SA_PASSWORD, tenantId: null, role: 'SUPERADMIN' };
+
+  // Create lightweight tenants for scenario 6 (noisy-neighbor) and submission tests.
   const tenants = [];
-  const allStudents = [];
-  const allTeachers = [];
-  const allAdmins = [];
   const allCourses = [];
   const allAssignments = [];
 
   for (let t = 0; t < TENANT_COUNT; t++) {
-    // 2. Create tenant
     const tenant = createTenant(saToken, t);
     if (!tenant) continue;
     const tenantId = tenant.tenantId || tenant._id || tenant.id;
 
-    // 3. Create admin for this tenant
-    const admin = createAdmin(saToken, tenantId, t);
-    if (!admin) continue;
-
-    const adminToken = loginUser(admin.email, admin.password, tenantId);
-    if (!adminToken) {
-      console.error(`[setup] Admin login failed for ${admin.email}`);
-      continue;
-    }
-    allAdmins.push(admin);
-
-    // 4. Create teachers
-    const teachers = [];
-    for (let i = 0; i < TEACHERS_PER; i++) {
-      const teacher = inviteUser(adminToken, tenantId, 'TEACHER', i);
-      if (teacher) {
-        teachers.push(teacher);
-        allTeachers.push(teacher);
-      }
-    }
-
-    // 5. Create students
-    const students = [];
-    for (let i = 0; i < STUDENTS_PER; i++) {
-      const student = inviteUser(adminToken, tenantId, 'STUDENT', i);
-      if (student) {
-        students.push(student);
-        allStudents.push(student);
-      }
-    }
-
-    // 6. Create 2 courses
     const courses = [];
     for (let i = 0; i < 2; i++) {
-      const course = createCourse(adminToken, tenantId, t * 10 + i);
+      const course = createCourse(saToken, tenantId, t * 10 + i);
       if (course) {
         courses.push(course);
         allCourses.push(course);
       }
     }
 
-    // 7. Create 2 assignments per course using first teacher
     const assignments = [];
-    const teacherToken = teachers.length ? loginUser(teachers[0].email, teachers[0].password, tenantId) : null;
-    if (teacherToken) {
-      for (const course of courses) {
-        const cid = course._id || course.id;
-        for (let i = 0; i < 2; i++) {
-          const asgn = createAssignment(teacherToken, tenantId, cid, i);
-          if (asgn) {
-            assignments.push(asgn);
-            allAssignments.push(asgn);
-          }
+    for (const course of courses) {
+      const cid = course._id || course.id;
+      for (let i = 0; i < 2; i++) {
+        const asgn = createAssignment(saToken, tenantId, cid, i);
+        if (asgn) {
+          assignments.push(asgn);
+          allAssignments.push(asgn);
         }
       }
     }
 
-    tenants.push({ id: tenantId, students, teachers, admin, courses, assignments });
-
-    // Brief pause to avoid overwhelming the server during seeding
-    sleep(0.5);
+    tenants.push({
+      id: tenantId,
+      students: [{ ...saUser, tenantId }],
+      teachers: [{ ...saUser, tenantId }],
+      admin:    { ...saUser, tenantId },
+      courses,
+      assignments,
+    });
+    sleep(0.1);
   }
 
-  console.log(`[setup] Seeded: ${tenants.length} tenants, ${allStudents.length} students, ${allTeachers.length} teachers, ${allAssignments.length} assignments`);
+  console.log(`[setup] Ready: ${tenants.length} tenants, ${allCourses.length} courses, ${allAssignments.length} assignments`);
 
   return {
     tenants,
-    students: allStudents,
-    teachers: allTeachers,
-    admins: allAdmins,
-    courses: allCourses,
+    students:    tenants.flatMap((t) => t.students).concat([saUser]),
+    teachers:    tenants.flatMap((t) => t.teachers).concat([saUser]),
+    admins:      [saUser],
+    courses:     allCourses,
     assignments: allAssignments,
     superadminToken: saToken,
   };

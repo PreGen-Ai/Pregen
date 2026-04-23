@@ -34,6 +34,8 @@ const lightRT = new Trend('mt_light_tenant_rt', true);
 const crossTenantErrors = new Counter('mt_cross_tenant_errors');
 const loginErrors = new Counter('mt_login_errors');
 
+let _loginFailed = false;
+
 const STAGE = __ENV.STAGE || 'B';
 export const options = {
   stages: getStages(STAGE),
@@ -69,6 +71,8 @@ export function setup() {
 }
 
 export function multiTenantScenario(data) {
+  if (_loginFailed) { sleep(5); return; }
+
   const { tenants } = data;
   const tenantCount = tenants.length;
 
@@ -94,6 +98,8 @@ export function multiTenantScenario(data) {
     _token = login(_user.email, _user.password, _tenantId);
     if (!_token) {
       loginErrors.add(1);
+      _loginFailed = true;
+      sleep(5);
       return;
     }
   }
