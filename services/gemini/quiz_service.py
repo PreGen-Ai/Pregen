@@ -410,7 +410,8 @@ class QuizService(BaseAIClient):
         subject_directive = {
             "multiple_choice": (
                 "Generate multiple-choice questions with exactly four labeled options (A–D). "
-                "Return 'answer' as a SINGLE LETTER only: A, B, C, or D."
+                "Return 'answer' as a SINGLE LETTER only: A, B, C, or D. "
+                "Vary the correct option positions across the quiz; do not concentrate answers in one letter."
             ),
             "essay": "Generate essay questions with expected_answer, rubric, and solution_steps.",
             "true_false": "Generate True/False questions with answer = 'True' or 'False'.",
@@ -434,6 +435,7 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
     - options: ["A. ...","B. ...","C. ...","D. ..."]
     - answer: "A" | "B" | "C" | "D"
     - explanation: string
+    - Across MCQs, distribute answer letters as evenly as possible
   - For essay:
     - expected_answer: string
     - rubric: string
@@ -687,11 +689,18 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
 
             if q_type == "multiple_choice":
                 options = q.get("options") or q.get("choices") or q.get("answers") or []
+                q["_source_options"] = [
+                    _safe_strip(option)
+                    for option in options
+                    if _safe_strip(option)
+                ] if isinstance(options, (list, tuple)) else []
                 q["options"] = self._validate_mcq_options(options, topic)
 
                 raw_ans = q.get("correct_answer") or q.get("answer")
+                q["_source_answer"] = _safe_strip(raw_ans)
                 q["answer"] = self._normalize_mcq_answer(raw_ans, q["options"])
                 q.pop("correct_answer", None)
+                q = self._shuffle_and_remap_mcq(q, idx)
 
                 if not _safe_strip(q.get("explanation", "")):
                     q["explanation"] = ""
@@ -775,6 +784,47 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
             final.append(opt)
 
         return final
+
+    def _option_body(self, opt: str) -> str:
+        s = _safe_strip(opt)
+        return re.sub(r"^\s*[A-Da-d]\s*[\.\)]\s*", "", s).strip()
+
+    def _canonical_option_body(self, opt: str) -> str:
+        body = self._option_body(opt).casefold()
+        body = re.sub(r"[^a-z0-9]+", " ", body)
+        return re.sub(r"\s+", " ", body).strip()
+
+    def _relabel_mcq_options(self, bodies: List[str]) -> List[str]:
+        return [
+            f"{'ABCD'[idx]}. {_safe_strip(body)}"
+            for idx, body in enumerate(bodies[:4])
+        ]
+
+    def _shuffle_and_remap_mcq(self, q: Dict[str, Any], index: int) -> Dict[str, Any]:
+        """
+        Move the correct option to a balanced target index and update answer.
+        This prevents provider/prompt bias while preserving the correct text.
+        """
+        options = list(q.get("options") or [])[:4]
+        answer = _safe_strip(q.get("answer", "")).upper()
+        if len(options) != 4 or answer not in {"A", "B", "C", "D"}:
+            return q
+
+        bodies = [self._option_body(option) for option in options]
+        correct_idx = "ABCD".index(answer)
+        target_idx = index % len(bodies)
+        correct_body = bodies[correct_idx]
+
+        if correct_idx != target_idx:
+            bodies[correct_idx], bodies[target_idx] = (
+                bodies[target_idx],
+                bodies[correct_idx],
+            )
+
+        q["options"] = self._relabel_mcq_options(bodies)
+        q["answer"] = "ABCD"[target_idx]
+        q["_correct_answer_text"] = correct_body
+        return q
 
     def _normalize_mcq_answer(self, answer: Any, options: List[str]) -> str:
         if not options:
@@ -876,6 +926,53 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
                 ans = _safe_strip(q.get("answer", ""))
                 if ans not in {"A", "B", "C", "D"}:
                     issues.append(f"Q{qid}: MCQ answer must be one of A/B/C/D")
+                else:
+                    canonical_options = [
+                        self._canonical_option_body(opt)
+                        for opt in opts
+                    ]
+                    if len(set(canonical_options)) != len(canonical_options):
+                        issues.append(f"Q{qid}: duplicate or empty MCQ options")
+
+                    source_options = q.get("_source_options") or []
+                    if source_options:
+                        source_canonical = [
+                            self._canonical_option_body(opt)
+                            for opt in source_options
+                        ]
+                        if len(source_canonical) < 4:
+                            issues.append(f"Q{qid}: source MCQ options are incomplete")
+                        if len(set(source_canonical)) != len(source_canonical):
+                            issues.append(f"Q{qid}: source MCQ options contain duplicates")
+
+                    near_duplicate_found = False
+                    for i in range(len(canonical_options)):
+                        for j in range(i + 1, len(canonical_options)):
+                            left = canonical_options[i]
+                            right = canonical_options[j]
+                            if len(left) > 5 and len(right) > 5:
+                                if SequenceMatcher(None, left, right).ratio() >= 0.92:
+                                    near_duplicate_found = True
+                                    break
+                        if near_duplicate_found:
+                            break
+                    if near_duplicate_found:
+                        issues.append(f"Q{qid}: semantically identical MCQ options")
+
+                    correct_text = self._canonical_option_body(
+                        q.get("_correct_answer_text", "")
+                    )
+                    if correct_text and correct_text not in canonical_options:
+                        issues.append(f"Q{qid}: correct answer text is not present in options")
+
+                    source_answer = _safe_strip(q.get("_source_answer", ""))
+                    source_is_letter = bool(
+                        re.match(r"^\s*[A-Da-d]\s*[\.\)]?\s*$", source_answer)
+                    )
+                    if source_answer and not source_is_letter:
+                        source_norm = self._canonical_option_body(source_answer)
+                        if source_norm and source_norm not in canonical_options:
+                            issues.append(f"Q{qid}: source correct answer text is not present in options")
 
             if qtype == "essay":
                 exp = _safe_strip(q.get("expected_answer"))
@@ -900,5 +997,16 @@ OUTPUT CONTRACT (MUST FOLLOW EXACTLY):
                 issues.append(
                     "Hard quiz lacks enough reasoning-style questions (explain/why/show/justify/derive/compare)."
                 )
+
+        mcq_answers = [
+            _safe_strip(q.get("answer", "")).upper()
+            for q in quiz
+            if q.get("type") == "multiple_choice"
+        ]
+        if len(mcq_answers) >= 4:
+            counts = {letter: mcq_answers.count(letter) for letter in "ABCD"}
+            max_allowed = max(2, int(len(mcq_answers) * 0.7))
+            if max(counts.values()) > max_allowed:
+                issues.append(f"MCQ answer distribution is too concentrated: {counts}")
 
         return (len(issues) == 0), issues

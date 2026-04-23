@@ -19,6 +19,7 @@ from models.request_models import (
 )
 from dependencies import get_gemini_service, get_report_storage
 from security import require_internal_service_auth
+from providers.provider_factory import get_provider_diagnostics
 
 logger = logging.getLogger(__name__)
 
@@ -305,10 +306,11 @@ async def grade_health(gemini=Depends(get_gemini_service)):
     Comprehensive health endpoint for grading services.
     """
     status = {
-        "status": "OK", 
+        "status": "OK",
         "message": "AI grading service running",
         "grading_service_available": gemini is not None and hasattr(gemini, 'grading_service'),
-        "report_storage_available": hasattr(gemini, 'report_storage') if gemini else False
+        "report_storage_available": hasattr(gemini, 'report_storage') if gemini else False,
+        "provider_diagnostics": get_provider_diagnostics(),
     }
     
     return status

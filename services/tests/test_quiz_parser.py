@@ -99,6 +99,94 @@ class QuizParserTests(unittest.TestCase):
         self.assertEqual(normalized[0]["answer"], "A")
         self.assertEqual(len(normalized[0]["options"]), 4)
 
+    def test_mcq_shuffle_remaps_correct_answer_text(self):
+        raw_questions = [
+            {
+                "id": str(index + 1),
+                "type": "multiple_choice",
+                "question": (
+                    f"Question {index + 1}: Which detailed statement best "
+                    "describes a core photosynthesis concept in plants?"
+                ),
+                "options": [
+                    f"Wrong option {index}-1",
+                    f"Correct option {index}",
+                    f"Wrong option {index}-2",
+                    f"Wrong option {index}-3",
+                ],
+                "answer": "B",
+            }
+            for index in range(4)
+        ]
+
+        normalized = self.service._normalize_and_validate_quiz(
+            quiz_data=raw_questions,
+            requested_type="multiple_choice",
+            topic="Photosynthesis",
+            difficulty="medium",
+        )
+
+        self.assertEqual([q["answer"] for q in normalized], ["A", "B", "C", "D"])
+        for index, q in enumerate(normalized):
+            correct_index = "ABCD".index(q["answer"])
+            self.assertIn(
+                f"Correct option {index}",
+                q["options"][correct_index],
+            )
+
+    def test_quality_gate_rejects_collapsed_answer_distribution(self):
+        quiz = [
+            {
+                "id": str(index + 1),
+                "type": "multiple_choice",
+                "question": (
+                    f"Question {index + 1}: Which detailed statement best "
+                    "describes a core photosynthesis concept in plants?"
+                ),
+                "options": [
+                    "A. Chlorophyll",
+                    "B. Glucose",
+                    "C. Oxygen",
+                    "D. Carbon dioxide",
+                ],
+                "answer": "B",
+                "_correct_answer_text": "Glucose",
+            }
+            for index in range(6)
+        ]
+
+        ok, issues = self.service._quality_gate(quiz, "medium")
+
+        self.assertFalse(ok)
+        self.assertTrue(
+            any("distribution" in issue.lower() for issue in issues),
+            issues,
+        )
+
+    def test_quality_gate_rejects_duplicate_source_options(self):
+        normalized = self.service._normalize_and_validate_quiz(
+            quiz_data=[
+                {
+                    "id": "dup",
+                    "type": "multiple_choice",
+                    "question": (
+                        "Which detailed statement best describes a core "
+                        "photosynthesis concept in plants?"
+                    ),
+                    "options": ["Chlorophyll", "Chlorophyll", "Glucose", "Oxygen"],
+                    "answer": "A",
+                }
+            ],
+            requested_type="multiple_choice",
+            topic="Photosynthesis",
+            difficulty="medium",
+        )
+
+        ok, issues = self.service._quality_gate(normalized, "medium")
+
+        self.assertFalse(ok)
+        self.assertTrue(any("duplicates" in issue.lower() for issue in issues), issues)
+
 
 class QuizGenerationPathTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

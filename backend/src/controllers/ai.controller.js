@@ -1177,14 +1177,17 @@ export async function explainMistake(req, res) {
     allowedRoles: STUDENT_PLUS_ROLES,
     buildPayload: (request) => {
       const body = request.body || {};
+      const isStudent = getRole(request) === "STUDENT";
       return {
         question_text: ensureString(body.question_text, "question_text", { max: 2000 }),
-        correct_answer: ensureString(body.correct_answer, "correct_answer", { required: false, max: 2000 }),
+        correct_answer: isStudent
+          ? ""
+          : ensureString(body.correct_answer, "correct_answer", { required: false, max: 2000 }),
         student_answer: ensureString(body.student_answer, "student_answer", { required: false, max: 5000 }),
         question_type: body.question_type ? String(body.question_type) : "multiple_choice",
         subject: body.subject ? String(body.subject) : "General",
         grade_level: body.grade_level ? String(body.grade_level) : "High School",
-        explanation: body.explanation ? String(body.explanation).slice(0, 500) : "",
+        explanation: !isStudent && body.explanation ? String(body.explanation).slice(0, 500) : "",
       };
     },
   });

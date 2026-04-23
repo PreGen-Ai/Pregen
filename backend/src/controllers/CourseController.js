@@ -26,7 +26,9 @@ import {
   isTeacherLike,
   isValidObjectId,
   makePagination,
+  normalizeSubmissionAnswers,
   serializeAssignment,
+  serializeSubmissionForStudent,
   serializeCourse,
   serializeSubmission,
   serializeQuiz,
@@ -38,18 +40,7 @@ const requestIdFromReq = (req) =>
   req.get?.("x-request-id") || req.headers?.["x-request-id"] || null;
 
 const buildStudentFacingSubmission = (submission) => {
-  const serialized = serializeSubmission(submission);
-  if (serialized.released) return serialized;
-
-  return {
-    ...serialized,
-    score: null,
-    feedback: "",
-    aiScore: null,
-    aiFeedback: "",
-    teacherAdjustedScore: null,
-    teacherAdjustedFeedback: "",
-  };
+  return serializeSubmissionForStudent(submission);
 };
 
 const escapeRegex = (value) =>
@@ -317,6 +308,8 @@ export const assignToCourse = async (req, res) => {
     const title = String(req.body.title || "").trim();
     const description = String(req.body.description || "").trim();
     const instructions = String(req.body.instructions || "").trim();
+    const subject = String(req.body.subject || "General").trim();
+    const curriculum = String(req.body.curriculum || "General").trim();
     const dueDateValue = req.body.dueDate ? new Date(req.body.dueDate) : null;
     const classroomId = req.body.classroomId || req.body.classId || null;
     const studentIds =
@@ -336,6 +329,8 @@ export const assignToCourse = async (req, res) => {
       title,
       description,
       instructions,
+      subject,
+      curriculum,
       dueDate: dueDateValue,
       teacher: req.user._id,
       workspace: courseId,
@@ -738,7 +733,7 @@ export const submitAssignmentById = async (req, res) => {
     }
 
     const assignment = await Assignment.findById(assignmentId).select(
-      "_id tenantId teacher workspace class dueDate status deleted",
+      "_id tenantId title description instructions type maxScore subject curriculum teacher workspace class dueDate status deleted",
     );
     if (!assignment || assignment.deleted) {
       return res.status(404).json({ message: "Assignment not found" });
@@ -790,6 +785,17 @@ export const submitAssignmentById = async (req, res) => {
       mimetype: file.mimetype,
       size: file.size,
     }));
+    const structuredAnswers = normalizeSubmissionAnswers(req.body.answers);
+    const textSubmission = String(req.body.textSubmission || "").trim();
+
+    console.info("[assessment] course assignment submission received", {
+      assignmentId: toId(assignment._id),
+      studentId: toId(req.user._id),
+      courseId,
+      hasTextSubmission: Boolean(textSubmission),
+      hasStructuredAnswers: structuredAnswers !== null,
+      fileCount: files.length,
+    });
 
     const submission = await Submission.findOneAndUpdate(
       {
@@ -806,8 +812,8 @@ export const submitAssignmentById = async (req, res) => {
           teacherId: assignment.teacher || null,
           classroomId: assignment.class || null,
           files,
-          answers: req.body.answers ?? null,
-          textSubmission: String(req.body.textSubmission || "").trim(),
+          answers: structuredAnswers,
+          textSubmission,
           submittedAt: new Date(),
           gradingStatus: "submitted",
           gradedBy: "NONE",

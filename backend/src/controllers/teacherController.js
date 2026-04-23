@@ -621,6 +621,8 @@ export const createAssignment = async (req, res) => {
     const title = normalizeString(req.body.title);
     const description = normalizeString(req.body.description);
     const instructions = normalizeString(req.body.instructions);
+    const subject = normalizeString(req.body.subject || "General");
+    const curriculum = normalizeString(req.body.curriculum || "General");
     const dueDateValue = req.body.dueDate ? new Date(req.body.dueDate) : null;
     const courseId = req.body.courseId || req.body.workspaceId || null;
     const classroomId = req.body.classroomId || req.body.classId || null;
@@ -673,6 +675,8 @@ export const createAssignment = async (req, res) => {
       title,
       description,
       instructions,
+      subject,
+      curriculum,
       dueDate: dueDateValue,
       teacher: req.user._id,
       workspace: courseId,
@@ -812,6 +816,12 @@ export const updateAssignment = async (req, res) => {
     }
     if (req.body.instructions !== undefined) {
       assignment.instructions = normalizeString(req.body.instructions);
+    }
+    if (req.body.subject !== undefined) {
+      assignment.subject = normalizeString(req.body.subject || "General");
+    }
+    if (req.body.curriculum !== undefined) {
+      assignment.curriculum = normalizeString(req.body.curriculum || "General");
     }
     if (req.body.dueDate !== undefined) {
       const dueDate = req.body.dueDate ? new Date(req.body.dueDate) : null;

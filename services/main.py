@@ -29,6 +29,7 @@ from endpoints.report_endpoints import router as report_router
 from endpoints.assignment_endpoints import router as assignment_router
 from endpoints.explanation_endpoints import router as explanation_router
 from endpoints.teacher_tools_endpoints import router as teacher_tools_router  # Commit 20
+from providers.provider_factory import get_provider_diagnostics
 
 # ------------------------------------------------------------------------------
 # Logging
@@ -132,13 +133,17 @@ async def root():
 # ------------------------------------------------------------------------------
 @app.get("/health")
 async def health_check():
-    ai_ready = bool(OPENAI_API_KEY or GEMINI_API_KEY)
+    provider_diagnostics = get_provider_diagnostics()
+    ai_ready = bool(provider_diagnostics.get("ready"))
     return {
-        "status": "healthy" if ai_ready else "degraded",
-        "primary_provider": "openai" if OPENAI_API_KEY else ("gemini" if GEMINI_API_KEY else "none"),
-        "fallback_provider": "gemini" if (OPENAI_API_KEY and GEMINI_API_KEY) else "none",
+        "status": "healthy" if ai_ready else "unhealthy",
+        "primary_provider": provider_diagnostics["primary_provider"]["name"],
+        "active_provider": provider_diagnostics["active_provider"],
+        "fallback_provider": provider_diagnostics["fallback_provider"]["name"],
+        "fallback_reason": provider_diagnostics.get("fallback_reason"),
         "openai_configured": bool(OPENAI_API_KEY),
         "gemini_configured": bool(GEMINI_API_KEY),
+        "provider_diagnostics": provider_diagnostics,
         "mongo_status": "connected" if mongo_db is not None else "disconnected",
         "timestamp": datetime.utcnow().isoformat(),
     }

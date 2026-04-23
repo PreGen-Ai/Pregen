@@ -314,6 +314,91 @@ export function serializeSubmission(submission, extras = {}) {
   };
 }
 
+const STUDENT_REVIEW_INTERNAL_FIELDS = Object.freeze([
+  "aiScore",
+  "aiFeedback",
+  "aiGradedAt",
+  "aiReportId",
+  "aiRunId",
+  "timeSavedSeconds",
+  "teacherAdjustedScore",
+  "teacherAdjustedFeedback",
+  "teacherAdjustedAt",
+  "teacherApprovedBy",
+  "finalScore",
+  "finalFeedback",
+  "latestGradingError",
+  "gradingAudit",
+]);
+
+function stripStudentReviewInternals(value = {}) {
+  const safe = { ...(value || {}) };
+  for (const field of STUDENT_REVIEW_INTERNAL_FIELDS) {
+    delete safe[field];
+  }
+  return safe;
+}
+
+export function serializeSubmissionForStudent(submission, extras = {}) {
+  const serialized = stripStudentReviewInternals(
+    serializeSubmission(submission, extras),
+  );
+
+  if (serialized.released) {
+    return serialized;
+  }
+
+  return {
+    ...serialized,
+    score: null,
+    grade: null,
+    gradedAt: null,
+    feedback: "",
+  };
+}
+
+export function serializeAttemptForStudent(attempt, extras = {}) {
+  const base = serializeAttemptForUi(attempt);
+  if (!base) return null;
+
+  const serialized = stripStudentReviewInternals({
+    ...base,
+    ...extras,
+  });
+
+  if (serialized.released) {
+    return serialized;
+  }
+
+  return {
+    ...serialized,
+    score: null,
+    feedback: "",
+    pointsEarnedTotal: null,
+  };
+}
+
+export function normalizeSubmissionAnswers(input) {
+  if (input === undefined || input === null || input === "") return null;
+
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return { response: trimmed };
+    }
+  }
+
+  if (typeof input === "object") {
+    return input;
+  }
+
+  return { response: input };
+}
+
 export async function getAccessibleCourseIdsForUser({
   userId,
   tenantId = null,

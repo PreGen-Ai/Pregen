@@ -16,6 +16,7 @@ os.environ.setdefault("GEMINI_API_KEY", "test-gemini-key")
 os.environ.setdefault("AI_SERVICE_SHARED_SECRET", "test-ai-service-secret")
 
 import dependencies  # noqa: E402
+import config  # noqa: E402
 from endpoints.grading_endpoints import router  # noqa: E402
 
 
@@ -103,7 +104,7 @@ class GradingSecurityTests(unittest.TestCase):
     def test_grade_quiz_accepts_assignment_data_question_alias_with_internal_auth(self):
         response = self.client.post(
             "/api/grade-quiz",
-            headers={"x-internal-api-key": "test-ai-service-secret"},
+            headers={"x-internal-api-key": config.AI_SERVICE_SHARED_SECRET},
             json={
                 "student_id": "student-1",
                 "assignment_name": "Alias Quiz",

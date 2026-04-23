@@ -60,8 +60,16 @@ def _redact_mongo_uri(uri: str) -> str:
 # ---- LLM Provider Configuration ----
 # Primary: OpenAI. Fallback: Gemini.
 # Accepts multiple naming conventions for the OpenAI key.
-PRIMARY_LLM_PROVIDER = os.getenv("PRIMARY_LLM_PROVIDER", "openai")
-FALLBACK_LLM_PROVIDER = os.getenv("FALLBACK_LLM_PROVIDER", "gemini")
+PRIMARY_LLM_PROVIDER = (
+    os.getenv("PRIMARY_LLM_PROVIDER")
+    or os.getenv("AI_PRIMARY_PROVIDER")
+    or "openai"
+).strip().lower()
+FALLBACK_LLM_PROVIDER = (
+    os.getenv("FALLBACK_LLM_PROVIDER")
+    or os.getenv("AI_FALLBACK_PROVIDER")
+    or "gemini"
+).strip().lower()
 
 OPENAI_API_KEY = (
     os.getenv("OPENAI_API_KEY")
@@ -69,7 +77,7 @@ OPENAI_API_KEY = (
     or os.getenv("openai-key")
     or None
 )
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-nano")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash")

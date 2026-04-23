@@ -98,9 +98,36 @@ export async function gradeAssignmentSubmissionWithAi({
     String(submission?.textSubmission || "").trim() ||
     (submission?.answers ? JSON.stringify(submission.answers) : "");
 
-  if (!answerText && !Array.isArray(submission?.files)) {
+  if (
+    !answerText &&
+    (!Array.isArray(submission?.files) || submission.files.length === 0)
+  ) {
     throw new Error("Submission does not contain gradeable content");
   }
+
+  const questionId = String(assignment?._id || "assignment");
+  const studentAnswer = answerText || "[file submission]";
+  const questionData = {
+    id: questionId,
+    type: "essay",
+    question:
+      String(assignment?.description || assignment?.title || "").trim() ||
+      "Assignment submission",
+    expected_answer: String(
+      assignment?.instructions || assignment?.description || "",
+    ).trim(),
+    rubric: `Score out of ${Number(assignment?.maxScore || 100)}`,
+    max_score: Number(assignment?.maxScore || 100),
+  };
+
+  console.info("[ai-grading] assignment grading request", {
+    assignmentId: questionId,
+    submissionId: String(submission?._id || ""),
+    studentId: String(submission?.studentId || actorUserId || ""),
+    hasTextSubmission: Boolean(String(submission?.textSubmission || "").trim()),
+    hasStructuredAnswers: submission?.answers !== null && submission?.answers !== undefined,
+    fileCount: Array.isArray(submission?.files) ? submission.files.length : 0,
+  });
 
   const response = await callAiService({
     method: "POST",
@@ -114,19 +141,11 @@ export async function gradeAssignmentSubmissionWithAi({
       subject: String(assignment?.subject || "General"),
       curriculum: String(assignment?.curriculum || "General"),
       assignment_name: String(assignment?.title || "Assignment"),
-      question_data: {
-        id: String(assignment?._id || "assignment"),
-        type: "essay",
-        question:
-          String(assignment?.description || assignment?.title || "").trim() ||
-          "Assignment submission",
-        expected_answer: String(
-          assignment?.instructions || assignment?.description || "",
-        ).trim(),
-        rubric: `Score out of ${Number(assignment?.maxScore || 100)}`,
-        max_score: Number(assignment?.maxScore || 100),
+      question_data: questionData,
+      student_answer: studentAnswer,
+      student_answers: {
+        [questionId]: studentAnswer,
       },
-      student_answer: answerText || "[file submission]",
     },
   });
 
@@ -153,6 +172,21 @@ export async function gradeQuizAttemptWithAi({
         return acc;
       }, {})
     : {};
+
+  if (!questions.length) {
+    throw new Error("Quiz does not contain gradeable questions");
+  }
+  if (!Object.keys(studentAnswers).length) {
+    throw new Error("Quiz attempt does not contain submitted answers");
+  }
+
+  console.info("[ai-grading] quiz grading request", {
+    quizId: String(quiz?._id || ""),
+    attemptId: String(attempt?._id || ""),
+    studentId: String(attempt?.studentId || actorUserId || ""),
+    questionCount: questions.length,
+    answerCount: Object.keys(studentAnswers).length,
+  });
 
   const response = await callAiService({
     method: "POST",

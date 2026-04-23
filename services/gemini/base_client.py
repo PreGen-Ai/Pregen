@@ -71,7 +71,7 @@ class BaseAIClient:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model_name: str = "gpt-5.4-nano",
+        model_name: str = "gpt-5.4-mini",
         max_retries: int = 3,
     ):
         """

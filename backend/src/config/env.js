@@ -190,7 +190,22 @@ export const MONGO_RETRY_DELAY_MS = readIntEnv("MONGO_RETRY_DELAY_MS", 1500);
 
 export const REDIS_URL = cleanEnvValue(process.env.REDIS_URL) || null;
 
-export const GEMINI_API_KEY = requireEnv("GEMINI_API_KEY");
+const openAiKeyEntry = findEnvEntry(["OPENAI_API_KEY", "OPENAI_KEY", "openai-key"]);
+export const OPENAI_API_KEY = openAiKeyEntry?.value || null;
+export const OPENAI_API_KEY_SOURCE = openAiKeyEntry?.name || null;
+export const OPENAI_MODEL =
+  cleanEnvValue(process.env.OPENAI_MODEL) || "gpt-5.4-mini";
+const geminiKeyEntry = findEnvEntry(["GEMINI_API_KEY"]);
+export const GEMINI_API_KEY = geminiKeyEntry?.value || null;
+export const GEMINI_API_KEY_SOURCE = geminiKeyEntry?.name || null;
+export const PRIMARY_LLM_PROVIDER =
+  cleanEnvValue(process.env.PRIMARY_LLM_PROVIDER) ||
+  cleanEnvValue(process.env.AI_PRIMARY_PROVIDER) ||
+  "openai";
+export const FALLBACK_LLM_PROVIDER =
+  cleanEnvValue(process.env.FALLBACK_LLM_PROVIDER) ||
+  cleanEnvValue(process.env.AI_FALLBACK_PROVIDER) ||
+  "gemini";
 const aiServiceEntry = findEnvEntry([
   "AI_SERVICE_URL",
   "FASTAPI_SERVICE_URL",
@@ -233,6 +248,12 @@ export function getRuntimeConfigWarnings() {
     );
   }
 
+  if (!OPENAI_API_KEY && !GEMINI_API_KEY) {
+    warnings.push(
+      "No local AI provider key is configured. Ensure the FastAPI AI service has OPENAI_API_KEY or GEMINI_API_KEY, and check /health for provider diagnostics.",
+    );
+  }
+
   if (!CORS_ALLOWED_ORIGINS.length) {
     warnings.push(
       "No CORS origins are configured. At minimum, set CLIENT_URL to the deployed frontend origin.",
@@ -240,6 +261,39 @@ export function getRuntimeConfigWarnings() {
   }
 
   return warnings;
+}
+
+export function getAiProviderConfigSummary() {
+  const primary = String(PRIMARY_LLM_PROVIDER || "openai").toLowerCase();
+  const fallback = String(FALLBACK_LLM_PROVIDER || "gemini").toLowerCase();
+  const keyPresence = {
+    openai: Boolean(OPENAI_API_KEY),
+    gemini: Boolean(GEMINI_API_KEY),
+  };
+  const activeProvider = keyPresence[primary]
+    ? primary
+    : keyPresence[fallback]
+      ? fallback
+      : "none";
+
+  return {
+    primaryProvider: primary,
+    fallbackProvider: fallback === primary ? "none" : fallback,
+    activeProvider,
+    fallbackReason:
+      activeProvider === fallback && primary !== fallback
+        ? "primary_key_missing"
+        : null,
+    openai: {
+      keyPresent: Boolean(OPENAI_API_KEY),
+      keySource: OPENAI_API_KEY_SOURCE || "(not configured)",
+      model: OPENAI_MODEL,
+    },
+    gemini: {
+      keyPresent: Boolean(GEMINI_API_KEY),
+      keySource: GEMINI_API_KEY_SOURCE || "(not configured)",
+    },
+  };
 }
 
 export function getMongoConfigSummary() {
@@ -275,6 +329,7 @@ export function getRuntimeConfigSummary() {
     sessionSecretSource: SESSION_SECRET_SOURCE || "(not configured)",
     aiServiceUrl: AI_SERVICE_URL,
     aiServiceSource: AI_SERVICE_URL_SOURCE,
+    aiProviders: getAiProviderConfigSummary(),
     redisEnabled: Boolean(REDIS_URL),
     warnings: getRuntimeConfigWarnings(),
   };

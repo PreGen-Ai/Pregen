@@ -21,7 +21,7 @@ import {
   gradeQuizAnswers,
   hasStudentTargetAccess,
   isValidObjectId,
-  serializeAttemptForUi,
+  serializeAttemptForStudent,
   serializeQuiz,
   toId,
 } from "../utils/academicContract.js";
@@ -114,7 +114,7 @@ const buildAssignedItem = ({ target = null, quiz, attempt = null }) => {
   const classInfo = target?.classId || quiz?.class || null;
   const startAt = target?.assignedAt || quiz?.createdAt || null;
   const endAt = target?.dueDate || null;
-  const uiAttempt = attempt ? serializeAttemptForUi(attempt) : null;
+  const uiAttempt = attempt ? serializeAttemptForStudent(attempt) : null;
   const expiresAt =
     uiAttempt && attempt && quiz
       ? computeQuizAttemptExpiry({
@@ -336,34 +336,30 @@ export const getAssignedQuizContent = async (req, res) => {
       deleted: false,
     });
 
-    const includeAnswers = [
-      "submitted",
-      "graded",
-      "ai_graded",
-      "pending_teacher_review",
-      "grading_delayed",
-      "final",
-      "failed",
-    ].includes(
-      String(attempt?.status || "").toLowerCase(),
-    );
-
     const quiz = await Quiz.findById(resolved.quizId)
-      .select(includeAnswers ? "+questions.correctAnswer" : "-questions.correctAnswer")
+      .select("-questions.correctAnswer")
       .populate("class", "name grade section");
 
     if (!quiz || quiz.deleted || quiz.status !== "published") {
       return res.status(404).json({ success: false, message: "Quiz not found" });
     }
 
+    const released = attempt ? serializeAttemptForStudent(attempt).released : false;
+    const includeAnswers = Boolean(released && quiz.showResults);
+    const responseQuiz = includeAnswers
+      ? await Quiz.findById(resolved.quizId)
+          .select("+questions.correctAnswer")
+          .populate("class", "name grade section")
+      : quiz;
+
     return res.json({
       success: true,
       assignment: buildAssignedItem({
         target: resolved.target,
-        quiz,
+        quiz: responseQuiz,
         attempt,
       }),
-      quiz: serializeQuiz(quiz, { includeAnswers }),
+      quiz: serializeQuiz(responseQuiz, { includeAnswers }),
     });
   } catch (err) {
     console.error("getAssignedQuizContent error:", err);
@@ -431,7 +427,7 @@ export const startAssignedQuiz = async (req, res) => {
     return res.json({
       success: true,
       attempt: {
-        ...serializeAttemptForUi(attempt),
+        ...serializeAttemptForStudent(attempt),
         expiresAt: expiresAt ? expiresAt.toISOString() : null,
       },
     });
@@ -509,7 +505,7 @@ export const saveQuizAttemptAnswers = async (req, res) => {
     return res.json({
       success: true,
       attempt: {
-        ...serializeAttemptForUi(attempt),
+        ...serializeAttemptForStudent(attempt),
         expiresAt: expiresAt ? expiresAt.toISOString() : null,
       },
     });
@@ -544,8 +540,8 @@ export const submitQuizAttempt = async (req, res) => {
     if (attempt.status !== "in_progress") {
       return res.json({
         success: true,
-        score: attempt.score,
-        attempt: serializeAttemptForUi(attempt),
+        score: serializeAttemptForStudent(attempt).released ? attempt.score : null,
+        attempt: serializeAttemptForStudent(attempt),
       });
     }
 
@@ -592,6 +588,15 @@ export const submitQuizAttempt = async (req, res) => {
       Math.floor((Date.now() - new Date(attempt.startedAt).getTime()) / 1000),
     );
     attempt.locked = true;
+
+    console.info("[assessment] quiz attempt submitted", {
+      quizId: toId(quiz._id),
+      attemptId: toId(attempt._id),
+      studentId: toId(studentId),
+      courseId,
+      answerCount: attempt.answers.length,
+      requiresManualReview,
+    });
 
     let responseStatus = 200;
     let responseMessage = "Quiz graded successfully.";
@@ -716,7 +721,7 @@ export const submitQuizAttempt = async (req, res) => {
       message: responseMessage,
       score: responseScore,
       passed: responsePassed,
-      attempt: serializeAttemptForUi(attempt),
+      attempt: serializeAttemptForStudent(attempt),
     });
   } catch (err) {
     console.error("submitQuizAttempt error:", err);

@@ -2,7 +2,7 @@
 providers/openai_provider.py
 
 Primary LLM provider using the OpenAI Python SDK.
-Default model: gpt-5.4-nano (400k context window, fast, cost-efficient).
+Default model: gpt-5.4-mini (fast, cost-efficient).
 
 JSON mode: uses response_format={"type": "json_object"} when expect_json=True.
 """
@@ -31,7 +31,7 @@ class OpenAIProvider(BaseProvider):
     wrapping in asyncio.to_thread().
     """
 
-    def __init__(self, api_key: str, model_name: str = "gpt-5.4-nano"):
+    def __init__(self, api_key: str, model_name: str = "gpt-5.4-mini"):
         self._api_key = api_key
         self._model_name = model_name
         self._client = openai.AsyncOpenAI(api_key=api_key)

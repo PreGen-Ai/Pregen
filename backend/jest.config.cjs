@@ -9,6 +9,7 @@ module.exports = {
   setupFilesAfterEnv: ["./tests/helpers/setup.js"],
   testTimeout: 30000,
   forceExit: true,
+  maxWorkers: 1,
   clearMocks: true,
   collectCoverageFrom: [
     "src/**/*.js",

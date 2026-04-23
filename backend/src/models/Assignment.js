@@ -57,6 +57,18 @@ const assignmentSchema = new mongoose.Schema({
     required: true,
   },
   instructions: String,
+  subject: {
+    type: String,
+    default: "General",
+    trim: true,
+    maxlength: 120,
+  },
+  curriculum: {
+    type: String,
+    default: "General",
+    trim: true,
+    maxlength: 120,
+  },
   dueDate: {
     type: Date,
     required: true,

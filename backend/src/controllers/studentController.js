@@ -34,10 +34,11 @@ import {
   getStudentAcademicContext,
   hasStudentTargetAccess,
   isValidObjectId,
+  normalizeSubmissionAnswers,
   serializeAssignment,
-  serializeAttemptForUi,
+  serializeAttemptForStudent,
   serializeQuiz,
-  serializeSubmission,
+  serializeSubmissionForStudent,
   toId,
   userFields,
 } from "../utils/academicContract.js";
@@ -135,33 +136,11 @@ const pickPreferredTarget = (rows) => {
 };
 
 const buildStudentFacingSubmission = (submission) => {
-  const serialized = serializeSubmission(submission);
-  if (serialized.released) return serialized;
-
-  return {
-    ...serialized,
-    score: null,
-    feedback: "",
-    aiScore: null,
-    aiFeedback: "",
-    teacherAdjustedScore: null,
-    teacherAdjustedFeedback: "",
-  };
+  return serializeSubmissionForStudent(submission);
 };
 
 const buildStudentFacingAttempt = (attempt) => {
-  const serialized = serializeAttemptForUi(attempt);
-  if (serialized.released) return serialized;
-
-  return {
-    ...serialized,
-    score: null,
-    feedback: "",
-    aiScore: null,
-    aiFeedback: "",
-    teacherAdjustedScore: null,
-    teacherAdjustedFeedback: "",
-  };
+  return serializeAttemptForStudent(attempt);
 };
 
 export const getAssignments = async (req, res) => {
@@ -283,7 +262,7 @@ export const submitAssignment = async (req, res) => {
     }
 
     const assignment = await Assignment.findById(assignmentId).select(
-      "_id tenantId teacher workspace class dueDate status deleted",
+      "_id tenantId title description instructions type maxScore subject curriculum teacher workspace class dueDate status deleted",
     );
     if (!assignment || assignment.deleted) {
       return res
@@ -354,6 +333,17 @@ export const submitAssignment = async (req, res) => {
       mimetype: file.mimetype,
       size: file.size,
     }));
+    const structuredAnswers = normalizeSubmissionAnswers(req.body.answers);
+    const textSubmission = String(req.body.textSubmission || "").trim();
+
+    console.info("[assessment] assignment submission received", {
+      assignmentId: toId(assignment._id),
+      studentId: toId(studentId),
+      courseId,
+      hasTextSubmission: Boolean(textSubmission),
+      hasStructuredAnswers: structuredAnswers !== null,
+      fileCount: submittedFiles.length,
+    });
 
     const submission = await Submission.create({
       tenantId: tenantId || assignment.tenantId || null,
@@ -363,8 +353,8 @@ export const submitAssignment = async (req, res) => {
       teacherId: assignment.teacher || null,
       classroomId: assignment.class || null,
       files: submittedFiles,
-      answers: req.body.answers ?? null,
-      textSubmission: String(req.body.textSubmission || "").trim(),
+      answers: structuredAnswers,
+      textSubmission,
       submittedAt: new Date(),
       gradingStatus: "submitted",
       gradedBy: "NONE",
@@ -682,7 +672,7 @@ export const startQuiz = async (req, res) => {
     return res.json({
       success: true,
       attemptId: attempt._id,
-      attempt: serializeAttemptForUi(attempt),
+      attempt: buildStudentFacingAttempt(attempt),
       quiz: serializeQuiz(quiz, { includeAnswers: false }),
     });
   } catch (err) {

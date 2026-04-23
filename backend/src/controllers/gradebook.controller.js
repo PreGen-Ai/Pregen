@@ -562,6 +562,8 @@ export async function listGradebook(req, res) {
               aiFeedback: "",
               teacherAdjustedScore: null,
               teacherAdjustedFeedback: "",
+              finalScore: null,
+              finalFeedback: "",
             },
       );
     }

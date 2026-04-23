@@ -255,6 +255,7 @@ app.get("/api/health", (_, res) => {
     environment: NODE_ENV,
     client: CLIENT_URL,
     mongoDbName: MONGO_DB_NAME,
+    aiProviders: runtimeConfigSummary.aiProviders,
     timestamp: new Date().toISOString(),
   });
 });
