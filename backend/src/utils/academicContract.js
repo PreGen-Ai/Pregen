@@ -8,6 +8,8 @@ import {
   getCurrentScore,
   GRADING_STATUS,
   isFinalized,
+  isReleasedToStudent,
+  getReviewStatus,
   normalizeReviewStatus,
 } from "../services/gradingLifecycle.js";
 
@@ -307,7 +309,8 @@ export function serializeSubmission(submission, extras = {}) {
     classroomId: toId(plain.classroomId),
     tenantId: plain.tenantId || null,
     gradingStatus,
-    released: isFinalized(plain, "gradingStatus"),
+    reviewStatus: getReviewStatus(plain, "gradingStatus"),
+    released: isReleasedToStudent(plain, "gradingStatus"),
     score: getCurrentScore(plain),
     feedback: getCurrentFeedback(plain),
     ...extras,
@@ -329,6 +332,7 @@ const STUDENT_REVIEW_INTERNAL_FIELDS = Object.freeze([
   "finalFeedback",
   "latestGradingError",
   "gradingAudit",
+  "questionReviews",
 ]);
 
 function stripStudentReviewInternals(value = {}) {
@@ -613,10 +617,8 @@ export function serializeAttemptForUi(attempt) {
     tenantId: plain.tenantId || null,
     gradingStatus,
     status: toUiAttemptStatus(gradingStatus),
-    released: isFinalized(
-      { ...plain, status: gradingStatus },
-      "status",
-    ),
+    reviewStatus: getReviewStatus({ ...plain, status: gradingStatus }, "status"),
+    released: isReleasedToStudent({ ...plain, status: gradingStatus }, "status"),
     score: getCurrentScore(plain),
     feedback: getCurrentFeedback(plain),
     answers: attemptAnswersToMap(plain.answers),

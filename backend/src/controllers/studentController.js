@@ -42,6 +42,10 @@ import {
   toId,
   userFields,
 } from "../utils/academicContract.js";
+import {
+  buildAssignmentQuestionReviews,
+  buildQuizQuestionReviews,
+} from "../utils/reviewWorkflow.js";
 
 const requestIdFromReq = (req) =>
   req.get?.("x-request-id") || req.headers?.["x-request-id"] || null;
@@ -363,6 +367,10 @@ export const submitAssignment = async (req, res) => {
       grade: null,
       score: 0,
     });
+    submission.questionReviews = buildAssignmentQuestionReviews({
+      assignment,
+      submission,
+    });
 
     let responseStatus = 202;
     let responseMessage =
@@ -386,6 +394,11 @@ export const submitAssignment = async (req, res) => {
         },
         reportId: aiResult.reportId,
       });
+      submission.questionReviews = buildAssignmentQuestionReviews({
+        assignment,
+        submission,
+        gradedQuestions: aiResult.gradedQuestions,
+      });
       await submission.save();
       responseMessage =
         "Assignment submitted successfully. AI review is awaiting teacher approval.";
@@ -397,7 +410,7 @@ export const submitAssignment = async (req, res) => {
           assignmentId: assignment._id,
           upstreamStatus:
             error?.upstreamStatus ||
-            (error?.status >= 500 ? error.status : null),
+          (error?.status >= 500 ? error.status : null),
         },
       });
       await submission.save();
@@ -815,6 +828,10 @@ export const submitQuiz = async (req, res) => {
       Math.floor((Date.now() - new Date(attempt.startedAt).getTime()) / 1000),
     );
     attempt.locked = true;
+    attempt.questionReviews = buildQuizQuestionReviews({
+      quiz,
+      attempt,
+    });
 
     let responseStatus = 202;
     let responseMessage =
@@ -842,6 +859,11 @@ export const submitQuiz = async (req, res) => {
             gradedQuestions: aiResult.gradedQuestions.length,
           },
           reportId: aiResult.reportId,
+        });
+        attempt.questionReviews = buildQuizQuestionReviews({
+          quiz,
+          attempt,
+          gradedQuestions: aiResult.gradedQuestions,
         });
         responseMessage =
           "Quiz submitted successfully. AI review is awaiting teacher approval.";

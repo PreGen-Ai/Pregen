@@ -25,6 +25,7 @@ import {
   serializeQuiz,
   toId,
 } from "../utils/academicContract.js";
+import { buildQuizQuestionReviews } from "../utils/reviewWorkflow.js";
 
 const requestIdFromReq = (req) =>
   req.get?.("x-request-id") || req.headers?.["x-request-id"] || null;
@@ -588,6 +589,10 @@ export const submitQuizAttempt = async (req, res) => {
       Math.floor((Date.now() - new Date(attempt.startedAt).getTime()) / 1000),
     );
     attempt.locked = true;
+    attempt.questionReviews = buildQuizQuestionReviews({
+      quiz,
+      attempt,
+    });
 
     console.info("[assessment] quiz attempt submitted", {
       quizId: toId(quiz._id),
@@ -628,6 +633,11 @@ export const submitQuizAttempt = async (req, res) => {
             gradedQuestions: aiResult.gradedQuestions.length,
           },
           reportId: aiResult.reportId,
+        });
+        attempt.questionReviews = buildQuizQuestionReviews({
+          quiz,
+          attempt,
+          gradedQuestions: aiResult.gradedQuestions,
         });
         responseMessage =
           "Quiz submitted successfully. AI review is awaiting teacher approval.";

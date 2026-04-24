@@ -11,6 +11,7 @@ import api from "../../../services/api/api";
 import useRealtimeRefresh from "../../../hooks/useRealtimeRefresh";
 import { withRequestId } from "../../../utils/requestId";
 import { useAuthContext } from "../../../context/AuthContext";
+import GradeReviewPanel from "./GradeReviewPanel";
 import "../../styles/dashboard.css";
 
 const ASSIGNMENT_TYPES = [
@@ -30,6 +31,9 @@ function formatDate(value, fallback = "No due date") {
 
 function badgeClass(status) {
   const normalized = String(status || "").toLowerCase();
+  if (normalized === "returned" || normalized === "final" || normalized === "graded") return "bg-success";
+  if (normalized === "reviewed") return "bg-info text-dark";
+  if (normalized === "pending_review" || normalized === "pending_teacher_review") return "bg-warning text-dark";
   if (normalized === "graded" || normalized === "submitted") return "bg-success";
   if (normalized === "draft") return "bg-warning text-dark";
   if (normalized === "closed" || normalized === "missing") return "bg-secondary";
@@ -674,6 +678,7 @@ function TeacherAssignmentsView() {
   const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
   const [review, setReview] = useState(null);
   const [feedbackDrafts, setFeedbackDrafts] = useState({});
+  const [reviewItem, setReviewItem] = useState(null);
 
   const [aiConfig, setAiConfig] = useState({
     topic: "",
@@ -1390,7 +1395,7 @@ function TeacherAssignmentsView() {
                         </div>
                       </div>
                       <span className={`badge ${badgeClass(submission.gradingStatus)}`}>
-                        {submission.gradingStatus || "submitted"}
+                        {submission.reviewStatus || submission.gradingStatus || "submitted"}
                       </span>
                     </div>
 
@@ -1402,11 +1407,28 @@ function TeacherAssignmentsView() {
                     ) : null}
 
                     <div className="d-flex gap-2 flex-wrap mt-3">
-                      <Link
+                      <button
                         className="btn btn-primary btn-sm"
-                        to="/dashboard/grades"
+                        type="button"
+                        onClick={() =>
+                          setReviewItem({
+                            _id: submission._id,
+                            kind: "assignment",
+                            sourceId: submission._id,
+                            title: review?.assignment?.title || "Assignment",
+                            courseTitle:
+                              review?.assignment?.workspace?.title ||
+                              review?.assignment?.workspace?.name ||
+                              "Course",
+                            student: submission.student || null,
+                            reviewStatus: submission.reviewStatus || submission.gradingStatus,
+                          })
+                        }
                       >
-                        Open in gradebook
+                        Review submission
+                      </button>
+                      <Link className="btn btn-outline-light btn-sm" to="/dashboard/grades">
+                        Open gradebook
                       </Link>
                       <button
                         className="btn btn-outline-light btn-sm"
@@ -1455,6 +1477,19 @@ function TeacherAssignmentsView() {
           ) : null}
         </div>
       </div>
+
+      {reviewItem ? (
+        <GradeReviewPanel
+          item={reviewItem}
+          onClose={() => setReviewItem(null)}
+          onSaved={async () => {
+            if (review?.assignment?._id) {
+              await loadReview(review.assignment._id);
+            }
+            await loadAssignments(selectedCourseId);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

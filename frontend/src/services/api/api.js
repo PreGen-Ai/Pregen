@@ -370,6 +370,29 @@ export const api = {
           params: cleanParams(params),
         }),
       ),
+    getAssignmentSubmission: (submissionId, config = {}) =>
+      safe(
+        apiClient.get(
+          `/api/teachers/assignments/submissions/${submissionId}`,
+          config,
+        ),
+      ),
+    updateAssignmentSubmission: (submissionId, payload, config = {}) =>
+      safe(
+        apiClient.patch(
+          `/api/teachers/assignments/submissions/${submissionId}`,
+          payload,
+          config,
+        ),
+      ),
+    approveAssignmentSubmission: (submissionId, payload, config = {}) =>
+      safe(
+        apiClient.post(
+          `/api/teachers/assignments/submissions/${submissionId}/approve`,
+          payload,
+          config,
+        ),
+      ),
     listQuizzes: (params, config = {}) =>
       safe(
         apiClient.get("/api/teachers/quizzes", {
@@ -387,6 +410,24 @@ export const api = {
           ...config,
           params: cleanParams(params),
         }),
+      ),
+    getQuizAttempt: (attemptId, config = {}) =>
+      safe(apiClient.get(`/api/teachers/quizzes/attempts/${attemptId}`, config)),
+    updateQuizAttempt: (attemptId, payload, config = {}) =>
+      safe(
+        apiClient.patch(
+          `/api/teachers/quizzes/attempts/${attemptId}`,
+          payload,
+          config,
+        ),
+      ),
+    approveQuizAttempt: (attemptId, payload, config = {}) =>
+      safe(
+        apiClient.post(
+          `/api/teachers/quizzes/attempts/${attemptId}/approve`,
+          payload,
+          config,
+        ),
       ),
   },
 

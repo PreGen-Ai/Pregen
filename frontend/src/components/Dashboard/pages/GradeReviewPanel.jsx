@@ -1,13 +1,19 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import api from "../../../services/api/api";
 import { withRequestId } from "../../../utils/requestId";
 
-const STATUS_LABELS = {
+const REVIEW_STATUS_LABELS = {
+  pending_review: "Pending Review",
+  reviewed: "Reviewed",
+  returned: "Returned",
+};
+
+const SYSTEM_STATUS_LABELS = {
   submitted: "Submitted",
   ai_graded: "AI Graded",
-  pending_teacher_review: "Pending Review",
-  grading_delayed: "Grading Delayed",
+  pending_teacher_review: "Teacher Queue",
+  grading_delayed: "Delayed",
   final: "Finalized",
   failed: "Failed",
 };
@@ -18,100 +24,268 @@ const QUESTION_TYPE_LABELS = {
   short_answer: "Short Answer",
   essay: "Essay",
   file_upload: "File Upload",
+  mixed: "Mixed",
 };
+
+function asNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatStudentName(student) {
+  return (
+    [student?.firstName, student?.lastName].filter(Boolean).join(" ") ||
+    student?.email ||
+    student?.username ||
+    "Student"
+  );
+}
+
+function formatAnswerValue(value) {
+  if (value === null || value === undefined || value === "") {
+    return "No answer provided";
+  }
+
+  if (typeof value === "string") return value;
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function normalizeOption(option) {
+  if (typeof option === "string") {
+    return { text: option, isCorrect: false };
+  }
+
+  return {
+    text: option?.text || option?.label || "",
+    isCorrect: Boolean(option?.isCorrect),
+  };
+}
+
+function normalizeQuestion(question = {}, index = 0) {
+  return {
+    questionId:
+      question.questionId || question._id || question.id || `question-${index + 1}`,
+    questionType: String(
+      question.questionType || question.type || "essay",
+    ).trim(),
+    questionText:
+      question.questionText || question.question || `Question ${index + 1}`,
+    prompt: question.prompt || "",
+    options: Array.isArray(question.options)
+      ? question.options.map(normalizeOption).filter((option) => option.text)
+      : [],
+    correctAnswer:
+      question.correctAnswer === undefined ? null : question.correctAnswer,
+    explanation: question.explanation || "",
+    studentAnswer:
+      question.studentAnswer !== undefined
+        ? question.studentAnswer
+        : question.answer !== undefined
+          ? question.answer
+          : null,
+    uploadedFiles: Array.isArray(question.uploadedFiles)
+      ? question.uploadedFiles
+      : [],
+    maxScore: Number(question.maxScore ?? question.points ?? 0) || 0,
+    autoScore: asNumberOrNull(question.autoScore ?? question.pointsEarned),
+    autoFeedback: question.autoFeedback || "",
+    aiScore: asNumberOrNull(question.aiScore),
+    aiFeedback: question.aiFeedback || "",
+    teacherScore: asNumberOrNull(question.teacherScore),
+    teacherFeedback: question.teacherFeedback || "",
+    isCorrect:
+      question.isCorrect === null || question.isCorrect === undefined
+        ? null
+        : Boolean(question.isCorrect),
+  };
+}
 
 function ScorePill({ label, value, variant = "secondary" }) {
   if (value === null || value === undefined) return null;
   return (
-    <span className={`badge bg-${variant} me-2`} style={{ fontSize: "0.82em" }}>
-      {label}: {Number(value).toFixed(0)}%
+    <span className={`badge bg-${variant}`} style={{ fontSize: "0.8em" }}>
+      {label}: {Number(value).toFixed(2).replace(/\.00$/, "")}
     </span>
   );
 }
 
-function QuizQuestionRow({ q, index }) {
-  const isOpenEnded = ["essay", "short_answer", "file_upload"].includes(q.questionType);
-  const correctnessClass =
-    q.isCorrect === true
-      ? "text-success"
-      : q.isCorrect === false
-      ? "text-danger"
-      : "text-muted";
+function QuestionReviewCard({
+  question,
+  index,
+  disabled,
+  onScoreChange,
+  onFeedbackChange,
+}) {
+  const scoreInputId = `teacher-score-${question.questionId}`;
+  const feedbackInputId = `teacher-feedback-${question.questionId}`;
+  const typeLabel =
+    QUESTION_TYPE_LABELS[question.questionType] || question.questionType;
+  const currentScore =
+    question.teacherScore ?? question.aiScore ?? question.autoScore ?? null;
 
   return (
     <div
       className="dash-card mb-3"
-      style={{ borderLeft: `4px solid ${q.isCorrect === true ? "#28a745" : q.isCorrect === false ? "#dc3545" : "#6c757d"}` }}
+      style={{ borderLeft: "4px solid rgba(13, 110, 253, 0.5)" }}
     >
-      <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
-        <div className="fw-semibold" style={{ fontSize: "0.95em" }}>
-          Q{index + 1}. {q.questionText}
+      <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-3">
+        <div>
+          <div className="fw-semibold mb-1">
+            Q{index + 1}. {question.questionText}
+          </div>
+          {question.prompt ? (
+            <div className="text-muted" style={{ fontSize: "0.82em" }}>
+              Prompt: {question.prompt}
+            </div>
+          ) : null}
         </div>
-        <div className="d-flex align-items-center gap-2">
-          <span className="badge bg-secondary" style={{ fontSize: "0.75em" }}>
-            {QUESTION_TYPE_LABELS[q.questionType] || q.questionType}
+        <div className="d-flex gap-2 flex-wrap align-items-center">
+          <span className="badge bg-secondary">{typeLabel}</span>
+          <span className="text-muted" style={{ fontSize: "0.82em" }}>
+            Max {question.maxScore}
           </span>
-          <span className="text-muted" style={{ fontSize: "0.8em" }}>
-            {q.pointsEarned ?? 0} / {q.points} pts
-          </span>
-          {q.isCorrect !== null && (
-            <span className={`fw-semibold ${correctnessClass}`} style={{ fontSize: "0.82em" }}>
-              {q.isCorrect ? "Correct" : isOpenEnded ? "Needs review" : "Incorrect"}
+          {question.isCorrect !== null ? (
+            <span
+              className={`fw-semibold ${
+                question.isCorrect ? "text-success" : "text-danger"
+              }`}
+              style={{ fontSize: "0.82em" }}
+            >
+              {question.isCorrect ? "Correct" : "Incorrect"}
             </span>
-          )}
+          ) : null}
         </div>
       </div>
 
-      {q.options?.length > 0 && (
-        <div className="mb-2">
-          {q.options.map((opt, oi) => {
-            const letter = String.fromCharCode(65 + oi);
-            const isSelected = q.studentAnswer === letter || q.studentAnswer === opt.text;
-            const isCorrectOpt = opt.isCorrect;
-            let optClass = "text-muted";
-            if (isCorrectOpt) optClass = "text-success fw-semibold";
-            if (isSelected && !isCorrectOpt) optClass = "text-danger";
+      {question.options.length ? (
+        <div className="mb-3">
+          <div className="text-muted mb-1" style={{ fontSize: "0.8em" }}>
+            Options
+          </div>
+          {question.options.map((option, optionIndex) => {
+            const letter = String.fromCharCode(65 + optionIndex);
+            const selected =
+              String(question.studentAnswer || "").trim().toUpperCase() === letter ||
+              String(question.studentAnswer || "").trim() === option.text;
+            const isCorrectOption =
+              option.isCorrect ||
+              String(question.correctAnswer || "").trim().toUpperCase() === letter ||
+              String(question.correctAnswer || "").trim() === option.text;
+
             return (
-              <div key={oi} className={optClass} style={{ fontSize: "0.88em" }}>
-                {letter}. {opt.text}
-                {isSelected && " ← student"}
-                {isCorrectOpt && " ✓"}
+              <div
+                key={`${question.questionId}-${letter}`}
+                className={`small ${
+                  isCorrectOption
+                    ? "text-success fw-semibold"
+                    : selected
+                      ? "text-danger"
+                      : "text-muted"
+                }`}
+              >
+                {letter}. {option.text}
+                {selected ? " <- student" : ""}
+                {isCorrectOption ? " <- correct" : ""}
               </div>
             );
           })}
         </div>
-      )}
+      ) : null}
 
-      {isOpenEnded && (
-        <div className="mb-2">
-          <div className="text-muted" style={{ fontSize: "0.8em", marginBottom: 4 }}>
-            Student answer:
-          </div>
-          <div
-            className="p-2 rounded"
-            style={{ background: "rgba(255,255,255,0.05)", fontSize: "0.9em", whiteSpace: "pre-wrap" }}
-          >
-            {q.studentAnswer || <em className="text-muted">No answer provided</em>}
-          </div>
-          {q.correctAnswer && (
-            <div className="mt-1 text-success" style={{ fontSize: "0.82em" }}>
-              Expected: {String(q.correctAnswer)}
-            </div>
-          )}
+      <div className="mb-3">
+        <div className="text-muted mb-1" style={{ fontSize: "0.8em" }}>
+          Student answer
         </div>
-      )}
+        <div
+          className="p-3 rounded"
+          style={{
+            background: "rgba(255,255,255,0.05)",
+            whiteSpace: "pre-wrap",
+            fontSize: "0.9em",
+          }}
+        >
+          {formatAnswerValue(question.studentAnswer)}
+        </div>
+      </div>
 
-      {q.uploadedFiles?.length > 0 && (
-        <div className="text-muted" style={{ fontSize: "0.82em" }}>
-          {q.uploadedFiles.length} file(s) uploaded
+      {question.correctAnswer !== null && question.correctAnswer !== undefined && question.correctAnswer !== "" ? (
+        <div className="mb-2 text-success" style={{ fontSize: "0.84em" }}>
+          Correct answer: {formatAnswerValue(question.correctAnswer)}
         </div>
-      )}
+      ) : null}
 
-      {q.explanation && (
-        <div className="text-muted mt-1" style={{ fontSize: "0.8em", fontStyle: "italic" }}>
-          Explanation: {q.explanation}
+      {question.explanation ? (
+        <div className="mb-2 text-muted" style={{ fontSize: "0.82em" }}>
+          Explanation: {question.explanation}
         </div>
-      )}
+      ) : null}
+
+      {question.uploadedFiles.length ? (
+        <div className="mb-3 text-muted" style={{ fontSize: "0.82em" }}>
+          Uploaded files: {question.uploadedFiles.length}
+        </div>
+      ) : null}
+
+      <div className="d-flex gap-2 flex-wrap mb-2">
+        <ScorePill label="Current" value={currentScore} variant="dark" />
+        <ScorePill label="Auto" value={question.autoScore} variant="secondary" />
+        <ScorePill label="AI" value={question.aiScore} variant="warning text-dark" />
+        <ScorePill label="Teacher" value={question.teacherScore} variant="info" />
+      </div>
+
+      {question.aiFeedback ? (
+        <div
+          className="mb-3 p-2 rounded"
+          style={{
+            background: "rgba(255,193,7,0.08)",
+            border: "1px solid rgba(255,193,7,0.25)",
+            fontSize: "0.86em",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          <div className="fw-semibold mb-1">AI feedback</div>
+          {question.aiFeedback}
+        </div>
+      ) : null}
+
+      <div className="row g-3">
+        <div className="col-md-3">
+          <label className="form-label" htmlFor={scoreInputId}>
+            Teacher score
+          </label>
+          <input
+            id={scoreInputId}
+            className="form-control"
+            type="number"
+            min="0"
+            max={question.maxScore || 0}
+            value={question.teacherScore ?? ""}
+            onChange={(event) => onScoreChange(question.questionId, event.target.value)}
+            disabled={disabled}
+          />
+        </div>
+        <div className="col-md-9">
+          <label className="form-label" htmlFor={feedbackInputId}>
+            Teacher feedback
+          </label>
+          <textarea
+            id={feedbackInputId}
+            className="form-control"
+            rows={2}
+            value={question.teacherFeedback}
+            onChange={(event) =>
+              onFeedbackChange(question.questionId, event.target.value)
+            }
+            disabled={disabled}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -119,25 +293,27 @@ function QuizQuestionRow({ q, index }) {
 export default function GradeReviewPanel({ item, onClose, onSaved }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ score: "", feedback: "" });
+  const [saving, setSaving] = useState(false);
   const [aiDrafting, setAiDrafting] = useState(false);
   const [feedbackIsAiDraft, setFeedbackIsAiDraft] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [approving, setApproving] = useState(false);
+  const [scoreTouched, setScoreTouched] = useState(false);
+  const [form, setForm] = useState({
+    score: "",
+    feedback: "",
+    reviewStatus: "reviewed",
+    questions: [],
+  });
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
     try {
-      let res;
-      if (item.kind === "assignment") {
-        res = await api.gradebook.getSubmission(item.sourceId);
-        setDetail(res?.submission || null);
-      } else {
-        res = await api.gradebook.getQuizAttempt(item.sourceId);
-        setDetail(res?.attempt || null);
-      }
-    } catch (e) {
-      toast.error(e?.message || "Failed to load detail");
+      const response =
+        item.kind === "assignment"
+          ? await api.gradebook.getSubmission(item.sourceId)
+          : await api.gradebook.getQuizAttempt(item.sourceId);
+      setDetail(response?.submission || response?.attempt || null);
+    } catch (error) {
+      toast.error(error?.message || "Failed to load review detail");
     } finally {
       setLoading(false);
     }
@@ -147,107 +323,227 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
     loadDetail();
   }, [loadDetail]);
 
+  const computedTotals = useMemo(() => {
+    const questions = Array.isArray(form.questions) ? form.questions : [];
+    const totalMax = questions.reduce(
+      (sum, question) => sum + Math.max(Number(question.maxScore || 0), 0),
+      0,
+    );
+    const totalScore = questions.reduce((sum, question) => {
+      const nextScore =
+        question.teacherScore ?? question.aiScore ?? question.autoScore ?? 0;
+      return sum + Math.max(Number(nextScore || 0), 0);
+    }, 0);
+
+    return {
+      totalScore,
+      totalMax,
+      percentage:
+        totalMax > 0
+          ? Math.round((totalScore / totalMax) * 10000) / 100
+          : null,
+    };
+  }, [form.questions]);
+
   useEffect(() => {
     if (!detail) return;
-    const prefillScore = detail.teacherAdjustedScore ?? detail.aiScore ?? detail.score ?? "";
-    const prefillFeedback = detail.teacherAdjustedFeedback || detail.aiFeedback || detail.feedback || "";
-    setForm({ score: prefillScore === null ? "" : String(prefillScore), feedback: prefillFeedback });
+
+    const questions = Array.isArray(detail.questions)
+      ? detail.questions.map(normalizeQuestion)
+      : [];
+    const localTotals = questions.reduce(
+      (accumulator, question) => {
+        const score =
+          question.teacherScore ?? question.aiScore ?? question.autoScore ?? 0;
+        return {
+          totalScore: accumulator.totalScore + Math.max(Number(score || 0), 0),
+          totalMax:
+            accumulator.totalMax + Math.max(Number(question.maxScore || 0), 0),
+        };
+      },
+      { totalScore: 0, totalMax: 0 },
+    );
+    const localPercentage =
+      localTotals.totalMax > 0
+        ? Math.round((localTotals.totalScore / localTotals.totalMax) * 10000) / 100
+        : null;
+    const prefilledScore =
+      detail.finalScore ??
+      detail.teacherAdjustedScore ??
+      detail.score ??
+      localPercentage ??
+      "";
+    const prefilledFeedback =
+      detail.finalFeedback ||
+      detail.teacherAdjustedFeedback ||
+      detail.feedback ||
+      "";
+
+    setForm({
+      score:
+        prefilledScore === null || prefilledScore === undefined
+          ? ""
+          : String(prefilledScore),
+      feedback: prefilledFeedback,
+      reviewStatus: detail.reviewStatus || "reviewed",
+      questions,
+    });
     setFeedbackIsAiDraft(false);
+    setScoreTouched(false);
   }, [detail]);
 
+  useEffect(() => {
+    if (scoreTouched) return;
+    setForm((current) => ({
+      ...current,
+      score:
+        computedTotals.percentage === null || computedTotals.percentage === undefined
+          ? ""
+          : String(computedTotals.percentage),
+    }));
+  }, [computedTotals.percentage, scoreTouched]);
+
   const draftFeedbackWithAi = async () => {
-    const score = Number(String(form.score).trim());
+    const score = String(form.score || "").trim();
     setAiDrafting(true);
     try {
       const response = await api.ai.generateExplanation({
         question_data: {
           topic: item.title || "Assessment",
-          question: `Draft concise teacher feedback for a ${item.kind} scored ${Number.isFinite(score) ? score + "%" : "(not yet scored)"}. 1-2 sentences, actionable, teacher-appropriate. Do not refer to yourself as AI.`,
-          context: `Assessment: ${item.title}. Course: ${item.courseTitle || ""}. Type: ${item.kind}.`,
+          question: `Draft concise teacher feedback for a ${item.kind} review scored ${
+            score || "not yet finalized"
+          }. Keep it actionable, warm, and specific. Do not mention AI.`,
+          context: `Assessment: ${item.title}. Course: ${item.courseTitle || ""}.`,
           type: "feedback_draft",
         },
         subject: item.courseTitle || "General",
         style: "teacher-ready",
       });
-      const text = response?.explanation || response?.reply || response?.message || response?.text || "";
-      if (text) {
-        setForm((p) => ({ ...p, feedback: text }));
-        setFeedbackIsAiDraft(true);
-      } else {
+
+      const text =
+        response?.explanation ||
+        response?.reply ||
+        response?.message ||
+        response?.text ||
+        "";
+
+      if (!text) {
         toast.error("AI returned no feedback draft");
+        return;
       }
-    } catch (e) {
-      toast.error(e?.message || "Failed to draft feedback with AI");
+
+      setForm((current) => ({ ...current, feedback: text }));
+      setFeedbackIsAiDraft(true);
+    } catch (error) {
+      toast.error(error?.message || "Failed to draft feedback");
     } finally {
       setAiDrafting(false);
     }
   };
 
-  const validateScore = () => {
-    const raw = String(form.score ?? "").trim();
-    if (!raw) { toast.error("Score is required"); return null; }
-    const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
-      toast.error("Score must be between 0 and 100");
-      return null;
-    }
-    return parsed;
+  const updateQuestion = (questionId, patch) => {
+    setForm((current) => ({
+      ...current,
+      questions: current.questions.map((question) =>
+        question.questionId === questionId
+          ? { ...question, ...patch }
+          : question,
+      ),
+    }));
   };
 
-  const saveDraft = async () => {
-    const score = validateScore();
-    if (score === null) return;
+  const validatePayload = () => {
+    const scoreText = String(form.score ?? "").trim();
+    const computedScore = computedTotals.percentage;
+    const parsedScore =
+      scoreText === ""
+        ? computedScore
+        : Number(scoreText);
+
+    if (!Number.isFinite(parsedScore) || parsedScore < 0 || parsedScore > 100) {
+      toast.error("Total grade must be between 0 and 100");
+      return null;
+    }
+
+    for (const question of form.questions) {
+      if (
+        question.teacherScore !== null &&
+        question.teacherScore !== undefined &&
+        question.teacherScore !== ""
+      ) {
+        const parsedQuestionScore = Number(question.teacherScore);
+        if (
+          !Number.isFinite(parsedQuestionScore) ||
+          parsedQuestionScore < 0 ||
+          parsedQuestionScore > Number(question.maxScore || 0)
+        ) {
+          toast.error(
+            `Question score for "${question.questionText}" must be between 0 and ${question.maxScore}`,
+          );
+          return null;
+        }
+      }
+    }
+
+    return {
+      score: parsedScore,
+      feedback: form.feedback,
+      reviewStatus: form.reviewStatus,
+      questions: form.questions.map((question) => ({
+        questionId: question.questionId,
+        teacherScore:
+          question.teacherScore === null || question.teacherScore === undefined || question.teacherScore === ""
+            ? null
+            : Number(question.teacherScore),
+        teacherFeedback: question.teacherFeedback || "",
+      })),
+    };
+  };
+
+  const saveReview = async () => {
+    const payload = validatePayload();
+    if (!payload) return;
+
+    if (
+      payload.reviewStatus === "returned" &&
+      !window.confirm("Return this review to the student and release the grade?")
+    ) {
+      return;
+    }
+
     setSaving(true);
     try {
-      const { config } = withRequestId({}, "gradebook-review");
-      const payload = { score, feedback: form.feedback };
+      const { config } = withRequestId({}, "teacher-review-save");
       if (item.kind === "assignment") {
-        await api.gradebook.reviewSubmission(item.sourceId, { ...payload, grade: score }, config);
+        await api.gradebook.updateSubmission(
+          item.sourceId,
+          { ...payload, grade: payload.score },
+          config,
+        );
       } else {
-        await api.gradebook.reviewQuizAttempt(item.sourceId, payload, config);
+        await api.gradebook.updateQuizAttempt(item.sourceId, payload, config);
       }
-      toast.success("Review saved — not yet released to student");
+
+      toast.success(
+        payload.reviewStatus === "returned"
+          ? "Review returned to student"
+          : "Teacher review saved",
+      );
       await loadDetail();
       onSaved?.();
-    } catch (e) {
-      toast.error(e?.message || "Failed to save review");
+    } catch (error) {
+      toast.error(error?.message || "Failed to save review");
     } finally {
       setSaving(false);
     }
   };
-
-  const finalizeAndRelease = async () => {
-    const score = validateScore();
-    if (score === null) return;
-    if (!window.confirm("Finalize and release this grade to the student?")) return;
-    setApproving(true);
-    try {
-      const { config } = withRequestId({}, "gradebook-approve");
-      const payload = { score, feedback: form.feedback };
-      if (item.kind === "assignment") {
-        await api.gradebook.approveSubmission(item.sourceId, { ...payload, grade: score }, config);
-      } else {
-        await api.gradebook.approveQuizAttempt(item.sourceId, payload, config);
-      }
-      toast.success("Grade finalized and released to student");
-      onSaved?.();
-      onClose();
-    } catch (e) {
-      toast.error(e?.message || "Failed to finalize grade");
-    } finally {
-      setApproving(false);
-    }
-  };
-
-  const isFinalized = detail?.status === "final";
-  const hasAiGrading = detail?.aiScore !== null && detail?.aiScore !== undefined;
 
   return (
     <div
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.7)",
+        background: "rgba(0,0,0,0.72)",
         zIndex: 1050,
         display: "flex",
         alignItems: "flex-start",
@@ -255,35 +551,35 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
         overflowY: "auto",
         padding: "24px 16px",
       }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
       <div
         className="dash-card"
-        style={{ width: "100%", maxWidth: 860, position: "relative" }}
-        onClick={(e) => e.stopPropagation()}
+        style={{ width: "100%", maxWidth: 980, position: "relative" }}
+        onClick={(event) => event.stopPropagation()}
       >
-        {/* Header */}
-        <div className="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-2">
+        <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-4">
           <div>
             <h3 className="mb-1">{item.title}</h3>
             <div className="text-muted" style={{ fontSize: "0.88em" }}>
-              {item.courseTitle || "Course"} &bull;{" "}
-              {item.kind === "quiz" ? "Quiz Attempt" : "Assignment Submission"} &bull;{" "}
-              {item.student
-                ? [item.student.firstName, item.student.lastName].filter(Boolean).join(" ") ||
-                  item.student.email ||
-                  "Student"
-                : "Student"}
+              {item.courseTitle || detail?.courseTitle || "Course"} |{" "}
+              {item.kind === "quiz" ? "Quiz attempt" : "Assignment submission"} |{" "}
+              {formatStudentName(detail?.student || item.student)}
             </div>
           </div>
-          <div className="d-flex align-items-center gap-2">
-            {detail && (
-              <span
-                className={`badge ${detail.status === "final" ? "bg-success" : detail.status === "ai_graded" || detail.status === "pending_teacher_review" ? "bg-warning text-dark" : "bg-secondary"}`}
-              >
-                {STATUS_LABELS[detail.status] || detail.status}
+          <div className="d-flex gap-2 flex-wrap align-items-center">
+            {detail?.reviewStatus ? (
+              <span className="badge bg-primary">
+                {REVIEW_STATUS_LABELS[detail.reviewStatus] || detail.reviewStatus}
               </span>
-            )}
+            ) : null}
+            {detail?.gradingStatus ? (
+              <span className="badge bg-secondary">
+                {SYSTEM_STATUS_LABELS[detail.gradingStatus] || detail.gradingStatus}
+              </span>
+            ) : null}
             <button className="btn btn-outline-secondary btn-sm" onClick={onClose}>
               Close
             </button>
@@ -291,212 +587,223 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
         </div>
 
         {loading ? (
-          <p className="text-muted">Loading submission...</p>
+          <p className="text-muted mb-0">Loading review details...</p>
         ) : !detail ? (
-          <p className="text-muted">Could not load submission detail.</p>
+          <p className="text-muted mb-0">Could not load review detail.</p>
         ) : (
           <>
-            {/* AI grading banner */}
-            {hasAiGrading && (
-              <div
-                className="mb-4 p-3 rounded"
-                style={{ background: "rgba(255,193,7,0.1)", border: "1px solid rgba(255,193,7,0.3)" }}
-              >
-                <div className="d-flex align-items-center gap-2 mb-2 flex-wrap">
-                  <span className="fw-semibold" style={{ fontSize: "0.9em" }}>
-                    AI Grading Result
-                  </span>
-                  <ScorePill label="AI score" value={detail.aiScore} variant="warning text-dark" />
-                  {detail.teacherAdjustedScore !== null && detail.teacherAdjustedScore !== undefined && (
-                    <ScorePill label="Your review" value={detail.teacherAdjustedScore} variant="info" />
-                  )}
-                  {detail.finalScore !== null && detail.finalScore !== undefined && (
-                    <ScorePill label="Final" value={detail.finalScore} variant="success" />
-                  )}
+            <div
+              className="mb-4 p-3 rounded"
+              style={{
+                background: "rgba(13,110,253,0.08)",
+                border: "1px solid rgba(13,110,253,0.2)",
+              }}
+            >
+              <div className="d-flex gap-2 flex-wrap align-items-center mb-2">
+                <ScorePill label="Current total" value={detail.score} variant="dark" />
+                <ScorePill label="AI total" value={detail.aiScore} variant="warning text-dark" />
+                <ScorePill
+                  label="Teacher total"
+                  value={detail.teacherAdjustedScore}
+                  variant="info"
+                />
+                <ScorePill label="Final total" value={detail.finalScore} variant="success" />
+              </div>
+              <div className="text-muted" style={{ fontSize: "0.84em" }}>
+                Submitted {detail.submittedAt ? new Date(detail.submittedAt).toLocaleString() : "Unknown"}
+                {detail.teacherApprovedAt
+                  ? ` | Returned ${new Date(detail.teacherApprovedAt).toLocaleString()}`
+                  : ""}
+              </div>
+            </div>
+
+            <div className="row g-3 mb-4">
+              <div className="col-md-4">
+                <div className="dash-card h-100">
+                  <div className="dash-card-title">Question total</div>
+                  <div style={{ fontSize: 28, fontWeight: 900 }}>
+                    {computedTotals.totalScore.toFixed(2).replace(/\.00$/, "")}
+                    {" / "}
+                    {computedTotals.totalMax.toFixed(2).replace(/\.00$/, "")}
+                  </div>
                 </div>
-                {detail.aiFeedback && (
-                  <div style={{ fontSize: "0.88em", whiteSpace: "pre-wrap" }} className="text-muted">
-                    {detail.aiFeedback}
-                  </div>
-                )}
-                {detail.aiGradedAt && (
-                  <div className="text-muted mt-1" style={{ fontSize: "0.78em" }}>
-                    Graded by AI on {new Date(detail.aiGradedAt).toLocaleString()}
-                  </div>
-                )}
               </div>
-            )}
+              <div className="col-md-4">
+                <div className="dash-card h-100">
+                  <div className="dash-card-title">Computed grade</div>
+                  <div style={{ fontSize: 28, fontWeight: 900 }}>
+                    {computedTotals.percentage === null
+                      ? "N/A"
+                      : `${computedTotals.percentage.toFixed(2).replace(/\.00$/, "")}%`}
+                  </div>
+                </div>
+              </div>
+              <div className="col-md-4">
+                <div className="dash-card h-100">
+                  <div className="dash-card-title">Saved grade</div>
+                  <div style={{ fontSize: 28, fontWeight: 900 }}>
+                    {detail.score === null || detail.score === undefined
+                      ? "N/A"
+                      : `${Number(detail.score).toFixed(2).replace(/\.00$/, "")}%`}
+                  </div>
+                </div>
+              </div>
+            </div>
 
-            {/* Assignment: student content */}
-            {item.kind === "assignment" && (
-              <div className="mb-4">
-                <div className="fw-semibold mb-2">Student Submission</div>
-                {detail.textSubmission ? (
-                  <div
-                    className="p-3 rounded"
-                    style={{ background: "rgba(255,255,255,0.05)", whiteSpace: "pre-wrap", fontSize: "0.9em" }}
+            <div className="mb-4">
+              <div className="fw-semibold mb-3">
+                Question review ({form.questions.length})
+              </div>
+              {form.questions.map((question, index) => (
+                <QuestionReviewCard
+                  key={question.questionId}
+                  question={question}
+                  index={index}
+                  disabled={saving}
+                  onScoreChange={(questionId, value) => {
+                    setScoreTouched(false);
+                    updateQuestion(questionId, {
+                      teacherScore: value === "" ? null : Number(value),
+                    });
+                  }}
+                  onFeedbackChange={(questionId, value) =>
+                    updateQuestion(questionId, { teacherFeedback: value })
+                  }
+                />
+              ))}
+            </div>
+
+            <div className="dash-card">
+              <div className="fw-semibold mb-3">Teacher decision</div>
+              <div className="row g-3">
+                <div className="col-md-3">
+                  <label className="form-label" htmlFor="teacher-review-status">
+                    Review status
+                  </label>
+                  <select
+                    id="teacher-review-status"
+                    className="form-select"
+                    value={form.reviewStatus}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        reviewStatus: event.target.value,
+                      }))
+                    }
+                    disabled={saving}
                   >
-                    {detail.textSubmission}
-                  </div>
-                ) : null}
-                {detail.files?.length > 0 && (
-                  <div className="mt-2">
-                    <div className="text-muted mb-1" style={{ fontSize: "0.82em" }}>
-                      Uploaded files:
-                    </div>
-                    {detail.files.map((f, i) => (
-                      <div key={i} className="badge bg-secondary me-1 mb-1" style={{ fontWeight: 400 }}>
-                        {f.name || `File ${i + 1}`} {f.size ? `(${(f.size / 1024).toFixed(0)} KB)` : ""}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {!detail.textSubmission && !detail.files?.length && (
-                  <p className="text-muted" style={{ fontSize: "0.88em" }}>No text or files submitted.</p>
-                )}
-              </div>
-            )}
-
-            {/* Quiz: per-question breakdown */}
-            {item.kind === "quiz" && detail.questions?.length > 0 && (
-              <div className="mb-4">
-                <div className="fw-semibold mb-3">
-                  Questions ({detail.questions.length})
-                  {detail.timeSpent ? (
-                    <span className="text-muted ms-2" style={{ fontSize: "0.82em", fontWeight: 400 }}>
-                      Time spent: {Math.floor(detail.timeSpent / 60)}m {detail.timeSpent % 60}s
+                    <option value="pending_review">Pending review</option>
+                    <option value="reviewed">Reviewed</option>
+                    <option value="returned">Returned</option>
+                  </select>
+                </div>
+                <div className="col-md-3">
+                  <label className="form-label" htmlFor="teacher-total-grade">
+                    Total grade (%)
+                    <span className="text-muted ms-1" style={{ fontSize: "0.78em" }}>
+                      Computed:{" "}
+                      {computedTotals.percentage === null
+                        ? "N/A"
+                        : `${computedTotals.percentage.toFixed(2).replace(/\.00$/, "")}%`}
                     </span>
-                  ) : null}
+                  </label>
+                  <input
+                    id="teacher-total-grade"
+                    className="form-control"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={form.score}
+                    onChange={(event) => {
+                      setScoreTouched(true);
+                      setForm((current) => ({
+                        ...current,
+                        score: event.target.value,
+                      }));
+                    }}
+                    disabled={saving}
+                  />
                 </div>
-                {detail.questions.map((q, i) => (
-                  <QuizQuestionRow key={q._id || i} q={q} index={i} />
-                ))}
-              </div>
-            )}
-
-            {/* Teacher grading controls */}
-            {isFinalized ? (
-              <div className="p-3 rounded" style={{ background: "rgba(40,167,69,0.1)", border: "1px solid rgba(40,167,69,0.3)" }}>
-                <div className="fw-semibold mb-1 text-success">Grade Finalized</div>
-                <div className="text-muted" style={{ fontSize: "0.88em" }}>
-                  Final score: <strong>{detail.finalScore ?? detail.score}%</strong>
-                  {detail.finalFeedback && <> &bull; Feedback: {detail.finalFeedback}</>}
-                </div>
-                {detail.teacherApprovedAt && (
-                  <div className="text-muted mt-1" style={{ fontSize: "0.78em" }}>
-                    Approved on {new Date(detail.teacherApprovedAt).toLocaleString()}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div>
-                <div className="fw-semibold mb-3">Teacher Review</div>
-                <div className="row g-3">
-                  <div className="col-md-3">
-                    <label className="form-label">
-                      Score (%)
-                      {hasAiGrading && form.score === "" && (
-                        <span className="text-muted ms-1" style={{ fontSize: "0.78em" }}>
-                          — AI suggested {detail.aiScore}%
+                <div className="col-md-6">
+                  <div className="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-2">
+                    <label className="form-label mb-0" htmlFor="teacher-final-feedback">
+                      Final feedback
+                      {feedbackIsAiDraft ? (
+                        <span className="badge bg-warning text-dark ms-2">
+                          AI draft
                         </span>
-                      )}
+                      ) : null}
                     </label>
-                    <input
-                      className="form-control"
-                      type="number"
-                      min="0"
-                      max="100"
-                      placeholder={hasAiGrading ? `AI: ${detail.aiScore}%` : "0–100"}
-                      value={form.score}
-                      onChange={(e) => {
-                        setForm((p) => ({ ...p, score: e.target.value }));
-                        setFeedbackIsAiDraft(false);
-                      }}
-                      disabled={saving || approving}
-                    />
+                    <button
+                      className="btn btn-outline-secondary btn-sm"
+                      onClick={draftFeedbackWithAi}
+                      disabled={saving || aiDrafting}
+                    >
+                      {aiDrafting ? "Drafting..." : "AI suggest"}
+                    </button>
                   </div>
-                  <div className="col-md-9">
-                    <div className="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-2">
-                      <label className="form-label mb-0">
-                        Feedback
-                        {feedbackIsAiDraft && (
-                          <span className="badge bg-warning text-dark ms-2" style={{ fontSize: "0.72em" }}>
-                            AI Suggested — edit before saving
-                          </span>
-                        )}
-                      </label>
-                      <button
-                        className="btn btn-outline-secondary btn-sm"
-                        onClick={draftFeedbackWithAi}
-                        disabled={aiDrafting || saving || approving}
-                      >
-                        {aiDrafting ? "Drafting…" : "AI suggest"}
-                      </button>
-                    </div>
-                    <textarea
-                      className="form-control"
-                      rows={3}
-                      placeholder={
-                        hasAiGrading && detail.aiFeedback
-                          ? "AI feedback shown above — write your own or use AI suggest"
-                          : "Write personalized feedback for the student"
-                      }
-                      value={form.feedback}
-                      onChange={(e) => {
-                        setForm((p) => ({ ...p, feedback: e.target.value }));
-                        setFeedbackIsAiDraft(false);
-                      }}
-                      disabled={saving || approving}
-                    />
-                  </div>
-                </div>
-                <div className="mt-3 d-flex gap-2 flex-wrap">
-                  <button
-                    className="btn btn-outline-primary"
-                    onClick={saveDraft}
-                    disabled={saving || approving}
-                    title="Save your review without releasing to the student yet"
-                  >
-                    {saving ? "Saving…" : "Save draft review"}
-                  </button>
-                  <button
-                    className="btn btn-success"
-                    onClick={finalizeAndRelease}
-                    disabled={saving || approving}
-                    title="Finalize and release this grade to the student"
-                  >
-                    {approving ? "Releasing…" : "Finalize & release to student"}
-                  </button>
-                  <button
-                    className="btn btn-outline-secondary"
-                    onClick={onClose}
-                    disabled={saving || approving}
-                  >
-                    Cancel
-                  </button>
-                </div>
-                <div className="text-muted mt-2" style={{ fontSize: "0.8em" }}>
-                  "Save draft review" stores your marks without notifying the student. "Finalize & release" locks the grade and makes it visible to the student.
+                  <textarea
+                    id="teacher-final-feedback"
+                    className="form-control"
+                    rows={3}
+                    value={form.feedback}
+                    onChange={(event) => {
+                      setFeedbackIsAiDraft(false);
+                      setForm((current) => ({
+                        ...current,
+                        feedback: event.target.value,
+                      }));
+                    }}
+                    disabled={saving}
+                  />
                 </div>
               </div>
-            )}
 
-            {/* Audit trail */}
-            {detail.gradingAudit?.length > 0 && (
+              <div className="d-flex gap-2 flex-wrap mt-3">
+                <button className="btn btn-primary" onClick={saveReview} disabled={saving}>
+                  {saving ? "Saving..." : "Save review"}
+                </button>
+                <button
+                  className="btn btn-outline-secondary"
+                  onClick={() => {
+                    setScoreTouched(false);
+                    loadDetail();
+                  }}
+                  disabled={saving}
+                >
+                  Reset
+                </button>
+                <button className="btn btn-outline-light" onClick={onClose} disabled={saving}>
+                  Close
+                </button>
+              </div>
+
+              <div className="text-muted mt-2" style={{ fontSize: "0.82em" }}>
+                Use "Reviewed" to save internal teacher work, and "Returned" when the student is allowed to see the released grade and feedback.
+              </div>
+            </div>
+
+            {detail.gradingAudit?.length ? (
               <div className="mt-4">
                 <div className="text-muted fw-semibold mb-2" style={{ fontSize: "0.82em" }}>
-                  Grading history (last {detail.gradingAudit.length})
+                  Review history
                 </div>
-                {[...detail.gradingAudit].reverse().map((entry, i) => (
-                  <div key={i} className="text-muted" style={{ fontSize: "0.78em", marginBottom: 2 }}>
-                    <span className="me-2">{entry.at ? new Date(entry.at).toLocaleString() : ""}</span>
-                    <span className="me-2 badge bg-secondary">{entry.source || "?"}</span>
-                    {entry.action} — {entry.statusFrom} → {entry.statusTo}
-                    {entry.score !== null && entry.score !== undefined ? ` (${entry.score}%)` : ""}
+                {[...detail.gradingAudit].reverse().map((entry, index) => (
+                  <div
+                    key={`${entry.at || index}-${index}`}
+                    className="text-muted"
+                    style={{ fontSize: "0.78em", marginBottom: 2 }}
+                  >
+                    {entry.at ? new Date(entry.at).toLocaleString() : ""} |{" "}
+                    {entry.source || "system"} | {entry.action} | {entry.statusFrom} to{" "}
+                    {entry.statusTo}
+                    {entry.score !== null && entry.score !== undefined
+                      ? ` | ${entry.score}%`
+                      : ""}
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
           </>
         )}
       </div>

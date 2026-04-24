@@ -15,7 +15,12 @@ import {
   getCurrentFeedback,
   getCurrentScore,
   GRADING_STATUS,
+  getReviewStatus,
+  isReleasedToStudent,
   normalizeReviewStatus,
+  normalizeTeacherReviewStatus,
+  REVIEW_STATUS,
+  setReviewStatus,
 } from "../services/gradingLifecycle.js";
 import {
   canAccessCourse,
@@ -29,6 +34,13 @@ import {
   toId,
   userFields,
 } from "../utils/academicContract.js";
+import {
+  buildAssignmentQuestionReviews,
+  buildQuizQuestionReviews,
+  computeQuestionReviewPercentage,
+  mergeStoredQuestionReviews,
+  summarizeQuestionReviewScores,
+} from "../utils/reviewWorkflow.js";
 
 const requestIdFromReq = (req) =>
   req.get?.("x-request-id") || req.headers?.["x-request-id"] || null;
@@ -42,7 +54,7 @@ function sortByLatest(a, b) {
 
 function buildSummary(items = []) {
   const finalizedItems = items.filter(
-    (item) => item.status === GRADING_STATUS.FINAL,
+    (item) => item.reviewStatus === REVIEW_STATUS.RETURNED,
   );
   const averageScore = finalizedItems.length
     ? Math.round(
@@ -65,6 +77,7 @@ function serializeSubmissionGradebook(submission) {
     submission.gradingStatus,
     GRADING_STATUS.SUBMITTED,
   );
+  const reviewStatus = getReviewStatus(submission, "gradingStatus");
 
   return {
     _id: toId(submission._id),
@@ -89,7 +102,8 @@ function serializeSubmissionGradebook(submission) {
     maxScore: Number(submission.assignmentId?.maxScore || 100),
     feedback: getCurrentFeedback(submission),
     status,
-    released: status === GRADING_STATUS.FINAL,
+    reviewStatus,
+    released: isReleasedToStudent(submission, "gradingStatus"),
     aiScore:
       submission.aiScore === null || submission.aiScore === undefined
         ? null
@@ -115,6 +129,7 @@ function serializeQuizGradebook(attempt) {
     attempt.status,
     ATTEMPT_STATUS.SUBMITTED,
   );
+  const reviewStatus = getReviewStatus(attempt, "status");
 
   return {
     _id: toId(attempt._id),
@@ -140,7 +155,8 @@ function serializeQuizGradebook(attempt) {
     maxScore: Number(attempt.maxScore || attempt.quizId?.totalPoints || 0),
     feedback: getCurrentFeedback(attempt),
     status,
-    released: status === GRADING_STATUS.FINAL,
+    reviewStatus,
+    released: isReleasedToStudent(attempt, "status"),
     aiScore:
       attempt.aiScore === null || attempt.aiScore === undefined
         ? null
@@ -308,36 +324,185 @@ function parseScore(value, fieldName = "score") {
   return parsed;
 }
 
+function normalizeFeedback(value) {
+  if (value === undefined || value === null) return undefined;
+  return String(value).trim();
+}
+
+function parseQuestionScore(value, maxScore, fieldName = "question score") {
+  if (value === undefined || value === null || value === "") return null;
+
+  const parsed = Number(value);
+  const safeMax = Math.max(Number(maxScore || 0), 0);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > safeMax) {
+    throw new Error(`${fieldName} must be between 0 and ${safeMax}`);
+  }
+
+  return parsed;
+}
+
+function buildSubmissionReviewQuestions(submission, assignment) {
+  const fallbackRows = buildAssignmentQuestionReviews({
+    assignment,
+    submission,
+  });
+  return mergeStoredQuestionReviews(fallbackRows, submission.questionReviews || []);
+}
+
+function buildQuizReviewQuestions(attempt, quiz) {
+  const fallbackRows = buildQuizQuestionReviews({
+    quiz,
+    attempt,
+  });
+  return mergeStoredQuestionReviews(fallbackRows, attempt.questionReviews || []);
+}
+
+function applyTeacherQuestionReviewUpdates(currentRows = [], updates = []) {
+  const normalizedRows = mergeStoredQuestionReviews(currentRows, currentRows);
+  if (!Array.isArray(updates) || !updates.length) {
+    return normalizedRows;
+  }
+
+  const byQuestionId = new Map(
+    normalizedRows.map((row) => [String(row.questionId), { ...row }]),
+  );
+
+  for (const update of updates) {
+    const questionId = String(update?.questionId || update?.id || "").trim();
+    if (!questionId) {
+      throw new Error("Each question review update must include questionId");
+    }
+
+    const current = byQuestionId.get(questionId);
+    if (!current) {
+      throw new Error(`Question ${questionId} was not found on this submission`);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(update, "teacherScore")) {
+      current.teacherScore = parseQuestionScore(
+        update.teacherScore,
+        current.maxScore,
+        `teacherScore for ${questionId}`,
+      );
+    }
+
+    if (Object.prototype.hasOwnProperty.call(update, "teacherFeedback")) {
+      current.teacherFeedback = normalizeFeedback(update.teacherFeedback) || "";
+    }
+
+    byQuestionId.set(questionId, current);
+  }
+
+  return normalizedRows.map((row) => byQuestionId.get(String(row.questionId)) || row);
+}
+
+function resolveReviewMutation({
+  record,
+  score,
+  feedback,
+  reviewStatus,
+  questionUpdates,
+}) {
+  const updatedQuestions = applyTeacherQuestionReviewUpdates(
+    record.questionReviews || [],
+    questionUpdates,
+  );
+  const hasQuestionUpdates = Array.isArray(questionUpdates) && questionUpdates.length > 0;
+  const derivedScore = hasQuestionUpdates
+    ? computeQuestionReviewPercentage(updatedQuestions, getCurrentScore(record))
+    : undefined;
+  const explicitScore = parseScore(score, "score");
+
+  return {
+    updatedQuestions,
+    effectiveScore:
+      explicitScore !== undefined
+        ? explicitScore
+        : derivedScore !== undefined
+          ? derivedScore
+          : getCurrentScore(record),
+    effectiveFeedback:
+      feedback === undefined ? getCurrentFeedback(record) : normalizeFeedback(feedback) || "",
+    reviewStatus: normalizeTeacherReviewStatus(
+      reviewStatus,
+      getReviewStatus(record),
+    ),
+  };
+}
+
+function clearReturnedState(record = {}) {
+  record.finalScore = null;
+  record.finalFeedback = "";
+  record.teacherApprovedAt = null;
+  record.teacherApprovedBy = null;
+  record.returnedAt = null;
+  if (record.grade !== undefined) {
+    record.grade = null;
+  }
+  if (record.gradedBy !== undefined && record.gradedBy === "TEACHER") {
+    record.gradedBy = record.aiScore !== null && record.aiScore !== undefined
+      ? "AI"
+      : "NONE";
+  }
+}
+
 async function persistSubmissionReview(req, submission, assignment, {
   score,
   feedback,
+  reviewStatus,
+  questionUpdates = [],
   approve = false,
   action = "review",
 }) {
-  const nextScore = parseScore(score, "grade");
+  submission.questionReviews = buildSubmissionReviewQuestions(submission, assignment);
+  const mutation = resolveReviewMutation({
+    record: submission,
+    score: score === undefined ? undefined : score,
+    feedback,
+    reviewStatus,
+    questionUpdates,
+  });
   const metadata = {
     assignmentId: assignment._id,
     courseId: assignment.workspace,
   };
+  const shouldFinalize =
+    approve || mutation.reviewStatus === REVIEW_STATUS.RETURNED;
 
-  if (nextScore !== undefined || feedback !== undefined || !approve) {
+  submission.questionReviews = mutation.updatedQuestions;
+
+  if (
+    mutation.effectiveScore !== null ||
+    feedback !== undefined ||
+    questionUpdates.length ||
+    !shouldFinalize
+  ) {
     applyTeacherReviewState(submission, {
       actorId: req.user?._id,
       actorRole: normalizeRoleValue(req.user?.role),
       statusField: "gradingStatus",
-      score: nextScore,
-      feedback,
+      score: mutation.effectiveScore,
+      feedback: mutation.effectiveFeedback,
       metadata,
     });
   }
 
-  if (approve) {
+  setReviewStatus(
+    submission,
+    shouldFinalize ? REVIEW_STATUS.RETURNED : mutation.reviewStatus,
+  );
+
+  if (!shouldFinalize) {
+    clearReturnedState(submission);
+  }
+
+  if (shouldFinalize) {
     applyFinalApprovalState(submission, {
       actorId: req.user?._id,
       actorRole: normalizeRoleValue(req.user?.role),
       statusField: "gradingStatus",
-      score: nextScore,
-      feedback,
+      score: mutation.effectiveScore,
+      feedback: mutation.effectiveFeedback,
       metadata,
     });
   }
@@ -346,16 +511,17 @@ async function persistSubmissionReview(req, submission, assignment, {
 
   await writeReviewAudit(req, {
     tenantId: submission.tenantId || assignment.tenantId || null,
-    type: approve ? "GRADE_APPROVED" : "GRADE_REVIEW_DRAFTED",
-    message: approve
+    type: shouldFinalize ? "GRADE_APPROVED" : "GRADE_REVIEW_DRAFTED",
+    message: shouldFinalize
       ? `Approved final grade for assignment submission ${submission._id}`
       : `Drafted teacher review for assignment submission ${submission._id}`,
     meta: {
       submissionId: submission._id,
       assignmentId: assignment._id,
       score: getCurrentScore(submission),
-      approved: approve,
+      approved: shouldFinalize,
       action,
+      reviewStatus: submission.reviewStatus,
     },
   });
 
@@ -371,12 +537,12 @@ async function persistSubmissionReview(req, submission, assignment, {
   const requestId = requestIdFromReq(req);
 
   emitRealtimeEvent({
-    type: approve ? "grade" : "teacher_review",
-    status: approve ? "success" : "updated",
+    type: shouldFinalize ? "grade" : "teacher_review",
+    status: shouldFinalize ? "success" : "updated",
     requestId,
     entityType: "submission",
     entityId: submission._id,
-    message: approve
+    message: shouldFinalize
       ? "Final assignment grade approved."
       : "Teacher review updated for an assignment submission.",
     actor: buildActorFromRequest(req),
@@ -392,6 +558,7 @@ async function persistSubmissionReview(req, submission, assignment, {
       score: getCurrentScore(submission),
       feedback: getCurrentFeedback(submission),
       status: normalizeReviewStatus(submission.gradingStatus),
+      reviewStatus: submission.reviewStatus,
     },
   });
 
@@ -401,33 +568,60 @@ async function persistSubmissionReview(req, submission, assignment, {
 async function persistQuizReview(req, attempt, quiz, {
   score,
   feedback,
+  reviewStatus,
+  questionUpdates = [],
   approve = false,
   action = "review",
 }) {
-  const nextScore = parseScore(score, "score");
+  attempt.questionReviews = buildQuizReviewQuestions(attempt, quiz);
+  const mutation = resolveReviewMutation({
+    record: attempt,
+    score,
+    feedback,
+    reviewStatus,
+    questionUpdates,
+  });
   const metadata = {
     quizId: quiz._id,
     courseId: quiz.workspace,
   };
+  const shouldFinalize =
+    approve || mutation.reviewStatus === REVIEW_STATUS.RETURNED;
 
-  if (nextScore !== undefined || feedback !== undefined || !approve) {
+  attempt.questionReviews = mutation.updatedQuestions;
+
+  if (
+    mutation.effectiveScore !== null ||
+    feedback !== undefined ||
+    questionUpdates.length ||
+    !shouldFinalize
+  ) {
     applyTeacherReviewState(attempt, {
       actorId: req.user?._id,
       actorRole: normalizeRoleValue(req.user?.role),
       statusField: "status",
-      score: nextScore,
-      feedback,
+      score: mutation.effectiveScore,
+      feedback: mutation.effectiveFeedback,
       metadata,
     });
   }
 
-  if (approve) {
+  setReviewStatus(
+    attempt,
+    shouldFinalize ? REVIEW_STATUS.RETURNED : mutation.reviewStatus,
+  );
+
+  if (!shouldFinalize) {
+    clearReturnedState(attempt);
+  }
+
+  if (shouldFinalize) {
     applyFinalApprovalState(attempt, {
       actorId: req.user?._id,
       actorRole: normalizeRoleValue(req.user?.role),
       statusField: "status",
-      score: nextScore,
-      feedback,
+      score: mutation.effectiveScore,
+      feedback: mutation.effectiveFeedback,
       metadata,
     });
     attempt.locked = true;
@@ -437,16 +631,17 @@ async function persistQuizReview(req, attempt, quiz, {
 
   await writeReviewAudit(req, {
     tenantId: attempt.tenantId || quiz.tenantId || null,
-    type: approve ? "QUIZ_GRADE_APPROVED" : "QUIZ_REVIEW_DRAFTED",
-    message: approve
+    type: shouldFinalize ? "QUIZ_GRADE_APPROVED" : "QUIZ_REVIEW_DRAFTED",
+    message: shouldFinalize
       ? `Approved final quiz grade for attempt ${attempt._id}`
       : `Drafted teacher review for quiz attempt ${attempt._id}`,
     meta: {
       attemptId: attempt._id,
       quizId: quiz._id,
       score: getCurrentScore(attempt),
-      approved: approve,
+      approved: shouldFinalize,
       action,
+      reviewStatus: attempt.reviewStatus,
     },
   });
 
@@ -462,12 +657,12 @@ async function persistQuizReview(req, attempt, quiz, {
   const requestId = requestIdFromReq(req);
 
   emitRealtimeEvent({
-    type: approve ? "grade" : "teacher_review",
-    status: approve ? "success" : "updated",
+    type: shouldFinalize ? "grade" : "teacher_review",
+    status: shouldFinalize ? "success" : "updated",
     requestId,
     entityType: "quiz_attempt",
     entityId: attempt._id,
-    message: approve
+    message: shouldFinalize
       ? "Final quiz grade approved."
       : "Teacher review updated for a quiz attempt.",
     actor: buildActorFromRequest(req),
@@ -483,6 +678,7 @@ async function persistQuizReview(req, attempt, quiz, {
       score: getCurrentScore(attempt),
       feedback: getCurrentFeedback(attempt),
       status: normalizeReviewStatus(attempt.status),
+      reviewStatus: attempt.reviewStatus,
     },
   });
 
@@ -553,7 +749,13 @@ export async function listGradebook(req, res) {
     if (role === "STUDENT") {
       items = items.map((item) =>
         item.released
-          ? item
+          ? {
+              ...item,
+              aiScore: null,
+              aiFeedback: "",
+              teacherAdjustedScore: null,
+              teacherAdjustedFeedback: "",
+            }
           : {
               ...item,
               score: null,
@@ -603,6 +805,8 @@ export async function reviewSubmission(req, res) {
     const fresh = await persistSubmissionReview(req, found.submission, found.assignment, {
       score: req.body?.grade ?? req.body?.score,
       feedback: req.body?.feedback,
+      reviewStatus: req.body?.reviewStatus || REVIEW_STATUS.REVIEWED,
+      questionUpdates: req.body?.questions || req.body?.questionReviews || [],
       approve: false,
       action: "draft_review",
     });
@@ -612,7 +816,7 @@ export async function reviewSubmission(req, res) {
       item: serializeSubmissionGradebook(fresh),
     });
   } catch (error) {
-    const status = /between 0 and 100/.test(error.message) ? 400 : 500;
+    const status = /between 0 and/.test(error.message) ? 400 : 500;
     return res.status(status).json({
       message: "Failed to review submission",
       error: error.message,
@@ -639,6 +843,8 @@ export async function approveSubmission(req, res) {
     const fresh = await persistSubmissionReview(req, found.submission, found.assignment, {
       score: req.body?.grade ?? req.body?.score,
       feedback: req.body?.feedback,
+      reviewStatus: REVIEW_STATUS.RETURNED,
+      questionUpdates: req.body?.questions || req.body?.questionReviews || [],
       approve: true,
       action: "approve",
     });
@@ -648,7 +854,7 @@ export async function approveSubmission(req, res) {
       item: serializeSubmissionGradebook(fresh),
     });
   } catch (error) {
-    const status = /between 0 and 100|required/.test(error.message) ? 400 : 500;
+    const status = /between 0 and|required/.test(error.message) ? 400 : 500;
     return res.status(status).json({
       message: "Failed to approve submission",
       error: error.message,
@@ -675,6 +881,8 @@ export async function reviewQuizAttempt(req, res) {
     const fresh = await persistQuizReview(req, found.attempt, found.quiz, {
       score: req.body?.score,
       feedback: req.body?.feedback,
+      reviewStatus: req.body?.reviewStatus || REVIEW_STATUS.REVIEWED,
+      questionUpdates: req.body?.questions || req.body?.questionReviews || [],
       approve: false,
       action: "draft_review",
     });
@@ -684,7 +892,7 @@ export async function reviewQuizAttempt(req, res) {
       item: serializeQuizGradebook(fresh),
     });
   } catch (error) {
-    const status = /between 0 and 100/.test(error.message) ? 400 : 500;
+    const status = /between 0 and/.test(error.message) ? 400 : 500;
     return res.status(status).json({
       message: "Failed to review quiz attempt",
       error: error.message,
@@ -711,6 +919,8 @@ export async function approveQuizAttempt(req, res) {
     const fresh = await persistQuizReview(req, found.attempt, found.quiz, {
       score: req.body?.score,
       feedback: req.body?.feedback,
+      reviewStatus: REVIEW_STATUS.RETURNED,
+      questionUpdates: req.body?.questions || req.body?.questionReviews || [],
       approve: true,
       action: "approve",
     });
@@ -720,7 +930,7 @@ export async function approveQuizAttempt(req, res) {
       item: serializeQuizGradebook(fresh),
     });
   } catch (error) {
-    const status = /between 0 and 100|required/.test(error.message) ? 400 : 500;
+    const status = /between 0 and|required/.test(error.message) ? 400 : 500;
     return res.status(status).json({
       message: "Failed to approve quiz attempt",
       error: error.message,
@@ -729,11 +939,91 @@ export async function approveQuizAttempt(req, res) {
 }
 
 export async function updateSubmissionGrade(req, res) {
-  return approveSubmission(req, res);
+  try {
+    if (!isTeacherLike(req)) {
+      return res.status(403).json({ message: "Only teachers and admins can update grades" });
+    }
+
+    const { submissionId } = req.params;
+    if (!isValidObjectId(submissionId)) {
+      return res.status(400).json({ message: "Invalid submission id" });
+    }
+
+    const found = await loadSubmissionContext(req, submissionId);
+    if (found?.error) {
+      return res.status(found.error.status).json({ message: found.error.message });
+    }
+
+    const requestedReviewStatus = normalizeTeacherReviewStatus(
+      req.body?.reviewStatus,
+      REVIEW_STATUS.REVIEWED,
+    );
+    const fresh = await persistSubmissionReview(req, found.submission, found.assignment, {
+      score: req.body?.grade ?? req.body?.score,
+      feedback: req.body?.feedback ?? req.body?.finalFeedback,
+      reviewStatus: requestedReviewStatus,
+      questionUpdates: req.body?.questions || req.body?.questionReviews || [],
+      approve:
+        Boolean(req.body?.approve || req.body?.releaseToStudent) ||
+        requestedReviewStatus === REVIEW_STATUS.RETURNED,
+      action: "patch_review",
+    });
+
+    return res.json({
+      message: "Submission review updated",
+      item: serializeSubmissionGradebook(fresh),
+    });
+  } catch (error) {
+    const status = /between 0 and/.test(error.message) ? 400 : 500;
+    return res.status(status).json({
+      message: "Failed to update submission review",
+      error: error.message,
+    });
+  }
 }
 
 export async function updateQuizAttemptGrade(req, res) {
-  return approveQuizAttempt(req, res);
+  try {
+    if (!isTeacherLike(req)) {
+      return res.status(403).json({ message: "Only teachers and admins can update grades" });
+    }
+
+    const { attemptId } = req.params;
+    if (!isValidObjectId(attemptId)) {
+      return res.status(400).json({ message: "Invalid attempt id" });
+    }
+
+    const found = await loadQuizAttemptContext(req, attemptId);
+    if (found?.error) {
+      return res.status(found.error.status).json({ message: found.error.message });
+    }
+
+    const requestedReviewStatus = normalizeTeacherReviewStatus(
+      req.body?.reviewStatus,
+      REVIEW_STATUS.REVIEWED,
+    );
+    const fresh = await persistQuizReview(req, found.attempt, found.quiz, {
+      score: req.body?.score,
+      feedback: req.body?.feedback ?? req.body?.finalFeedback,
+      reviewStatus: requestedReviewStatus,
+      questionUpdates: req.body?.questions || req.body?.questionReviews || [],
+      approve:
+        Boolean(req.body?.approve || req.body?.releaseToStudent) ||
+        requestedReviewStatus === REVIEW_STATUS.RETURNED,
+      action: "patch_review",
+    });
+
+    return res.json({
+      message: "Quiz review updated",
+      item: serializeQuizGradebook(fresh),
+    });
+  } catch (error) {
+    const status = /between 0 and/.test(error.message) ? 400 : 500;
+    return res.status(status).json({
+      message: "Failed to update quiz review",
+      error: error.message,
+    });
+  }
 }
 
 export async function getSubmissionDetail(req, res) {
@@ -759,6 +1049,12 @@ export async function getSubmissionDetail(req, res) {
       .lean();
 
     const gradingStatus = normalizeReviewStatus(submission.gradingStatus, GRADING_STATUS.SUBMITTED);
+    const reviewQuestions = buildSubmissionReviewQuestions(
+      submission,
+      submission.assignmentId,
+    );
+    const questionSummary = summarizeQuestionReviewScores(reviewQuestions);
+    const reviewStatus = getReviewStatus(submission, "gradingStatus");
 
     return res.json({
       submission: {
@@ -771,10 +1067,12 @@ export async function getSubmissionDetail(req, res) {
         textSubmission: submission.textSubmission || "",
         answers: submission.answers || null,
         files: submission.files || [],
+        questions: reviewQuestions,
         submittedAt: submission.submittedAt || submission.createdAt || null,
         gradingStatus,
-        status: gradingStatus,
-        released: gradingStatus === GRADING_STATUS.FINAL,
+        reviewStatus,
+        status: reviewStatus,
+        released: isReleasedToStudent(submission, "gradingStatus"),
         score: getCurrentScore(submission),
         maxScore: Number(submission.assignmentId?.maxScore || 100),
         feedback: getCurrentFeedback(submission),
@@ -787,6 +1085,9 @@ export async function getSubmissionDetail(req, res) {
         finalFeedback: submission.finalFeedback || "",
         adjustedByTeacher: Boolean(submission.adjustedByTeacher),
         teacherApprovedAt: submission.teacherApprovedAt || null,
+        reviewedAt: submission.reviewedAt || null,
+        returnedAt: submission.returnedAt || null,
+        questionSummary,
         gradingAudit: (submission.gradingAudit || []).slice(-10),
       },
     });
@@ -822,28 +1123,9 @@ export async function getQuizAttemptDetail(req, res) {
     ]);
 
     const gradingStatus = normalizeReviewStatus(attempt.status, ATTEMPT_STATUS.SUBMITTED);
-
-    const answerMap = {};
-    for (const a of attempt.answers || []) {
-      answerMap[String(a.questionId)] = a;
-    }
-
-    const questions = (quiz?.questions || []).map((q) => {
-      const ans = answerMap[String(q._id)] || null;
-      return {
-        _id: toId(q._id),
-        questionText: q.questionText,
-        questionType: q.questionType,
-        options: q.options || [],
-        correctAnswer: q.correctAnswer ?? null,
-        points: q.points || 1,
-        explanation: q.explanation || "",
-        studentAnswer: ans?.answer ?? null,
-        uploadedFiles: ans?.uploadedFiles || [],
-        isCorrect: ans?.isCorrect ?? null,
-        pointsEarned: ans?.pointsEarned ?? 0,
-      };
-    });
+    const reviewQuestions = buildQuizReviewQuestions(attempt, quiz);
+    const questionSummary = summarizeQuestionReviewScores(reviewQuestions);
+    const reviewStatus = getReviewStatus(attempt, "status");
 
     return res.json({
       attempt: {
@@ -852,12 +1134,13 @@ export async function getQuizAttemptDetail(req, res) {
         title: quiz?.title || "Quiz",
         courseTitle: attempt.workspaceId?.title || "",
         student: attempt.studentId || null,
-        questions,
+        questions: reviewQuestions,
         timeSpent: attempt.timeSpent || 0,
         submittedAt: attempt.submittedAt || attempt.createdAt || null,
         gradingStatus,
-        status: gradingStatus,
-        released: gradingStatus === GRADING_STATUS.FINAL,
+        reviewStatus,
+        status: reviewStatus,
+        released: isReleasedToStudent(attempt, "status"),
         score: getCurrentScore(attempt),
         maxScore: Number(attempt.maxScore || quiz?.totalPoints || 0),
         feedback: getCurrentFeedback(attempt),
@@ -870,6 +1153,9 @@ export async function getQuizAttemptDetail(req, res) {
         finalFeedback: attempt.finalFeedback || "",
         adjustedByTeacher: Boolean(attempt.adjustedByTeacher),
         teacherApprovedAt: attempt.teacherApprovedAt || null,
+        reviewedAt: attempt.reviewedAt || null,
+        returnedAt: attempt.returnedAt || null,
+        questionSummary,
         gradingAudit: (attempt.gradingAudit || []).slice(-10),
       },
     });

@@ -32,7 +32,9 @@ const kindLabel = (kind) => (kind === "quiz" ? "Quiz" : "Assignment");
 
 const statusBadgeClass = (status) => {
   const normalized = String(status || "").trim().toLowerCase();
-  if (normalized === "final" || normalized === "graded") return "bg-success";
+  if (normalized === "returned" || normalized === "final" || normalized === "graded") return "bg-success";
+  if (normalized === "reviewed") return "bg-info text-dark";
+  if (normalized === "pending_review") return "bg-warning text-dark";
   if (normalized === "ai_graded") return "bg-warning text-dark";
   if (normalized === "pending_teacher_review") return "bg-warning text-dark";
   if (normalized === "submitted") return "bg-info text-dark";
@@ -41,6 +43,9 @@ const statusBadgeClass = (status) => {
 };
 
 const STATUS_DISPLAY = {
+  pending_review: "Pending Review",
+  reviewed: "Reviewed",
+  returned: "Returned",
   final: "Finalized",
   graded: "Graded",
   ai_graded: "AI Graded",
@@ -88,7 +93,12 @@ export default function GradebookPage() {
   const pendingCount = useMemo(
     () =>
       items.filter(
-        (item) => !["graded"].includes(String(item.status || "").trim().toLowerCase()),
+        (item) =>
+          !["returned", "final", "graded"].includes(
+            String(item.reviewStatus || item.status || "")
+              .trim()
+              .toLowerCase(),
+          ),
       ).length,
     [items],
   );
@@ -134,15 +144,6 @@ export default function GradebookPage() {
       },
     },
   );
-
-  const startEdit = (item) => {
-    setEditingId(item._id);
-    setFeedbackIsAiDraft(false);
-    setGradeForm({
-      score: item.score ?? "",
-      feedback: item.feedback || "",
-    });
-  };
 
   const draftFeedbackWithAi = async () => {
     if (!editingItem) return;
@@ -208,10 +209,12 @@ export default function GradebookPage() {
             ? api.gradebook.updateSubmission(item.sourceId, {
                 grade: parsedScore,
                 feedback: bulkForm.feedback || undefined,
+                reviewStatus: "reviewed",
               }, config)
             : api.gradebook.updateQuizAttempt(item.sourceId, {
                 score: parsedScore,
                 feedback: bulkForm.feedback || undefined,
+                reviewStatus: "reviewed",
               }, config);
         }),
       );
@@ -234,7 +237,11 @@ export default function GradebookPage() {
   const allPendingIds = items
     .filter(
       (item) =>
-        !["graded"].includes(String(item.status || "").trim().toLowerCase()),
+        !["returned", "final", "graded"].includes(
+          String(item.reviewStatus || item.status || "")
+            .trim()
+            .toLowerCase(),
+        ),
     )
     .map((item) => item._id);
 
@@ -260,11 +267,13 @@ export default function GradebookPage() {
         await api.gradebook.updateSubmission(editingItem.sourceId, {
           grade: parsedScore,
           feedback: gradeForm.feedback,
+          reviewStatus: "reviewed",
         }, config);
       } else {
         await api.gradebook.updateQuizAttempt(editingItem.sourceId, {
           score: parsedScore,
           feedback: gradeForm.feedback,
+          reviewStatus: "reviewed",
         }, config);
       }
       toast.success("Grade updated");
@@ -553,8 +562,15 @@ export default function GradebookPage() {
                   <td>{item.courseTitle || "Course"}</td>
                   <td>{formatScore(item)}</td>
                   <td>
-                    <span className={`badge ${statusBadgeClass(item.status)}`}>
-                      {STATUS_DISPLAY[item.status] || item.status || "pending"}
+                    <span
+                      className={`badge ${statusBadgeClass(
+                        item.reviewStatus || item.status,
+                      )}`}
+                    >
+                      {STATUS_DISPLAY[item.reviewStatus || item.status] ||
+                        item.reviewStatus ||
+                        item.status ||
+                        "pending"}
                     </span>
                     {item.aiScore !== null && item.aiScore !== undefined && (
                       <div className="text-muted mt-1" style={{ fontSize: "0.75em" }}>

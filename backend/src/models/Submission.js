@@ -29,6 +29,30 @@ const gradingAuditEntrySchema = new Schema(
   { _id: false },
 );
 
+const questionReviewSchema = new Schema(
+  {
+    position: { type: Number, default: 0, min: 0 },
+    questionId: { type: String, default: "", trim: true, maxlength: 120 },
+    questionType: { type: String, default: "essay", trim: true, maxlength: 40 },
+    questionText: { type: String, default: "", maxlength: 10000 },
+    prompt: { type: String, default: "", maxlength: 10000 },
+    options: { type: [String], default: [] },
+    correctAnswer: { type: Schema.Types.Mixed, default: null },
+    explanation: { type: String, default: "", maxlength: 20000 },
+    studentAnswer: { type: Schema.Types.Mixed, default: null },
+    uploadedFiles: { type: [Schema.Types.Mixed], default: [] },
+    maxScore: { type: Number, default: 0, min: 0, max: 1000 },
+    autoScore: { type: Number, default: null, min: 0, max: 1000 },
+    autoFeedback: { type: String, default: "", maxlength: 10000 },
+    aiScore: { type: Number, default: null, min: 0, max: 1000 },
+    aiFeedback: { type: String, default: "", maxlength: 10000 },
+    teacherScore: { type: Number, default: null, min: 0, max: 1000 },
+    teacherFeedback: { type: String, default: "", maxlength: 10000 },
+    isCorrect: { type: Boolean, default: null },
+  },
+  { _id: false },
+);
+
 const SubmissionSchema = new Schema(
   {
     tenantId: { type: String, index: true, required: false, default: null },
@@ -126,6 +150,15 @@ const SubmissionSchema = new Schema(
       index: true,
     },
     timeSavedSeconds: { type: Number, default: 0, min: 0 },
+    questionReviews: { type: [questionReviewSchema], default: [] },
+    reviewStatus: {
+      type: String,
+      enum: ["pending_review", "reviewed", "returned"],
+      default: "pending_review",
+      index: true,
+    },
+    reviewedAt: { type: Date, default: null },
+    returnedAt: { type: Date, default: null },
 
     deleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
@@ -156,6 +189,9 @@ SubmissionSchema.pre("validate", function (next) {
     if (!this.gradedAt) {
       this.gradedAt = this.teacherApprovedAt || this.aiGradedAt || new Date();
     }
+    this.reviewStatus = "returned";
+    this.reviewedAt = this.reviewedAt || this.teacherApprovedAt || this.gradedAt;
+    this.returnedAt = this.returnedAt || this.teacherApprovedAt || this.gradedAt;
   } else if (hasTeacherAdjustedScore || hasAiScore) {
     const workingScore = Number(
       hasTeacherAdjustedScore ? this.teacherAdjustedScore : this.aiScore,
@@ -178,8 +214,29 @@ SubmissionSchema.pre("validate", function (next) {
         ? "pending_teacher_review"
         : "submitted";
     }
+
+    if (!this.reviewStatus) {
+      this.reviewStatus = hasTeacherAdjustedScore ? "reviewed" : "pending_review";
+    }
+    if (this.reviewStatus === "reviewed") {
+      this.reviewedAt = this.reviewedAt || this.teacherAdjustedAt || new Date();
+    }
   } else if (!this.gradingStatus) {
     this.gradingStatus = "submitted";
+  }
+
+  if (!this.reviewStatus) {
+    this.reviewStatus = "pending_review";
+  }
+
+  if (this.reviewStatus === "reviewed" && !this.reviewedAt) {
+    this.reviewedAt = this.teacherAdjustedAt || new Date();
+  }
+
+  if (this.reviewStatus === "returned") {
+    const returnedAt = this.teacherApprovedAt || this.gradedAt || new Date();
+    this.reviewedAt = this.reviewedAt || returnedAt;
+    this.returnedAt = this.returnedAt || returnedAt;
   }
 
   next();

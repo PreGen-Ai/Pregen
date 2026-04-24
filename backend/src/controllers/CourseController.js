@@ -35,6 +35,7 @@ import {
   toId,
   userFields,
 } from "../utils/academicContract.js";
+import { buildAssignmentQuestionReviews } from "../utils/reviewWorkflow.js";
 
 const requestIdFromReq = (req) =>
   req.get?.("x-request-id") || req.headers?.["x-request-id"] || null;
@@ -831,6 +832,10 @@ export const submitAssignmentById = async (req, res) => {
         setDefaultsOnInsert: true,
       },
     );
+    submission.questionReviews = buildAssignmentQuestionReviews({
+      assignment,
+      submission,
+    });
 
     let responseStatus = 202;
     let responseMessage =
@@ -853,6 +858,11 @@ export const submitAssignmentById = async (req, res) => {
           gradedQuestions: aiResult.gradedQuestions.length,
         },
         reportId: aiResult.reportId,
+      });
+      submission.questionReviews = buildAssignmentQuestionReviews({
+        assignment,
+        submission,
+        gradedQuestions: aiResult.gradedQuestions,
       });
       responseMessage =
         "Assignment submitted successfully. AI review is awaiting teacher approval.";

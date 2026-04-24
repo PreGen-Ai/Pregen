@@ -17,6 +17,12 @@ export const ATTEMPT_STATUS = Object.freeze({
   FAILED: "failed",
 });
 
+export const REVIEW_STATUS = Object.freeze({
+  PENDING_REVIEW: "pending_review",
+  REVIEWED: "reviewed",
+  RETURNED: "returned",
+});
+
 const LEGACY_STATUS_MAP = {
   pending: GRADING_STATUS.SUBMITTED,
   submitted: GRADING_STATUS.SUBMITTED,
@@ -30,6 +36,18 @@ const LEGACY_STATUS_MAP = {
   in_progress: ATTEMPT_STATUS.IN_PROGRESS,
 };
 
+const LEGACY_REVIEW_STATUS_MAP = {
+  pending: REVIEW_STATUS.PENDING_REVIEW,
+  pending_review: REVIEW_STATUS.PENDING_REVIEW,
+  pendingteacherreview: REVIEW_STATUS.PENDING_REVIEW,
+  reviewed: REVIEW_STATUS.REVIEWED,
+  draft: REVIEW_STATUS.REVIEWED,
+  teacher_reviewed: REVIEW_STATUS.REVIEWED,
+  returned: REVIEW_STATUS.RETURNED,
+  released: REVIEW_STATUS.RETURNED,
+  final: REVIEW_STATUS.RETURNED,
+};
+
 function normalizeText(value, fallback = "") {
   if (value === undefined || value === null) return fallback;
   return String(value).trim();
@@ -41,6 +59,14 @@ export function normalizeReviewStatus(
 ) {
   const normalized = String(value || "").trim().toLowerCase();
   return LEGACY_STATUS_MAP[normalized] || fallback;
+}
+
+export function normalizeTeacherReviewStatus(
+  value,
+  fallback = REVIEW_STATUS.PENDING_REVIEW,
+) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return LEGACY_REVIEW_STATUS_MAP[normalized] || fallback;
 }
 
 export function getCurrentScore(record = {}) {
@@ -75,6 +101,58 @@ export function getCurrentFeedback(record = {}) {
   }
 
   return "";
+}
+
+export function getReviewStatus(record = {}, statusField = "gradingStatus") {
+  const explicitStatus = normalizeText(record?.reviewStatus).toLowerCase();
+  if (explicitStatus) {
+    return normalizeTeacherReviewStatus(explicitStatus);
+  }
+
+  if (isFinalized(record, statusField)) {
+    return REVIEW_STATUS.RETURNED;
+  }
+
+  if (
+    record?.teacherAdjustedScore !== null &&
+      record?.teacherAdjustedScore !== undefined ||
+    normalizeText(record?.teacherAdjustedFeedback)
+  ) {
+    return REVIEW_STATUS.REVIEWED;
+  }
+
+  return REVIEW_STATUS.PENDING_REVIEW;
+}
+
+export function isReleasedToStudent(record = {}, statusField = "gradingStatus") {
+  return (
+    getReviewStatus(record, statusField) === REVIEW_STATUS.RETURNED ||
+    isFinalized(record, statusField)
+  );
+}
+
+export function setReviewStatus(record, value) {
+  const nextStatus = normalizeTeacherReviewStatus(
+    value,
+    getReviewStatus(record),
+  );
+  record.reviewStatus = nextStatus;
+
+  if (nextStatus !== REVIEW_STATUS.RETURNED) {
+    record.returnedAt = null;
+  }
+
+  if (nextStatus === REVIEW_STATUS.REVIEWED) {
+    record.reviewedAt = record.reviewedAt || new Date();
+  }
+
+  if (nextStatus === REVIEW_STATUS.RETURNED) {
+    const now = new Date();
+    record.reviewedAt = record.reviewedAt || now;
+    record.returnedAt = now;
+  }
+
+  return nextStatus;
 }
 
 export function isFinalized(record = {}, statusField = "gradingStatus") {
@@ -145,6 +223,7 @@ export function applyAiReviewState(
   record.aiReportId = reportId || record.aiReportId || null;
   record.latestGradingError = "";
   record[statusField] = fallbackStatus;
+  record.reviewStatus = REVIEW_STATUS.PENDING_REVIEW;
 
   if (record.gradedBy !== undefined) {
     record.gradedBy = "AI";
@@ -178,6 +257,7 @@ export function applyGradingDelayState(
 
   record[statusField] = GRADING_STATUS.GRADING_DELAYED;
   record.latestGradingError = normalizeText(error, "AI grading delayed");
+  record.reviewStatus = REVIEW_STATUS.PENDING_REVIEW;
 
   appendReviewAudit(record, {
     action: "ai_failed",
@@ -234,6 +314,8 @@ export function applyTeacherReviewState(
   record.feedback = nextFeedback;
   record.score = nextScore;
   record[statusField] = GRADING_STATUS.PENDING_TEACHER_REVIEW;
+  record.reviewStatus = REVIEW_STATUS.REVIEWED;
+  record.reviewedAt = record.teacherAdjustedAt;
 
   appendReviewAudit(record, {
     action: "teacher_reviewed",
@@ -295,6 +377,9 @@ export function applyFinalApprovalState(
   record.teacherApprovedBy = actorId || record.teacherApprovedBy || null;
   record.gradedAt = record.teacherApprovedAt;
   record[statusField] = GRADING_STATUS.FINAL;
+  record.reviewStatus = REVIEW_STATUS.RETURNED;
+  record.reviewedAt = record.reviewedAt || record.teacherApprovedAt;
+  record.returnedAt = record.teacherApprovedAt;
   record.latestGradingError = "";
 
   if (record.gradedBy !== undefined) {

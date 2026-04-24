@@ -6,12 +6,12 @@ import api from "../../../services/api/api";
 import useRealtimeRefresh from "../../../hooks/useRealtimeRefresh";
 import { withRequestId } from "../../../utils/requestId";
 import "../../styles/dashboard.css";
+import GradeReviewPanel from "./GradeReviewPanel";
 import {
   extractCourseItems,
   extractGeneratedQuestions,
 } from "./teacherQuiz.helpers";
 
-const STATUS_OPTIONS = ["draft", "published", "closed"];
 const QUESTION_TYPES = [
   { value: "multiple_choice", label: "Multiple choice" },
   { value: "true_false", label: "True / False" },
@@ -66,6 +66,9 @@ function targetScopeLabel(item) {
 
 function statusBadgeClass(status) {
   const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "returned" || normalized === "final" || normalized === "graded") return "bg-success";
+  if (normalized === "reviewed") return "bg-info text-dark";
+  if (normalized === "pending_review" || normalized === "pending_teacher_review") return "bg-warning text-dark";
   if (normalized === "published") return "bg-primary";
   if (normalized === "graded" || normalized === "submitted") return "bg-success";
   if (normalized === "draft") return "bg-warning text-dark";
@@ -106,6 +109,7 @@ export default function TeacherQuiz() {
   const [roster, setRoster] = useState({ students: [], classrooms: [] });
   const [selectedQuizId, setSelectedQuizId] = useState(null);
   const [results, setResults] = useState(null);
+  const [reviewItem, setReviewItem] = useState(null);
   const [aiPreview, setAiPreview] = useState(null); // questions staged for review before insert
   const [aiConfig, setAiConfig] = useState({
     topic: "",
@@ -1052,13 +1056,38 @@ export default function TeacherQuiz() {
                         className={`badge ${
                           attempt.score !== null && attempt.score !== undefined
                             ? "bg-info text-dark"
-                            : statusBadgeClass(attempt.status)
+                            : statusBadgeClass(attempt.reviewStatus || attempt.status)
                         }`}
                       >
                         {attempt.score !== null && attempt.score !== undefined
                           ? formatPercent(attempt.score)
-                          : attempt.status || "submitted"}
+                          : attempt.reviewStatus || attempt.status || "submitted"}
                       </span>
+                    </div>
+                    <div className="d-flex gap-2 flex-wrap mt-3">
+                      <button
+                        className="btn btn-primary btn-sm"
+                        type="button"
+                        onClick={() =>
+                          setReviewItem({
+                            _id: attempt._id,
+                            kind: "quiz",
+                            sourceId: attempt._id,
+                            title: results?.quiz?.title || "Quiz",
+                            courseTitle:
+                              results?.quiz?.workspace?.title ||
+                              results?.quiz?.workspace?.name ||
+                              "Course",
+                            student: attempt.student || null,
+                            reviewStatus: attempt.reviewStatus || attempt.status,
+                          })
+                        }
+                      >
+                        Review attempt
+                      </button>
+                      <Link className="btn btn-outline-light btn-sm" to="/dashboard/grades">
+                        Open gradebook
+                      </Link>
                     </div>
                   </div>
                 ))}
@@ -1083,6 +1112,19 @@ export default function TeacherQuiz() {
           ) : null}
         </div>
       </div>
+
+      {reviewItem ? (
+        <GradeReviewPanel
+          item={reviewItem}
+          onClose={() => setReviewItem(null)}
+          onSaved={async () => {
+            if (results?.quiz?._id) {
+              await loadResults(results.quiz._id);
+            }
+            await loadQuizzes(selectedCourseId);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

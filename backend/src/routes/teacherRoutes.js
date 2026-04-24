@@ -16,8 +16,12 @@ import {
 import {
   approveQuizAttempt,
   approveSubmission,
+  getQuizAttemptDetail,
+  getSubmissionDetail,
   reviewQuizAttempt,
   reviewSubmission,
+  updateQuizAttemptGrade,
+  updateSubmissionGrade,
 } from "../controllers/gradebook.controller.js";
 import { auth, authorizeRoles } from "../middleware/authMiddleware.js";
 
@@ -36,14 +40,18 @@ router.get("/assignments", listTeacherAssignments);
 router.post("/assignments", createAssignment);
 router.patch("/assignments/:assignmentId", updateAssignment);
 router.get("/assignments/:assignmentId/submissions", getAssignmentSubmissions);
+router.get("/assignments/submissions/:submissionId", getSubmissionDetail);
 router.patch("/assignments/submissions/:submissionId/review", reviewSubmission);
+router.patch("/assignments/submissions/:submissionId", updateSubmissionGrade);
 router.post("/assignments/submissions/:submissionId/approve", approveSubmission);
 
 router.get("/quizzes", listTeacherQuizzes);
 router.post("/quizzes", createQuiz);
 router.patch("/quizzes/:quizId", updateQuiz);
 router.get("/quizzes/:quizId/results", getQuizResults);
+router.get("/quizzes/attempts/:attemptId", getQuizAttemptDetail);
 router.patch("/quizzes/attempts/:attemptId/review", reviewQuizAttempt);
+router.patch("/quizzes/attempts/:attemptId", updateQuizAttemptGrade);
 router.post("/quizzes/attempts/:attemptId/approve", approveQuizAttempt);
 
 export default router;
