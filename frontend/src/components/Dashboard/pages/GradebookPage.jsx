@@ -5,6 +5,7 @@ import useRealtimeRefresh from "../../../hooks/useRealtimeRefresh";
 import { withRequestId } from "../../../utils/requestId";
 import { useAuthContext } from "../../../context/AuthContext";
 import GradeReviewPanel from "./GradeReviewPanel";
+import StudentReviewPanel from "./StudentReviewPanel";
 
 const asCourses = (value) => {
   if (Array.isArray(value?.courses)) return value.courses;
@@ -84,6 +85,7 @@ export default function GradebookPage() {
   const [bulkForm, setBulkForm] = useState({ score: "", feedback: "" });
   const [bulkSaving, setBulkSaving] = useState(false);
   const [reviewItem, setReviewItem] = useState(null);
+  const [studentFeedbackItem, setStudentFeedbackItem] = useState(null);
 
   const editingItem = useMemo(
     () => items.find((item) => item._id === editingId) || null,
@@ -533,7 +535,7 @@ export default function GradebookPage() {
                 <th>Result</th>
                 <th>Status</th>
                 <th>Feedback</th>
-                {canEdit ? <th>Actions</th> : null}
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -592,7 +594,18 @@ export default function GradebookPage() {
                         Review
                       </button>
                     </td>
-                  ) : null}
+                  ) : (
+                    <td>
+                      {String(item.reviewStatus || "").toLowerCase() === "returned" ? (
+                        <button
+                          className="btn btn-outline-info btn-sm"
+                          onClick={() => setStudentFeedbackItem(item)}
+                        >
+                          View feedback
+                        </button>
+                      ) : null}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -605,6 +618,13 @@ export default function GradebookPage() {
           item={reviewItem}
           onClose={() => setReviewItem(null)}
           onSaved={() => load(selectedCourseId)}
+        />
+      )}
+
+      {studentFeedbackItem && (
+        <StudentReviewPanel
+          item={studentFeedbackItem}
+          onClose={() => setStudentFeedbackItem(null)}
         />
       )}
     </div>

@@ -327,6 +327,10 @@ export const api = {
           config,
         ),
       ),
+    getMySubmission: (submissionId, config = {}) =>
+      safe(apiClient.get(`/api/gradebook/my/submissions/${submissionId}`, config)),
+    getMyQuizAttempt: (attemptId, config = {}) =>
+      safe(apiClient.get(`/api/gradebook/my/quiz-attempts/${attemptId}`, config)),
   },
 
   teachers: {

@@ -9,6 +9,8 @@ import {
   updateSubmissionGrade,
   getSubmissionDetail,
   getQuizAttemptDetail,
+  getMySubmissionDetail,
+  getMyQuizAttemptDetail,
 } from "../controllers/gradebook.controller.js";
 import { auth, authorizeRoles } from "../middleware/authMiddleware.js";
 
@@ -76,6 +78,20 @@ router.patch(
   "/quiz-attempts/:attemptId",
   authorizeRoles("TEACHER", "ADMIN", "SUPERADMIN"),
   updateQuizAttemptGrade,
+);
+
+// Student: view own returned submission detail (per-question teacher feedback)
+router.get(
+  "/my/submissions/:submissionId",
+  authorizeRoles("STUDENT"),
+  getMySubmissionDetail,
+);
+
+// Student: view own returned quiz attempt detail (per-question teacher feedback)
+router.get(
+  "/my/quiz-attempts/:attemptId",
+  authorizeRoles("STUDENT"),
+  getMyQuizAttemptDetail,
 );
 
 export default router;

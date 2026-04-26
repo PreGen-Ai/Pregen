@@ -1163,3 +1163,146 @@ export async function getQuizAttemptDetail(req, res) {
     return res.status(500).json({ message: "Failed to load quiz attempt detail", error: error.message });
   }
 }
+
+function buildStudentVisibleQuestions(reviewQuestions = []) {
+  return reviewQuestions.map((question) => ({
+    position: question.position,
+    questionId: question.questionId,
+    questionType: question.questionType,
+    questionText: question.questionText,
+    prompt: question.prompt || "",
+    options: question.options || [],
+    correctAnswer: question.correctAnswer ?? null,
+    explanation: question.explanation || "",
+    studentAnswer: question.studentAnswer ?? null,
+    uploadedFiles: question.uploadedFiles || [],
+    maxScore: question.maxScore,
+    teacherScore: question.teacherScore ?? null,
+    teacherFeedback: question.teacherFeedback || "",
+    aiScore: question.aiScore ?? null,
+    aiFeedback: question.aiFeedback || "",
+    autoScore: question.autoScore ?? null,
+    isCorrect: question.isCorrect ?? null,
+  }));
+}
+
+export async function getMySubmissionDetail(req, res) {
+  try {
+    const submissionId = req.params.submissionId;
+    if (!isValidObjectId(submissionId)) {
+      return res.status(400).json({ message: "Invalid submission id" });
+    }
+
+    const submission = await Submission.findOne({
+      _id: submissionId,
+      studentId: req.user._id,
+      deleted: false,
+    })
+      .populate("assignmentId", "title description instructions maxScore type")
+      .populate("workspaceId", "title")
+      .lean();
+
+    if (!submission) {
+      return res.status(404).json({ message: "Submission not found" });
+    }
+
+    const released = isReleasedToStudent(submission, "gradingStatus");
+    if (!released) {
+      return res.status(403).json({ message: "This submission has not been returned yet" });
+    }
+
+    const tenantId = getRequestTenantId(req);
+    if (submission.tenantId && submission.tenantId !== tenantId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const assignment = submission.assignmentId || null;
+    const reviewQuestions = buildSubmissionReviewQuestions(submission, assignment);
+    const questionSummary = summarizeQuestionReviewScores(reviewQuestions);
+
+    return res.json({
+      submission: {
+        _id: toId(submission._id),
+        kind: "assignment",
+        title: assignment?.title || "Assignment",
+        courseTitle: submission.workspaceId?.title || "",
+        submittedAt: submission.submittedAt || submission.createdAt || null,
+        reviewStatus: submission.reviewStatus,
+        released: true,
+        score: getCurrentScore(submission),
+        maxScore: Number(assignment?.maxScore || 100),
+        feedback: getCurrentFeedback(submission),
+        finalScore: submission.finalScore ?? null,
+        finalFeedback: submission.finalFeedback || "",
+        teacherApprovedAt: submission.teacherApprovedAt || null,
+        returnedAt: submission.returnedAt || null,
+        questions: buildStudentVisibleQuestions(reviewQuestions),
+        questionSummary,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to load submission detail", error: error.message });
+  }
+}
+
+export async function getMyQuizAttemptDetail(req, res) {
+  try {
+    const attemptId = req.params.attemptId;
+    if (!isValidObjectId(attemptId)) {
+      return res.status(400).json({ message: "Invalid attempt id" });
+    }
+
+    const attempt = await QuizAttempt.findOne({
+      _id: attemptId,
+      studentId: req.user._id,
+      deleted: false,
+    })
+      .populate("workspaceId", "title")
+      .lean();
+
+    if (!attempt) {
+      return res.status(404).json({ message: "Quiz attempt not found" });
+    }
+
+    const released = isReleasedToStudent(attempt, "status");
+    if (!released) {
+      return res.status(403).json({ message: "This quiz attempt has not been returned yet" });
+    }
+
+    const tenantId = getRequestTenantId(req);
+    if (attempt.tenantId && attempt.tenantId !== tenantId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const quiz = await Quiz.findById(attempt.quizId)
+      .select("+questions.correctAnswer")
+      .lean();
+
+    const reviewQuestions = buildQuizReviewQuestions(attempt, quiz);
+    const questionSummary = summarizeQuestionReviewScores(reviewQuestions);
+
+    return res.json({
+      attempt: {
+        _id: toId(attempt._id),
+        kind: "quiz",
+        title: quiz?.title || "Quiz",
+        courseTitle: attempt.workspaceId?.title || "",
+        timeSpent: attempt.timeSpent || 0,
+        submittedAt: attempt.submittedAt || attempt.createdAt || null,
+        reviewStatus: attempt.reviewStatus,
+        released: true,
+        score: getCurrentScore(attempt),
+        maxScore: Number(attempt.maxScore || quiz?.totalPoints || 0),
+        feedback: getCurrentFeedback(attempt),
+        finalScore: attempt.finalScore ?? null,
+        finalFeedback: attempt.finalFeedback || "",
+        teacherApprovedAt: attempt.teacherApprovedAt || null,
+        returnedAt: attempt.returnedAt || null,
+        questions: buildStudentVisibleQuestions(reviewQuestions),
+        questionSummary,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Failed to load quiz attempt detail", error: error.message });
+  }
+}
