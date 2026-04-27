@@ -673,6 +673,68 @@ describe("9. Admin sees tenant-scoped gradebook rows", () => {
   });
 });
 
+// ─── 11. Legacy attempt with empty questionReviews can be reviewed ───────────
+
+describe("11. Legacy attempt (empty questionReviews) can be reviewed", () => {
+  test("PATCH /review succeeds even when attempt.questionReviews is empty", async () => {
+    const { user: teacher, token } = await createTeacher({ tenantId: TENANT });
+    const { user: student } = await createStudent({ tenantId: TENANT });
+    const course = await makeCourse(teacher);
+
+    const q1Id = oid();
+    const quiz = await Quiz.create({
+      title: `Legacy Quiz ${seq()}`,
+      teacher: teacher._id,
+      tenantId: TENANT,
+      workspace: course._id,
+      subject: "General",
+      status: "published",
+      totalPoints: 10,
+      questions: [
+        {
+          _id: q1Id,
+          questionText: "What is the capital of France?",
+          questionType: "multiple_choice",
+          options: [
+            { text: "London", isCorrect: false },
+            { text: "Paris", isCorrect: true },
+          ],
+          correctAnswer: "B",
+          points: 10,
+        },
+      ],
+    });
+
+    // Simulate a legacy attempt: answers saved, but questionReviews = [] (pre-schema)
+    const attempt = await QuizAttempt.create({
+      quizId: quiz._id,
+      studentId: student._id,
+      tenantId: TENANT,
+      workspaceId: course._id,
+      status: "pending_teacher_review",
+      reviewStatus: "pending_review",
+      submittedAt: new Date(),
+      score: 0,
+      maxScore: 10,
+      answers: [{ questionId: q1Id, answer: "A", isCorrect: false, pointsEarned: 0 }],
+      questionReviews: [], // empty — simulates legacy attempt
+    });
+
+    const res = await request(app)
+      .patch(`/api/gradebook/quiz-attempts/${attempt._id}/review`)
+      .set(authHeader(token))
+      .send({
+        reviewStatus: "reviewed",
+        questions: [{ questionId: String(q1Id), teacherScore: 0, teacherFeedback: "Paris is the answer." }],
+      });
+
+    // Must NOT be 500 "Question not found"
+    expect(res.status).toBe(200);
+    expect(res.body.item).toBeDefined();
+    expect(res.body.item.reviewStatus).toBe("reviewed");
+  });
+});
+
 // ─── 10. In-progress attempts excluded from gradebook list ──────────────────
 
 describe("10. In-progress quiz attempts are excluded from gradebook", () => {
