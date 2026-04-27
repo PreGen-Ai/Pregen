@@ -219,6 +219,44 @@ async function validateTargeting({
   };
 }
 
+/**
+ * GET /api/teachers/courses
+ * Returns all courses accessible to the requesting teacher (or all tenant courses
+ * for admin/superadmin). Used by the gradebook course-filter dropdown.
+ */
+export const getTeacherCourses = async (req, res) => {
+  try {
+    const tenantId = getRequestTenantId(req);
+    const userId = req.user._id;
+
+    let courses;
+
+    if (isAdminLike(req)) {
+      // Admins see every course in the tenant
+      const filter = { deleted: false };
+      if (tenantId) filter.tenantId = tenantId;
+      courses = await Course.find(filter)
+        .select("_id title")
+        .sort({ title: 1 })
+        .lean();
+    } else {
+      // Teachers: courses they created + courses where they are an active member
+      const courseIds = await getAccessibleCourseIdsForUser({ userId, tenantId });
+      if (!courseIds.length) {
+        return res.json({ courses: [] });
+      }
+      courses = await Course.find({ _id: { $in: courseIds }, deleted: false })
+        .select("_id title")
+        .sort({ title: 1 })
+        .lean();
+    }
+
+    return res.json({ courses });
+  } catch (err) {
+    return res.status(500).json({ message: "Failed to load courses", error: err.message });
+  }
+};
+
 export const getCourseRoster = async (req, res) => {
   try {
     if (!ensureTeacherRequest(req, res)) return;

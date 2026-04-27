@@ -334,6 +334,14 @@ export const api = {
   },
 
   teachers: {
+    /**
+     * GET /api/teachers/courses
+     * Returns all courses the teacher (or admin) can access.
+     * Used by the gradebook course-filter dropdown.
+     */
+    getCourses: (config = {}) =>
+      safe(apiClient.get("/api/teachers/courses", config)),
+
     getDashboard: (params, config = {}) =>
       safe(
         apiClient.get("/api/teachers/dashboard", {

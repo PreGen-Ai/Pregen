@@ -500,13 +500,19 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
     };
   };
 
-  const saveReview = async () => {
+  const saveReview = async (finalize = false) => {
     const payload = validatePayload();
     if (!payload) return;
 
+    // finalize=true → approve endpoint (released to student)
+    // finalize=false → review endpoint (internal draft, student cannot see)
+    const willReturn = finalize;
+
     if (
-      payload.reviewStatus === "returned" &&
-      !window.confirm("Return this review to the student and release the grade?")
+      willReturn &&
+      !window.confirm(
+        "Return this grade to the student? They will be able to see scores and feedback.",
+      )
     ) {
       return;
     }
@@ -514,21 +520,30 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
     setSaving(true);
     try {
       const { config } = withRequestId({}, "teacher-review-save");
-      if (item.kind === "assignment") {
-        await api.gradebook.updateSubmission(
-          item.sourceId,
-          { ...payload, grade: payload.score },
-          config,
-        );
+      const body = {
+        ...payload,
+        // Legacy field alias for assignment submissions
+        grade: payload.score,
+      };
+
+      if (willReturn) {
+        // Finalise — released to student
+        if (item.kind === "assignment") {
+          await api.gradebook.approveSubmission(item.sourceId, body, config);
+        } else {
+          await api.gradebook.approveQuizAttempt(item.sourceId, body, config);
+        }
+        toast.success("Grade returned to student");
       } else {
-        await api.gradebook.updateQuizAttempt(item.sourceId, payload, config);
+        // Draft review — internal save, student does not see yet
+        if (item.kind === "assignment") {
+          await api.gradebook.reviewSubmission(item.sourceId, body, config);
+        } else {
+          await api.gradebook.reviewQuizAttempt(item.sourceId, body, config);
+        }
+        toast.success("Teacher review saved (not yet visible to student)");
       }
 
-      toast.success(
-        payload.reviewStatus === "returned"
-          ? "Review returned to student"
-          : "Teacher review saved",
-      );
       await loadDetail();
       onSaved?.();
     } catch (error) {
@@ -563,25 +578,33 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
         <div className="d-flex justify-content-between align-items-start gap-2 flex-wrap mb-4">
           <div>
             <h3 className="mb-1">{item.title}</h3>
-            <div className="text-muted" style={{ fontSize: "0.88em" }}>
-              {item.courseTitle || detail?.courseTitle || "Course"} |{" "}
-              {item.kind === "quiz" ? "Quiz attempt" : "Assignment submission"} |{" "}
+            <div className="text-muted mb-1" style={{ fontSize: "0.9em" }}>
+              <strong>Student:</strong>{" "}
               {formatStudentName(detail?.student || item.student)}
+            </div>
+            <div className="text-muted" style={{ fontSize: "0.88em" }}>
+              <strong>Course:</strong> {item.courseTitle || detail?.courseTitle || "—"}{" "}
+              &nbsp;|&nbsp;
+              <strong>Type:</strong> {item.kind === "quiz" ? "Quiz" : "Assignment"}
             </div>
           </div>
           <div className="d-flex gap-2 flex-wrap align-items-center">
+            {/* Review status badge */}
             {detail?.reviewStatus ? (
               <span className="badge bg-primary">
                 {REVIEW_STATUS_LABELS[detail.reviewStatus] || detail.reviewStatus}
               </span>
             ) : null}
-            {detail?.gradingStatus ? (
+            {/* System / grading status badge */}
+            {(detail?.gradingStatus || detail?.status) ? (
               <span className="badge bg-secondary">
-                {SYSTEM_STATUS_LABELS[detail.gradingStatus] || detail.gradingStatus}
+                {SYSTEM_STATUS_LABELS[detail.gradingStatus ?? detail.status] ||
+                  detail.gradingStatus ||
+                  detail.status}
               </span>
             ) : null}
             <button className="btn btn-outline-secondary btn-sm" onClick={onClose}>
-              Close
+              ✕ Close
             </button>
           </div>
         </div>
@@ -654,58 +677,71 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
               <div className="fw-semibold mb-3">
                 Question review ({form.questions.length})
               </div>
-              {form.questions.map((question, index) => (
-                <QuestionReviewCard
-                  key={question.questionId}
-                  question={question}
-                  index={index}
-                  disabled={saving}
-                  onScoreChange={(questionId, value) => {
-                    setScoreTouched(false);
-                    updateQuestion(questionId, {
-                      teacherScore: value === "" ? null : Number(value),
-                    });
+
+              {form.questions.length === 0 ? (
+                <div
+                  className="p-3 rounded mb-3"
+                  style={{
+                    background: "rgba(255,193,7,0.10)",
+                    border: "1px solid rgba(255,193,7,0.35)",
+                    fontSize: "0.88em",
                   }}
-                  onFeedbackChange={(questionId, value) =>
-                    updateQuestion(questionId, { teacherFeedback: value })
-                  }
-                />
-              ))}
+                >
+                  <strong>No question-level data found.</strong>
+                  {item.kind === "quiz"
+                    ? " The quiz may have been created without questions, or the student's answers were not saved. You can still assign an overall grade below."
+                    : " No per-question breakdown is available for this assignment. Use the overall grade section below."}
+                  {process.env.NODE_ENV !== "production" && detail && (
+                    <details className="mt-2">
+                      <summary style={{ cursor: "pointer" }}>Debug — raw detail shape</summary>
+                      <pre style={{ fontSize: "0.75em", maxHeight: 200, overflow: "auto" }}>
+                        {JSON.stringify(
+                          {
+                            kind: detail.kind,
+                            questionsCount: detail.questions?.length ?? "undefined",
+                            questionReviewsCount: detail.questionReviews?.length ?? "undefined",
+                            answersCount: detail.answers?.length ?? "undefined",
+                            status: detail.gradingStatus ?? detail.status,
+                          },
+                          null,
+                          2,
+                        )}
+                      </pre>
+                    </details>
+                  )}
+                </div>
+              ) : (
+                form.questions.map((question, index) => (
+                  <QuestionReviewCard
+                    key={question.questionId}
+                    question={question}
+                    index={index}
+                    disabled={saving}
+                    onScoreChange={(questionId, value) => {
+                      setScoreTouched(false);
+                      updateQuestion(questionId, {
+                        teacherScore: value === "" ? null : Number(value),
+                      });
+                    }}
+                    onFeedbackChange={(questionId, value) =>
+                      updateQuestion(questionId, { teacherFeedback: value })
+                    }
+                  />
+                ))
+              )}
             </div>
 
             <div className="dash-card">
               <div className="fw-semibold mb-3">Teacher decision</div>
               <div className="row g-3">
-                <div className="col-md-3">
-                  <label className="form-label" htmlFor="teacher-review-status">
-                    Review status
-                  </label>
-                  <select
-                    id="teacher-review-status"
-                    className="form-select"
-                    value={form.reviewStatus}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        reviewStatus: event.target.value,
-                      }))
-                    }
-                    disabled={saving}
-                  >
-                    <option value="pending_review">Pending review</option>
-                    <option value="reviewed">Reviewed</option>
-                    <option value="returned">Returned</option>
-                  </select>
-                </div>
-                <div className="col-md-3">
+                <div className="col-md-4">
                   <label className="form-label" htmlFor="teacher-total-grade">
                     Total grade (%)
-                    <span className="text-muted ms-1" style={{ fontSize: "0.78em" }}>
-                      Computed:{" "}
-                      {computedTotals.percentage === null
-                        ? "N/A"
-                        : `${computedTotals.percentage.toFixed(2).replace(/\.00$/, "")}%`}
-                    </span>
+                    {computedTotals.percentage !== null && (
+                      <span className="text-muted ms-1" style={{ fontSize: "0.78em" }}>
+                        Computed: {computedTotals.percentage.toFixed(2).replace(/\.00$/, "")}%
+                      </span>
+                    )}
                   </label>
                   <input
                     id="teacher-total-grade"
@@ -724,7 +760,7 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
                     disabled={saving}
                   />
                 </div>
-                <div className="col-md-6">
+                <div className="col-md-8">
                   <div className="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-2">
                     <label className="form-label mb-0" htmlFor="teacher-final-feedback">
                       Final feedback
@@ -760,8 +796,21 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
               </div>
 
               <div className="d-flex gap-2 flex-wrap mt-3">
-                <button className="btn btn-primary" onClick={saveReview} disabled={saving}>
-                  {saving ? "Saving..." : "Save review"}
+                <button
+                  className="btn btn-success"
+                  onClick={() => saveReview(true)}
+                  disabled={saving}
+                  title="Finalise grade and make it visible to the student"
+                >
+                  {saving ? "Saving..." : "Return to student"}
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => saveReview(false)}
+                  disabled={saving}
+                  title="Save review notes internally — student does not see this yet"
+                >
+                  {saving ? "Saving..." : "Save draft"}
                 </button>
                 <button
                   className="btn btn-outline-secondary"
@@ -779,7 +828,8 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
               </div>
 
               <div className="text-muted mt-2" style={{ fontSize: "0.82em" }}>
-                Use "Reviewed" to save internal teacher work, and "Returned" when the student is allowed to see the released grade and feedback.
+                <strong>Save draft</strong> stores your review internally — the student cannot see it yet.{" "}
+                <strong>Return to student</strong> finalises the grade and makes scores &amp; feedback visible to the student.
               </div>
             </div>
 

@@ -439,7 +439,10 @@ export async function getAccessibleCourseIdsForUser({
 
   for (const rowSet of rows) {
     for (const row of rowSet) {
-      const value = toId(row?._id || row?.courseId);
+      // CourseMember rows carry courseId (the target course).
+      // Course rows carry _id (the course itself).
+      // Use courseId when present (CourseMember), fall back to _id (Course).
+      const value = toId(row?.courseId ?? row?._id);
       if (value) ids.add(value);
     }
   }

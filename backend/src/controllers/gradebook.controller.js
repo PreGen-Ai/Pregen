@@ -273,12 +273,24 @@ async function loadSubmissionContext(req, submissionId) {
     return { error: { status: 404, message: "Assignment not found" } };
   }
 
-  const allowed = await canAccessCourse({ courseId: assignment.workspace, req });
-  if (!allowed) {
+  // Tenant isolation — always enforced
+  const tenantId = getRequestTenantId(req);
+  if (
+    tenantId &&
+    assignment.tenantId &&
+    String(assignment.tenantId) !== String(tenantId)
+  ) {
     return { error: { status: 403, message: "Not allowed to grade this submission" } };
   }
 
-  if (!isAdminLike(req) && toId(assignment.teacher) !== String(req.user._id)) {
+  if (isAdminLike(req)) {
+    return { submission, assignment };
+  }
+
+  // Teacher must own the assignment OR be an active course member
+  const ownsAssignment = toId(assignment.teacher) === String(req.user._id);
+  const courseAccessible = await canAccessCourse({ courseId: assignment.workspace, req });
+  if (!ownsAssignment && !courseAccessible) {
     return { error: { status: 403, message: "Not allowed to grade this submission" } };
   }
 
@@ -301,12 +313,24 @@ async function loadQuizAttemptContext(req, attemptId) {
     return { error: { status: 404, message: "Quiz not found" } };
   }
 
-  const allowed = await canAccessCourse({ courseId: quiz.workspace, req });
-  if (!allowed) {
+  // Tenant isolation — always enforced
+  const tenantId = getRequestTenantId(req);
+  if (
+    tenantId &&
+    quiz.tenantId &&
+    String(quiz.tenantId) !== String(tenantId)
+  ) {
     return { error: { status: 403, message: "Not allowed to grade this quiz attempt" } };
   }
 
-  if (!isAdminLike(req) && toId(quiz.teacher) !== String(req.user._id)) {
+  if (isAdminLike(req)) {
+    return { attempt, quiz };
+  }
+
+  // Teacher must own the quiz OR be an active course member
+  const ownsQuiz = toId(quiz.teacher) === String(req.user._id);
+  const courseAccessible = await canAccessCourse({ courseId: quiz.workspace, req });
+  if (!ownsQuiz && !courseAccessible) {
     return { error: { status: 403, message: "Not allowed to grade this quiz attempt" } };
   }
 
@@ -688,42 +712,111 @@ async function persistQuizReview(req, attempt, quiz, {
 export async function listGradebook(req, res) {
   try {
     const role = normalizeRoleValue(req.user?.role);
-    const courseIds = await resolveCourseScope(req, role);
-    const studentId =
-      role === "STUDENT" ? req.user._id : req.query.studentId || null;
+    const tenantId = getRequestTenantId(req);
+    const requestedCourseId = req.query.courseId || null;
+    const requestedStudentId = req.query.studentId || null;
 
-    if (!courseIds.length) {
-      return res.json({ items: [], summary: buildSummary([]) });
+    if (requestedCourseId && !isValidObjectId(requestedCourseId)) {
+      return res.status(400).json({ message: "Invalid courseId" });
+    }
+    if (requestedStudentId && !isValidObjectId(requestedStudentId)) {
+      return res.status(400).json({ message: "Invalid studentId" });
     }
 
-    const submissionFilter = {
-      workspaceId: { $in: courseIds },
-      deleted: false,
-    };
-    const attemptFilter = {
-      workspaceId: { $in: courseIds },
-      deleted: false,
-    };
-
-    if (studentId) {
-      if (!isValidObjectId(studentId)) {
-        return res.status(400).json({ message: "Invalid studentId" });
+    // Validate explicit courseId access when provided
+    if (requestedCourseId) {
+      const course = await Course.findById(requestedCourseId).select(
+        "_id tenantId createdBy deleted",
+      );
+      if (!course || course.deleted) {
+        return res.status(404).json({ message: "Course not found" });
       }
-      submissionFilter.studentId = studentId;
-      attemptFilter.studentId = studentId;
+      if (
+        tenantId &&
+        course.tenantId &&
+        String(course.tenantId) !== String(tenantId)
+      ) {
+        return res.status(403).json({ message: "Not allowed to access this course" });
+      }
+      if (role === "STUDENT") {
+        const ctx = await getStudentAcademicContext(req.user._id, tenantId);
+        if (!ctx.courseIds.includes(String(requestedCourseId))) {
+          return res.status(403).json({ message: "Not allowed to access this course" });
+        }
+      }
     }
 
-    if (role === "TEACHER") {
-      const owned = await getTeacherOwnedWorkIds({
-        userId: req.user._id,
-        courseIds,
-      });
+    let submissionFilter = { deleted: false };
+    let attemptFilter = { deleted: false, status: { $ne: "in_progress" } };
+
+    if (tenantId) {
+      submissionFilter.tenantId = tenantId;
+      attemptFilter.tenantId = tenantId;
+    }
+
+    if (role === "STUDENT") {
+      // Students see only their own submissions/attempts in their enrolled courses
+      const ctx = await getStudentAcademicContext(req.user._id, tenantId);
+      const courseIds = requestedCourseId
+        ? [requestedCourseId]
+        : ctx.courseIds;
+
+      if (!courseIds.length) {
+        return res.json({ items: [], summary: buildSummary([]) });
+      }
+
+      submissionFilter.workspaceId = { $in: courseIds };
+      submissionFilter.studentId = req.user._id;
+      attemptFilter.workspaceId = { $in: courseIds };
+      attemptFilter.studentId = req.user._id;
+    } else if (role === "TEACHER") {
+      // Teachers see all submissions/attempts for assessments they created.
+      // Do NOT gate on courseIds — teachers may create quizzes/assignments in courses
+      // they are not formally a CourseMember of.
+      const teacherFilter = {
+        teacher: req.user._id,
+        deleted: false,
+      };
+      if (tenantId) teacherFilter.tenantId = tenantId;
+      if (requestedCourseId) teacherFilter.workspace = requestedCourseId;
+
+      const [ownedAssignments, ownedQuizzes] = await Promise.all([
+        Assignment.find(teacherFilter).select("_id").lean(),
+        Quiz.find(teacherFilter).select("_id").lean(),
+      ]);
+
+      const assignmentIds = ownedAssignments.map((a) => a._id);
+      const quizIds = ownedQuizzes.map((q) => q._id);
+
+      // If teacher has no owned content at all, short-circuit (no rows possible)
+      if (!assignmentIds.length && !quizIds.length) {
+        return res.json({ items: [], summary: buildSummary([]) });
+      }
+
+      delete submissionFilter.tenantId; // already scoped via assignment ownership
+      delete attemptFilter.tenantId;
+
       submissionFilter.assignmentId = {
-        $in: owned.assignmentIds.length ? owned.assignmentIds : [null],
+        $in: assignmentIds.length ? assignmentIds : [null],
       };
       attemptFilter.quizId = {
-        $in: owned.quizIds.length ? owned.quizIds : [null],
+        $in: quizIds.length ? quizIds : [null],
       };
+
+      if (requestedStudentId) {
+        submissionFilter.studentId = requestedStudentId;
+        attemptFilter.studentId = requestedStudentId;
+      }
+    } else {
+      // ADMIN / SUPERADMIN: tenant-scoped, optionally filtered by course
+      if (requestedCourseId) {
+        submissionFilter.workspaceId = requestedCourseId;
+        attemptFilter.workspaceId = requestedCourseId;
+      }
+      if (requestedStudentId) {
+        submissionFilter.studentId = requestedStudentId;
+        attemptFilter.studentId = requestedStudentId;
+      }
     }
 
     const [submissions, attempts] = await Promise.all([
@@ -742,8 +835,8 @@ export async function listGradebook(req, res) {
     ]);
 
     let items = [
-      ...submissions.map((submission) => serializeSubmissionGradebook(submission)),
-      ...attempts.map((attempt) => serializeQuizGradebook(attempt)),
+      ...submissions.map((s) => serializeSubmissionGradebook(s)),
+      ...attempts.map((a) => serializeQuizGradebook(a)),
     ].sort(sortByLatest);
 
     if (role === "STUDENT") {
@@ -775,11 +868,11 @@ export async function listGradebook(req, res) {
       summary: buildSummary(items),
     });
   } catch (error) {
-    const status =
-      /Invalid courseId/.test(error.message) || /Not allowed/.test(error.message)
-        ? 403
-        : 500;
-    return res.status(status).json({
+    const isClientError =
+      /Invalid courseId|Invalid studentId|Not allowed|not found/i.test(
+        error.message,
+      );
+    return res.status(isClientError ? 403 : 500).json({
       message: "Failed to load gradebook",
       error: error.message,
     });
@@ -1118,12 +1211,27 @@ export async function getQuizAttemptDetail(req, res) {
         .populate("workspaceId", "title")
         .lean(),
       Quiz.findById(found.attempt.quizId)
-        .select("+questions.correctAnswer")
+        .select("+questions +questions.correctAnswer")
         .lean(),
     ]);
 
     const gradingStatus = normalizeReviewStatus(attempt.status, ATTEMPT_STATUS.SUBMITTED);
-    const reviewQuestions = buildQuizReviewQuestions(attempt, quiz);
+
+    // Build review questions. If the quiz definition is unavailable or has no
+    // questions, fall back to the question reviews snapshotted at submit time so
+    // the teacher still sees answers and can grade them.
+    let reviewQuestions = buildQuizReviewQuestions(attempt, quiz);
+    if (
+      !reviewQuestions.length &&
+      Array.isArray(attempt.questionReviews) &&
+      attempt.questionReviews.length
+    ) {
+      reviewQuestions = mergeStoredQuestionReviews(
+        attempt.questionReviews,
+        attempt.questionReviews,
+      );
+    }
+
     const questionSummary = summarizeQuestionReviewScores(reviewQuestions);
     const reviewStatus = getReviewStatus(attempt, "status");
 

@@ -4,6 +4,7 @@ import {
   createAssignment,
   createQuiz,
   getCourseRoster,
+  getTeacherCourses,
   getAssignmentSubmissions,
   getQuizResults,
   getTeacherDashboard,
@@ -35,6 +36,9 @@ router.use(authorizeRoles("teacher", "admin", "super_admin"));
 // Teacher dashboard
 router.get("/dashboard", getTeacherDashboard);
 router.get("/content", getTeacherContent);
+
+// All accessible courses for this teacher (used by gradebook course filter)
+router.get("/courses", getTeacherCourses);
 router.get("/courses/:courseId/roster", getCourseRoster);
 router.get("/assignments", listTeacherAssignments);
 router.post("/assignments", createAssignment);

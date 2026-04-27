@@ -7,6 +7,12 @@ import { useAuthContext } from "../../../context/AuthContext";
 import GradeReviewPanel from "./GradeReviewPanel";
 import StudentReviewPanel from "./StudentReviewPanel";
 
+/**
+ * Normalise course list from various API response shapes.
+ * Handles: { courses: [] }  (teacher endpoint)
+ *          { items: [] }    (generic course endpoint)
+ *          []               (plain array)
+ */
 const asCourses = (value) => {
   if (Array.isArray(value?.courses)) return value.courses;
   if (Array.isArray(value?.items)) return value.items;
@@ -105,28 +111,40 @@ export default function GradebookPage() {
     [items],
   );
 
-  const load = useCallback(async (courseId = "") => {
-    setLoading(true);
-    try {
-      const [coursesRes, gradebookRes] = await Promise.all([
-        api.courses.getAllCourses({ limit: 200 }),
-        api.gradebook.list(courseId ? { courseId } : undefined),
-      ]);
+  const load = useCallback(
+    async (courseId = "") => {
+      setLoading(true);
+      try {
+        // Teachers and admins use the teacher-scoped courses endpoint so the
+        // dropdown only shows courses they actually have gradebook access to.
+        // Students don't need the dropdown (their enrolled courses are implicit).
+        const courseFetch = canEdit
+          ? api.teachers.getCourses()
+          : Promise.resolve({ courses: [] });
 
-      const nextCourses = asCourses(coursesRes);
-      setCourses(nextCourses);
-      if (courseId && !nextCourses.some((course) => course._id === courseId)) {
-        setSelectedCourseId("");
+        const [coursesRes, gradebookRes] = await Promise.all([
+          courseFetch,
+          api.gradebook.list(courseId ? { courseId } : undefined),
+        ]);
+
+        const nextCourses = asCourses(coursesRes);
+        setCourses(nextCourses);
+
+        // If the selected course is no longer accessible, reset it
+        if (courseId && !nextCourses.some((c) => c._id === courseId)) {
+          setSelectedCourseId("");
+        }
+
+        setItems(gradebookRes?.items || []);
+        setSummary(gradebookRes?.summary || null);
+      } catch (error) {
+        toast.error(error?.message || "Failed to load gradebook");
+      } finally {
+        setLoading(false);
       }
-
-      setItems(gradebookRes?.items || []);
-      setSummary(gradebookRes?.summary || null);
-    } catch (error) {
-      toast.error(error?.message || "Failed to load gradebook");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [canEdit],
+  );
 
   useEffect(() => {
     load(selectedCourseId);
@@ -300,21 +318,23 @@ export default function GradebookPage() {
               : "Track your marks and teacher feedback across assignments and quizzes."}
           </p>
         </div>
-        <div style={{ minWidth: 280 }}>
-          <label className="form-label">Course filter</label>
-          <select
-            className="form-select"
-            value={selectedCourseId}
-            onChange={(event) => setSelectedCourseId(event.target.value)}
-          >
-            <option value="">All accessible courses</option>
-            {courses.map((course) => (
-              <option key={course._id} value={course._id}>
-                {course.title}
-              </option>
-            ))}
-          </select>
-        </div>
+        {canEdit && (
+          <div style={{ minWidth: 280 }}>
+            <label className="form-label">Course filter</label>
+            <select
+              className="form-select"
+              value={selectedCourseId}
+              onChange={(event) => setSelectedCourseId(event.target.value)}
+            >
+              <option value="">All accessible courses</option>
+              {courses.map((course) => (
+                <option key={course._id} value={course._id}>
+                  {course.title}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {summary ? (
@@ -588,10 +608,11 @@ export default function GradebookPage() {
                   {canEdit ? (
                     <td>
                       <button
-                        className="btn btn-outline-primary btn-sm"
+                        className="btn btn-primary btn-sm"
                         onClick={() => setReviewItem(item)}
+                        title="Open full per-question review"
                       >
-                        Review
+                        Grade
                       </button>
                     </td>
                   ) : (
