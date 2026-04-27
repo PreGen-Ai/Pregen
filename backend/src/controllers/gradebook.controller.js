@@ -597,7 +597,18 @@ async function persistQuizReview(req, attempt, quiz, {
   approve = false,
   action = "review",
 }) {
-  attempt.questionReviews = buildQuizReviewQuestions(attempt, quiz);
+  // If quiz was loaded without questions (e.g. loadQuizAttemptContext only
+  // selects metadata fields), reload it with full questions so we can
+  // rebuild the per-question review map.  This also handles legacy attempts
+  // that pre-date the questionReviews field (stored as []).
+  const quizForReview =
+    Array.isArray(quiz.questions) && quiz.questions.length > 0
+      ? quiz
+      : await Quiz.findById(quiz._id)
+          .select("+questions +questions.correctAnswer")
+          .lean();
+
+  attempt.questionReviews = buildQuizReviewQuestions(attempt, quizForReview);
   const mutation = resolveReviewMutation({
     record: attempt,
     score,
