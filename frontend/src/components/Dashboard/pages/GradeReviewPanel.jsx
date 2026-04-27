@@ -297,6 +297,8 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
   const [aiDrafting, setAiDrafting] = useState(false);
   const [feedbackIsAiDraft, setFeedbackIsAiDraft] = useState(false);
   const [scoreTouched, setScoreTouched] = useState(false);
+  // Inline confirmation state — avoids native window.confirm() which blocks browser automation
+  const [confirmReturn, setConfirmReturn] = useState(false);
   const [form, setForm] = useState({
     score: "",
     feedback: "",
@@ -508,14 +510,13 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
     // finalize=false → review endpoint (internal draft, student cannot see)
     const willReturn = finalize;
 
-    if (
-      willReturn &&
-      !window.confirm(
-        "Return this grade to the student? They will be able to see scores and feedback.",
-      )
-    ) {
+    // For "Return to student", show an inline confirmation instead of native confirm()
+    if (willReturn && !confirmReturn) {
+      setConfirmReturn(true);
       return;
     }
+    // Reset confirmation state before proceeding
+    setConfirmReturn(false);
 
     setSaving(true);
     try {
@@ -795,11 +796,40 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
                 </div>
               </div>
 
+              {/* Inline confirmation replaces native window.confirm() */}
+              {confirmReturn && (
+                <div
+                  className="mt-3 p-3 rounded d-flex align-items-center gap-3 flex-wrap"
+                  style={{
+                    background: "rgba(25,135,84,0.15)",
+                    border: "1px solid rgba(25,135,84,0.4)",
+                  }}
+                >
+                  <span style={{ fontSize: "0.9em" }}>
+                    ⚠️ This will release the grade and feedback to the student. Are you sure?
+                  </span>
+                  <button
+                    className="btn btn-success btn-sm"
+                    onClick={() => saveReview(true)}
+                    disabled={saving}
+                  >
+                    Yes, return to student
+                  </button>
+                  <button
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => setConfirmReturn(false)}
+                    disabled={saving}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+
               <div className="d-flex gap-2 flex-wrap mt-3">
                 <button
                   className="btn btn-success"
                   onClick={() => saveReview(true)}
-                  disabled={saving}
+                  disabled={saving || confirmReturn}
                   title="Finalise grade and make it visible to the student"
                 >
                   {saving ? "Saving..." : "Return to student"}
@@ -807,7 +837,7 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
                 <button
                   className="btn btn-primary"
                   onClick={() => saveReview(false)}
-                  disabled={saving}
+                  disabled={saving || confirmReturn}
                   title="Save review notes internally — student does not see this yet"
                 >
                   {saving ? "Saving..." : "Save draft"}
@@ -815,6 +845,7 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
                 <button
                   className="btn btn-outline-secondary"
                   onClick={() => {
+                    setConfirmReturn(false);
                     setScoreTouched(false);
                     loadDetail();
                   }}
@@ -822,7 +853,11 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
                 >
                   Reset
                 </button>
-                <button className="btn btn-outline-light" onClick={onClose} disabled={saving}>
+                <button
+                  className="btn btn-outline-light"
+                  onClick={() => { setConfirmReturn(false); onClose(); }}
+                  disabled={saving}
+                >
                   Close
                 </button>
               </div>
