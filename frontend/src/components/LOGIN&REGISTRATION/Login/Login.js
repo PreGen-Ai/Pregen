@@ -1,13 +1,6 @@
-// Login.jsx (updated to use PreGen title/subtitle + your hero images)
-import Logo320 from "../../../assets/logo-320.webp";
-import Logo640 from "../../../assets/logo-640.webp";
-import Logo1024 from "../../../assets/logo-1024.webp";
-
-import Hero256 from "../../../assets/hero-256.webp";
-import Hero512 from "../../../assets/hero-512.webp";
-import Hero768 from "../../../assets/hero-768.webp";
-import Hero1024 from "../../../assets/hero-1024.webp";
-
+import AiRobot from "../../../assets/ai-2.webp";
+import EyeIcon from "../../../assets/eye.svg";
+import EyeOffIcon from "../../../assets/eye-off.svg";
 import "../../styles/login.css";
 import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useRef } from "react";
@@ -20,6 +13,8 @@ const Login = ({ onLoginSuccess }) => {
     setEmail,
     password,
     setPassword,
+    showPassword,
+    setShowPassword,
     errorMessage,
     successMessage,
     isLoading,
@@ -32,7 +27,6 @@ const Login = ({ onLoginSuccess }) => {
 
   useEffect(() => {
     if (authLoading || hasRedirected.current) return;
-
     if (isAuthenticated && user) {
       hasRedirected.current = true;
       navigate("/dashboard", { replace: true });
@@ -47,131 +41,116 @@ const Login = ({ onLoginSuccess }) => {
 
   return (
     <div className="login-page">
-      {/* Top Nav */}
-      <header className="login-topbar">
-        <div className="brand">
-          <img
-            className="brand-logo"
-            src={Logo320}
-            srcSet={`${Logo320} 320w, ${Logo640} 640w, ${Logo1024} 1024w`}
-            sizes="(max-width: 768px) 120px, 160px"
-            alt="PreGen"
-            loading="eager"
-          />
-          <span className="brand-text">PreGen</span>
-        </div>
+      <div className="login-frame">
+        {/* Left: Form */}
+        <div className="login-left">
+          <div className="login-form-wrap">
+            <h1 className="login-title">
+              Sign in to <span className="login-title-brand">PreGen</span>
+            </h1>
+            <p className="login-subtitle">
+              Experience smarter education with Google Gemini AI—personalized
+              learning, instant grading, and real-time feedback for students,
+              teachers, and parents.
+            </p>
 
-        <nav className="login-nav" aria-label="Primary">
-          <Link className="nav-link active" to="/">
-            Home
-          </Link>
-          <Link className="nav-link" to="/about">
-            About us
-          </Link>
-          <Link className="nav-link" to="/blog">
-            Blog
-          </Link>
-          <Link className="nav-link" to="/pricing">
-            Pricing
-          </Link>
-        </nav>
-      </header>
+            <form className="login-form" onSubmit={handleSubmit} noValidate>
+              {/* Email */}
+              <div className="login-field-box">
+                <label className="login-field-label" htmlFor="login-email">
+                  Email address
+                </label>
+                <input
+                  id="login-email"
+                  className="login-field-input"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={isLoading}
+                  autoComplete="email"
+                />
+              </div>
 
-      {/* Main Split Layout */}
-      <main className="login-hero">
-        {/* Left: Headline + Form */}
-        <section className="hero-left">
-          <h1 className="hero-title">
-            Welcome back to PreGen — Learn faster. Teach smarter.
-          </h1>
+              {/* Password */}
+              <div className="login-field-box">
+                <label className="login-field-label" htmlFor="login-password">
+                  Password
+                </label>
+                <div className="login-field-pw">
+                  <input
+                    id="login-password"
+                    className="login-field-input pw-input"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    disabled={isLoading}
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    className="pw-toggle"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    tabIndex={-1}
+                  >
+                    <img
+                      src={showPassword ? EyeOffIcon : EyeIcon}
+                      alt=""
+                      className="pw-eye"
+                    />
+                  </button>
+                </div>
+              </div>
 
-          <p className="hero-subtitle">
-            Your AI classroom assistant for generating quizzes and assignments
-            in minutes, with instant grading and clear explanations—then export
-            polished PDF reports in one click, without the busywork.
-          </p>
+              {/* Forgot password */}
+              <div className="login-forgot-row">
+                <span className="login-forgot">Forgot password?</span>
+              </div>
 
-          <form className="login-form" onSubmit={handleSubmit}>
-            {/* Email */}
-            <input
-              className="login-input"
-              type="email"
-              placeholder=""
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              disabled={isLoading}
-              aria-label="Email"
-              autoComplete="email"
-            />
+              {/* Error / success messages */}
+              {errorMessage && (
+                <div className="login-msg error" role="alert">
+                  {errorMessage}
+                </div>
+              )}
+              {successMessage && (
+                <div className="login-msg success" role="status">
+                  {successMessage}
+                </div>
+              )}
 
-            {/* Password */}
-            <input
-              className="login-input"
-              type="password"
-              placeholder=""
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              disabled={isLoading}
-              aria-label="Password"
-              autoComplete="current-password"
-            />
-
-            {/* Checkbox row */}
-            <div className="login-row">
-              <label className="remember" aria-label="Remember me">
-                <input type="checkbox" />
-                <span />
-              </label>
-            </div>
-
-            {/* Messages */}
-            {errorMessage && (
-              <div className="login-msg error">{errorMessage}</div>
-            )}
-            {successMessage && (
-              <div className="login-msg success">{successMessage}</div>
-            )}
-
-            {/* Buttons */}
-            <div className="login-actions">
+              {/* Submit */}
               <button
-                className="btn primary"
+                className="login-submit"
                 type="submit"
                 disabled={isLoading}
               >
-                {isLoading ? "Logging in..." : "Login"}
+                {isLoading ? "Signing in..." : "Sign in"}
               </button>
+            </form>
 
-              <Link to="/signup" className="btn-link">
-                <button
-                  className="btn secondary"
-                  type="button"
-                  disabled={isLoading}
-                >
-                  Request Access
-                </button>
+            <p className="login-signup-line">
+              Don&apos;t have an account?{" "}
+              <Link to="/signup" className="login-signup-link">
+                Sign up
               </Link>
-            </div>
-          </form>
-        </section>
-
-        {/* Right: Hero Image */}
-        <section className="hero-right" aria-hidden="true">
-          <div className="illustration-wrap">
-            <img
-              className="illustration"
-              src={Hero512}
-              srcSet={`${Hero256} 256w, ${Hero512} 512w, ${Hero768} 768w, ${Hero1024} 1024w`}
-              sizes="(max-width: 980px) 90vw, 520px"
-              alt=""
-              loading="eager"
-              decoding="async"
-            />
+            </p>
           </div>
-        </section>
-      </main>
+        </div>
+
+        {/* Right: Robot image */}
+        <div className="login-right" aria-hidden="true">
+          <img
+            className="login-robot"
+            src={AiRobot}
+            alt=""
+            loading="eager"
+            decoding="async"
+          />
+        </div>
+      </div>
     </div>
   );
 };
