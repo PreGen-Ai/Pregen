@@ -3,26 +3,26 @@ import { Star } from "lucide-react";
 const TESTIMONIALS = [
   {
     quote:
-      "The AI tutor actually explained calculus better than three textbooks I used in college. Every time I got stuck, it just... knew exactly what I needed to hear.",
-    name: "Lisa McCartney",
-    role: "Student, Data Science",
-    initial: "L",
+      "The AI tutor helped me revise IGCSE Chemistry at night before my mock exam. It explained the same idea in simple steps until I finally understood it.",
+    name: "Malak Hassan",
+    role: "IGCSE Student, Cairo",
+    initial: "M",
     avatarBg: "#2f6fed",
   },
   {
     quote:
-      "I built my entire Python course in 3 days using the AI Course Generator. It created modules, quizzes, and even suggested visual breakdowns I hadn't thought of.",
-    name: "Mark Reid",
-    role: "Instructor",
-    initial: "M",
+      "As a private Math instructor, PreGen helped me create quizzes, homework, and revision plans much faster. It saves me hours every week.",
+    name: "Ahmed Nabil",
+    role: "Private Math Instructor, Giza",
+    initial: "A",
     avatarBg: "#16a34a",
   },
   {
     quote:
-      "The personalized learning path feature literally fixed my exam anxiety. Instead of guessing what to study, I had a clear roadmap every single time.",
-    name: "Joy Chang",
-    role: "Student, Pre-Med",
-    initial: "J",
+      "My son used to get lost between school notes and private lessons. The personalized learning path showed him exactly what to revise before his American Diploma exams.",
+    name: "Dina Mostafa",
+    role: "Parent, New Cairo",
+    initial: "D",
     avatarBg: "#9333ea",
   },
 ];
