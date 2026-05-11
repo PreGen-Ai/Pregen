@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import Home from "./components/Home/home";
 import "./components/styles/Home.css";
+import "./components/styles/landing.css";
 
 const REDIRECT_URL = "https://preprod-pregen.netlify.app/";
 
