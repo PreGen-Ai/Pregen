@@ -1,4 +1,4 @@
-import AiRobot from "../../../assets/ai-2.webp";
+import AiRobot from "../../../assets/ai_bot.svg";
 import EyeIcon from "../../../assets/eye.svg";
 import EyeOffIcon from "../../../assets/eye-off.svg";
 import "../../styles/login.css";

@@ -175,11 +175,27 @@ export default function App() {
 
       <Suspense fallback={<AppFallback />}>
         <Routes>
-          {/* ---------- Public ---------- */}
+          {/* ---------- Auth (no navbar / footer) ---------- */}
+          <Route
+            path="/login"
+            element={
+              <Suspense fallback={<AppFallback />}>
+                <Login />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/signup"
+            element={
+              <Suspense fallback={<AppFallback />}>
+                <Signup />
+              </Suspense>
+            }
+          />
+
+          {/* ---------- Public (with navbar + footer) ---------- */}
           <Route element={<PublicLayout />}>
             <Route path="/" element={<HomeOrRedirect />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/SearchResults" element={<SearchResults />} />
             <Route path="/CasioCalculator" element={<CasioCalculator />} />

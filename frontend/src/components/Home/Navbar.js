@@ -3,7 +3,6 @@ import {
   Navbar,
   Nav,
   Container,
-  Modal,
   Form,
   Row,
   Col,
@@ -26,7 +25,6 @@ import {
   ACTIVE_TENANT_EVENT,
   getActiveTenantContext,
 } from "../../services/api/http";
-import Login from "../LOGIN&REGISTRATION/Login/Login";
 
 import Logo320 from "../../assets/logo-320.webp";
 import Logo640 from "../../assets/logo-640.webp";
@@ -36,7 +34,6 @@ import "../styles/navbar.css";
 import { motion } from "framer-motion";
 
 const NavBar = () => {
-  const [showLoginModal, setShowLoginModal] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -96,10 +93,6 @@ const NavBar = () => {
   }, [expanded]);
 
   useEffect(() => {
-    if (isAuthenticated) setShowLoginModal(false);
-  }, [isAuthenticated]);
-
-  useEffect(() => {
     const syncActiveTenant = () => {
       setActiveTenantContextState(getActiveTenantContext());
     };
@@ -118,23 +111,17 @@ const NavBar = () => {
   const closeNav = useCallback(() => setExpanded(false), []);
   const toggleNav = useCallback(() => setExpanded((v) => !v), []);
 
-  const handleLoginModalClose = useCallback(() => setShowLoginModal(false), []);
-
-  const openLogin = useCallback(() => {
-    closeNav();
-    setShowLoginModal(true);
-  }, [closeNav]);
-
   const requireAuth = useCallback(
     (nextPath) => {
       if (!isAuthenticated) {
-        openLogin();
+        closeNav();
+        navigate("/login");
         return;
       }
       closeNav();
       navigate(nextPath);
     },
-    [isAuthenticated, navigate, openLogin, closeNav],
+    [isAuthenticated, navigate, closeNav],
   );
 
   const handleLogout = useCallback(async () => {
@@ -438,7 +425,7 @@ const NavBar = () => {
                 <Button
                   variant="outline-light"
                   className="ms-2"
-                  onClick={openLogin}
+                  onClick={() => { closeNav(); navigate("/login"); }}
                 >
                   <FontAwesomeIcon icon={faUser} /> Login
                 </Button>
@@ -448,30 +435,6 @@ const NavBar = () => {
         </Container>
       </Navbar>
 
-      <Modal
-        show={showLoginModal}
-        onHide={handleLoginModalClose}
-        centered
-        backdrop="static"
-        keyboard={false}
-      >
-        <Modal.Body className="p-0">
-          <div className="login-modal-wrapper css-scale-in">
-            <button
-              className="login-modal-close"
-              onClick={handleLoginModalClose}
-              aria-label="Close"
-              type="button"
-            >
-              ×
-            </button>
-
-            <div className="login-modal-container">
-              <Login onLoginSuccess={handleLoginModalClose} />
-            </div>
-          </div>
-        </Modal.Body>
-      </Modal>
     </>
   );
 };

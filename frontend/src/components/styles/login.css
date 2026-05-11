@@ -297,11 +297,12 @@
 }
 
 .login-robot {
-  width: auto;
-  height: 88%;
-  max-height: 780px;
+  width: 80%;
+  height: 90%;
+  max-width: 500px;
+  max-height: 800px;
   object-fit: contain;
-  object-position: center;
+  object-position: center bottom;
   display: block;
 }
 
