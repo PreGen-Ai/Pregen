@@ -1,4 +1,3 @@
-// src/App.jsx (UPDATED to use your pages/tools, pages/SuperAdmin, ParentPortal, TeacherPortal)
 import React, { Suspense, lazy } from "react";
 import {
   BrowserRouter,
@@ -32,7 +31,6 @@ const NavBar = lazyPage(() => import("./components/Home/Navbar"));
 const Footer = lazyPage(() => import("./components/Home/Footer"));
 
 // public
-const Home = lazyPage(() => import("./components/Home/home"));
 const Login = lazyPage(
   () => import("./components/LOGIN&REGISTRATION/Login/Login"),
 );
@@ -68,10 +66,11 @@ const AdminAnalyticsPage = lazyPage(
   () => import("./components/Dashboard/pages/AdminAnalyticsPage"),
 );
 
-// portals (from your screenshot)
+// portals
 const ParentPortal = lazyPage(() => import("./pages/ParentPortal"));
 const TeacherPortal = lazyPage(() => import("./pages/TeacherPortal"));
 
+// superadmin pages
 const TenantsPage = lazyPage(
   () => import("./components/Dashboard/pages/SuperAdmin/TenantsPage"),
 );
@@ -94,7 +93,7 @@ const TenantScopeRedirect = lazyPage(
   () => import("./components/Dashboard/pages/SuperAdmin/TenantScopeRedirect"),
 );
 
-// dashboard feature pages (also shown in pages/SuperAdmin)
+// dashboard feature pages
 const AITutor = lazyPage(() => import("./components/Dashboard/pages/AITutor"));
 const Assignments = lazyPage(
   () => import("./components/Dashboard/pages/Assignments"),
@@ -115,49 +114,52 @@ const QuizGenerator = lazyPage(
   () => import("./components/Dashboard/pages/QuizGenerator"),
 );
 
-// Public "/" shows Home for guests, redirects to dashboard for authed users
-function HomeOrRedirect() {
+// "/" and "/login" show Login for guests, redirect authenticated users to dashboard
+function LoginOrRedirect() {
   const { isAuthenticated, loading } = useAuthContext();
-  if (loading) return null;
-  return isAuthenticated ? <Navigate to="/dashboard" replace /> : <Home />;
+
+  if (loading) return <AppFallback />;
+
+  return isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />;
 }
 
 // Default dashboard landing by role
 function DashboardHomeRedirect() {
   const { user, loading } = useAuthContext();
-  if (loading) return null;
+
+  if (loading) return <AppFallback />;
 
   const role = normalizeRole(user?.role);
 
-  if (role === ROLES.PARENT) return <Navigate to="/dashboard/parent" replace />;
-  if (role === ROLES.SUPERADMIN)
+  if (role === ROLES.PARENT) {
+    return <Navigate to="/dashboard/parent" replace />;
+  }
+
+  if (role === ROLES.SUPERADMIN) {
     return <Navigate to="/dashboard/superadmin/dashboard" replace />;
-  if (role === ROLES.ADMIN)
+  }
+
+  if (role === ROLES.ADMIN) {
     return <Navigate to="/dashboard/admin/users" replace />;
-  if (role === ROLES.TEACHER)
+  }
+
+  if (role === ROLES.TEACHER) {
     return <Navigate to="/dashboard/teacher" replace />;
+  }
 
   return <Navigate to="/dashboard/assignments" replace />;
 }
 
 const PublicLayout = () => (
   <>
-    <Suspense fallback={<AppFallback />}>
-      <NavBar />
-    </Suspense>
+    <NavBar />
 
     <Outlet />
 
-    <Suspense fallback={<AppFallback />}>
-      <Footer />
-    </Suspense>
+    <Footer />
   </>
 );
 
-/**
- * If your DashboardLayout ALREADY renders <Outlet /> internally,
- * remove the <Outlet /> below to avoid double nesting.
- */
 const DashboardAppLayout = () => (
   <Suspense fallback={<AppFallback />}>
     <DashboardLayout />
@@ -175,27 +177,11 @@ export default function App() {
 
       <Suspense fallback={<AppFallback />}>
         <Routes>
-          {/* ---------- Auth (no navbar / footer) ---------- */}
-          <Route
-            path="/login"
-            element={
-              <Suspense fallback={<AppFallback />}>
-                <Login />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/signup"
-            element={
-              <Suspense fallback={<AppFallback />}>
-                <Signup />
-              </Suspense>
-            }
-          />
-
-          {/* ---------- Public (with navbar + footer) ---------- */}
+          {/* ---------- Public pages with Navbar + Footer ---------- */}
           <Route element={<PublicLayout />}>
-            <Route path="/" element={<HomeOrRedirect />} />
+            <Route path="/" element={<LoginOrRedirect />} />
+            <Route path="/login" element={<LoginOrRedirect />} />
+            <Route path="/signup" element={<Signup />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/SearchResults" element={<SearchResults />} />
             <Route path="/CasioCalculator" element={<CasioCalculator />} />
@@ -400,7 +386,6 @@ export default function App() {
               />
 
               {/* ---------- SUPERADMIN ---------- */}
-
               <Route
                 path="superadmin/dashboard"
                 element={
