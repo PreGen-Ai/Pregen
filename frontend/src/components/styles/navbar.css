@@ -29,8 +29,8 @@
   top: 0;
   left: 0;
   width: 100%;
-  height: 75px;
-  background: var(--bg-glass);
+  height: 76px;
+  background: linear-gradient(135deg, #0f172a 0%, #1a1f3a 100%);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-glow);
   transition: var(--transition);
@@ -49,9 +49,17 @@
 /* ==============================
    🎨 BRAND / LOGO
 ============================== */
+.navbar-logo {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
 .navbar-logo img {
-  border-radius: 8px;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  border-radius: 10px;
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
 }
 
 .navbar-logo img:hover {
@@ -67,9 +75,10 @@
   font-size: 0.95rem;
   font-weight: 500;
   letter-spacing: 0.3px;
-  opacity: 0.9;
+  opacity: 0.85;
   position: relative;
   transition: var(--transition);
+  margin: 0 12px;
 }
 
 .navbar-custom .nav-link:hover {
@@ -97,24 +106,35 @@
    🔍 SEARCH FORM
 ============================== */
 .navbar-custom form input[type="search"] {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(15, 23, 42, 0.7);
   color: var(--text-light);
-  border: 1px solid var(--border-glow);
-  border-radius: 6px;
-  padding: 6px 10px;
+  border: 1px solid rgba(37, 99, 235, 0.4);
+  border-radius: 10px;
+  padding: 8px 14px;
+  width: 260px;
   transition: var(--transition);
+  font-size: 0.9rem;
+}
+
+.navbar-custom form input[type="search"]::placeholder {
+  color: rgba(248, 250, 252, 0.5);
 }
 
 .navbar-custom form input[type="search"]:focus {
   outline: none;
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(15, 23, 42, 0.85);
   border-color: var(--primary-blue);
-  box-shadow: 0 0 6px var(--primary-blue);
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.3);
 }
 
 .navbar-custom form button {
   color: var(--text-light);
-  border: 1px solid var(--border-glow);
+  border: 1px solid rgba(37, 99, 235, 0.4);
+  border-radius: 8px;
+  background: transparent;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
   transition: var(--transition);
 }
 
@@ -177,8 +197,8 @@
   border-color: var(--primary-blue);
   color: var(--text-light);
   font-size: 0.9rem;
-  border-radius: 6px;
-  padding: 6px 14px;
+  border-radius: 10px;
+  padding: 8px 16px;
   transition: var(--transition);
 }
 
@@ -189,13 +209,30 @@
   transform: translateY(-2px);
 }
 
+.navbar-get-started-btn {
+  background-color: var(--primary-blue);
+  border: none;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 8px 20px;
+  transition: var(--transition);
+}
+
+.navbar-get-started-btn:hover {
+  background-color: #1d4ed8;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+  transform: translateY(-2px);
+}
+
 /* ==============================
    📱 RESPONSIVE DESIGN
 ============================== */
 @media (max-width: 992px) {
   .navbar-custom {
     height: 70px;
-    background: rgba(15, 23, 42, 0.98);
+    background: linear-gradient(135deg, #0f172a 0%, #1a1f3a 100%);
   }
 
   .navbar-custom .navbar-collapse {
@@ -210,6 +247,7 @@
     padding: 10px 0;
     font-size: 1rem;
     text-align: center;
+    margin: 0;
   }
 
   .navbar-custom form {
@@ -217,7 +255,11 @@
     justify-content: center;
   }
 
-  .navbar-custom .btn-outline-light {
+  .navbar-custom form input[type="search"] {
+    width: 100%;
+  }
+
+  .navbar-get-started-btn {
     width: 100%;
     margin-top: 10px;
   }
@@ -228,12 +270,22 @@
     height: 65px;
   }
 
+  .navbar-logo {
+    font-size: 18px;
+  }
+
   .navbar-logo img {
-    height: 42px;
+    width: 36px;
+    height: 27px;
   }
 
   .navbar-custom .nav-link {
     font-size: 0.95rem;
+  }
+
+  .navbar-custom form input[type="search"] {
+    width: 100%;
+    padding: 8px 12px;
   }
 }
 
@@ -278,8 +330,6 @@
 .navbar-custom .dropdown-toggle:hover img {
   transform: scale(1.05);
 }
-
-
 
 .login-modal-wrapper {
   position: relative;

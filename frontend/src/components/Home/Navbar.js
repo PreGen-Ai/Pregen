@@ -140,10 +140,16 @@ const NavBar = () => {
       const q = searchTerm.trim();
       if (!q) return;
 
-      requireAuth(`/SearchResults?query=${encodeURIComponent(q)}`);
+      // Allow unsigned users to search; redirect to login if needed
+      const path = `/SearchResults?query=${encodeURIComponent(q)}`;
+      if (isAuthenticated) {
+        navigate(path);
+      } else {
+        navigate("/login");
+      }
       setSearchTerm("");
     },
-    [searchTerm, requireAuth],
+    [searchTerm, isAuthenticated, navigate],
   );
 
   const { roleLabel, roleIcon } = useMemo(() => {
@@ -175,17 +181,17 @@ const NavBar = () => {
         <Container fluid>
           <Navbar.Brand
             as={Link}
-            to="/login"
+            to="/"
             className="navbar-logo d-flex align-items-center"
             onClick={closeNav}
           >
             <motion.img
               src={Logo640}
               srcSet={`${Logo320} 320w, ${Logo640} 640w, ${Logo1024} 1024w`}
-              sizes="(max-width: 576px) 120px, (max-width: 992px) 160px, 180px"
+              sizes="(max-width: 576px) 80px, (max-width: 992px) 100px, 120px"
               alt="AI E-Learning"
-              width={70}
-              height={50}
+              width={48}
+              height={36}
               loading="eager"
               decoding="async"
               className="me-2 rounded shadow-sm"
@@ -214,12 +220,12 @@ const NavBar = () => {
               </Nav.Link>
 
               <Nav.Link
-                as="button"
-                type="button"
-                className={`nav-link btn btn-link p-0 ${
+                as={Link}
+                to="/courses"
+                className={`nav-link ${
                   location.pathname.startsWith("/courses") ? "active" : ""
                 }`}
-                onClick={() => requireAuth("/courses")}
+                onClick={closeNav}
               >
                 Courses
               </Nav.Link>
@@ -423,18 +429,20 @@ const NavBar = () => {
                 </Dropdown>
               ) : (
                 <Button
-                  variant="outline-light"
-                  className="ms-2"
-                  onClick={() => { closeNav(); navigate("/login"); }}
+                  variant="primary"
+                  className="ms-2 navbar-get-started-btn"
+                  onClick={() => {
+                    closeNav();
+                    window.location.href = "https://pregeneg.com/";
+                  }}
                 >
-                  <FontAwesomeIcon icon={faUser} /> Login
+                  Get Started
                 </Button>
               )}
             </Nav>
           </Navbar.Collapse>
         </Container>
       </Navbar>
-
     </>
   );
 };
