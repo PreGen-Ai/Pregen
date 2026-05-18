@@ -106,10 +106,15 @@ const SubmissionSchema = new Schema(
       type: String,
       enum: [
         "submitted",
-        "ai_graded",
+        "ai_processing",          // AI grading in flight
+        "ai_failed",              // AI grading failed; teacher must grade manually
+        "ai_completed",           // AI produced auto_score, pending teacher review
+        "ai_graded",              // legacy alias for ai_completed
         "pending_teacher_review",
-        "grading_delayed",
-        "final",
+        "teacher_reviewed",       // teacher reviewed/overrode; final_score computed
+        "grading_delayed",        // legacy alias for ai_failed
+        "released",               // released_at set; student can see final grade
+        "final",                  // legacy alias for released
         "failed",
       ],
       default: "submitted",
@@ -118,10 +123,30 @@ const SubmissionSchema = new Schema(
     gradedAt: { type: Date, default: null, index: true },
     feedback: { type: String, default: "", maxlength: 10000 },
 
+    // ── AI grading scores ──────────────────────────────────────────────
+    // auto_score: raw AI score — never shown to student directly
+    auto_score: { type: Number, default: null, min: 0, max: 100 },
     aiScore: { type: Number, default: null, min: 0, max: 100 },
     aiFeedback: { type: String, default: "", maxlength: 10000 },
     aiGradedAt: { type: Date, default: null, index: true },
     aiReportId: { type: String, default: "", trim: true, maxlength: 255 },
+
+    // ── AI metadata ────────────────────────────────────────────────────
+    ai_assisted: { type: Boolean, default: false },
+    ai_confidence: { type: Number, default: null, min: 0, max: 1 },
+    ai_provider: { type: String, default: null, trim: true, maxlength: 40 },
+    ai_model: { type: String, default: null, trim: true, maxlength: 80 },
+    prompt_version: { type: String, default: null, trim: true, maxlength: 40 },
+
+    // ── Teacher review & override ──────────────────────────────────────
+    // manual_score: teacher's explicit override (takes precedence over auto_score)
+    manual_score: { type: Number, default: null, min: 0, max: 100 },
+    teacher_feedback: { type: String, default: "", maxlength: 10000 },
+    teacher_override_reason: { type: String, default: "", maxlength: 2000 },
+    reviewed_by_teacher: { type: Boolean, default: false, index: true },
+
+    // released_at: when the grade was released to the student
+    released_at: { type: Date, default: null, index: true },
 
     teacherAdjustedScore: { type: Number, default: null, min: 0, max: 100 },
     teacherAdjustedFeedback: {
