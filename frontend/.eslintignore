@@ -1,0 +1,7 @@
+build/
+coverage/
+cypress/
+playwright/
+playwright.config.js
+test-results/
+playwright-report/

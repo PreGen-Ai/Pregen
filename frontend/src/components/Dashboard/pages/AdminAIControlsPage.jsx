@@ -25,13 +25,13 @@ const DEFAULTS = {
 const FEATURES = [
   {
     key: "aiGrading",
-    label: "AI Grading",
+    label: "AI-assisted grading",
     desc: "Allow teachers to use AI-assisted grading and draft feedback.",
   },
   {
     key: "aiQuizGen",
-    label: "AI Quiz Generation",
-    desc: "Allow teachers to generate quiz questions with AI.",
+    label: "AI-assisted quiz generation",
+    desc: "Allow teachers to generate quiz questions with the AI assistant.",
   },
   {
     key: "aiTutor",
@@ -40,8 +40,8 @@ const FEATURES = [
   },
   {
     key: "aiSummaries",
-    label: "AI Summaries",
-    desc: "Allow AI summaries for uploaded and authored lesson materials.",
+    label: "AI-assisted summaries",
+    desc: "Allow AI-assisted summaries for uploaded and authored lesson materials.",
   },
 ];
 
@@ -115,7 +115,7 @@ export default function AdminAIControlsPage() {
       setBaseline(merged);
       setLastSavedAt(null);
     } catch (e) {
-      toast.error(e?.message || "Failed to load school AI controls");
+      toast.error(e?.message || "Failed to load school LLM settings");
     } finally {
       setLoading(false);
     }
@@ -165,9 +165,9 @@ export default function AdminAIControlsPage() {
       setSettings(merged);
       setBaseline(merged);
       setLastSavedAt(new Date());
-      toast.success("School AI controls saved");
+      toast.success("School LLM settings saved");
     } catch (e) {
-      toast.error(e?.message || "Failed to save school AI controls");
+      toast.error(e?.message || "Failed to save school LLM settings");
     } finally {
       setSaving(false);
     }
@@ -178,14 +178,14 @@ export default function AdminAIControlsPage() {
     toast.info("Unsaved changes were reset");
   };
 
-  if (loading) return <LoadingSpinner message="Loading school AI controls..." />;
+  if (loading) return <LoadingSpinner message="Loading school LLM settings..." />;
 
   return (
     <div className="quizzes-page">
       <div className="dash-page-header">
         <div>
           <div className="dash-page-kicker">School Scope</div>
-          <h2 className="dash-page-title">School AI Controls</h2>
+          <h2 className="dash-page-title">School LLM Settings</h2>
           <p className="dash-page-subtitle">
             Configure AI access, feedback tone, and usage warnings for{" "}
             <strong>{schoolLabel}</strong>.
@@ -229,7 +229,7 @@ export default function AdminAIControlsPage() {
               </>
             ) : (
               <>
-                Choose a school before editing school-scoped AI controls.
+                Choose a school before editing school-scoped LLM settings.
               </>
             )}
           </span>
@@ -249,8 +249,8 @@ export default function AdminAIControlsPage() {
         <div className="dash-card dash-empty-shell">
           <h3 className="dash-card-title mb-2">No school selected</h3>
           <p className="dash-supporting-text mb-0">
-            School AI controls are intentionally separated from platform AI
-            controls. Select a school from the Schools page, then return here to
+            School LLM settings are intentionally separated from platform LLM
+            settings. Select a school from the Schools page, then return here to
             manage local overrides such as feature access and soft caps.
           </p>
         </div>
@@ -271,10 +271,10 @@ export default function AdminAIControlsPage() {
                     className="form-check-label fw-semibold"
                     htmlFor="school-ai-enabled"
                   >
-                    AI features enabled for this school
+                    LLM features enabled for this school
                   </label>
                   <div className="form-text">
-                    Turn this off to pause AI tools at the school level without
+                    Turn this off to pause LLM tools at the school level without
                     changing platform defaults.
                   </div>
                 </div>

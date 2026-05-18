@@ -4,6 +4,7 @@ import { FiX } from "react-icons/fi";
 export default function Modal({
   open,
   title,
+  subtitle,
   onClose,
   children,
   footer,
@@ -26,12 +27,17 @@ export default function Modal({
         className={`pg-modal ${wide ? "pg-modal--wide" : ""}`}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby="pg-modal-title"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="pg-modal__header">
-          <h2 className="pg-modal__title">{title}</h2>
-          <button className="pg-modal__close" type="button" onClick={onClose} aria-label="Close">
+          <div>
+            <h2 id="pg-modal-title" className="pg-modal__title">
+              {title}
+            </h2>
+            {subtitle ? <p className="pg-modal__subtitle">{subtitle}</p> : null}
+          </div>
+          <button className="pg-modal__close" type="button" onClick={onClose} aria-label="Close modal">
             <FiX />
           </button>
         </header>

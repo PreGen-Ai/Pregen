@@ -79,18 +79,21 @@ class ForbiddenError extends Error {}
 const TOKEN_STORAGE_KEY = "auth_token";
 
 const API_BASE =
-  (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_BASE_URL) ||
-  (typeof process !== "undefined" && process.env && process.env.REACT_APP_API_BASE_URL) ||
+  (typeof process !== "undefined" &&
+    process.env &&
+    (process.env.REACT_APP_API_BASE_URL || process.env.VITE_API_BASE_URL)) ||
   "";
 
 const AI_BASE =
-  (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_AI_BASE_URL) ||
-  (typeof process !== "undefined" && process.env && process.env.REACT_APP_AI_BASE_URL) ||
+  (typeof process !== "undefined" &&
+    process.env &&
+    (process.env.REACT_APP_AI_BASE_URL || process.env.VITE_AI_BASE_URL)) ||
   API_BASE;
 
 const PDF_BASE =
-  (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_PDF_BASE_URL) ||
-  (typeof process !== "undefined" && process.env && process.env.REACT_APP_PDF_BASE_URL) ||
+  (typeof process !== "undefined" &&
+    process.env &&
+    (process.env.REACT_APP_PDF_BASE_URL || process.env.VITE_PDF_BASE_URL)) ||
   API_BASE;
 
 function getToken() {

@@ -756,13 +756,13 @@ export default function TeacherQuiz() {
 
             <div className="row g-3 mb-3">
               <div className="col-8">
-                <label className="form-label">Title</label>
-                <input className="form-control" value={form.title}
+                <label className="form-label" htmlFor="teacher-quiz-title">Title</label>
+                <input id="teacher-quiz-title" className="form-control" value={form.title}
                   onChange={e => setForm(p => ({ ...p, title: e.target.value }))} />
               </div>
               <div className="col-4">
-                <label className="form-label">Subject</label>
-                <input className="form-control" value={form.subject}
+                <label className="form-label" htmlFor="teacher-quiz-subject">Subject</label>
+                <input id="teacher-quiz-subject" className="form-control" value={form.subject}
                   onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} />
               </div>
             </div>

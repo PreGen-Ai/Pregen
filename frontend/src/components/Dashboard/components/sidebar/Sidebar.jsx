@@ -1,5 +1,23 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
+import {
+  FiAward,
+  FiBarChart2,
+  FiBell,
+  FiBookOpen,
+  FiChevronLeft,
+  FiChevronRight,
+  FiClipboard,
+  FiCpu,
+  FiFlag,
+  FiGrid,
+  FiLayers,
+  FiLogOut,
+  FiPenTool,
+  FiShield,
+  FiSliders,
+  FiUsers,
+} from "react-icons/fi";
 
 import { clearActiveTenantId } from "../../../../services/api/http.js";
 import { useAuthContext } from "../../../../context/AuthContext";
@@ -7,29 +25,92 @@ import useActiveTenantScope from "../../hooks/useActiveTenantScope.js";
 import { dashboardNav } from "../../nav/dashboardNav";
 import { ROLES, normalizeRole } from "../../nav/roles";
 
-import "./Sidebar.css";
+const ICONS = {
+  practiceLab: FiPenTool,
+  assignmentsTake: FiClipboard,
+  quizzesTake: FiAward,
+  materials: FiBookOpen,
+  assignmentsManage: FiClipboard,
+  quizzesManage: FiAward,
+  announcements: FiBell,
+  gradebook: FiBarChart2,
+  aiTutor: FiCpu,
+  users: FiUsers,
+  workspace: FiLayers,
+  subjects: FiBookOpen,
+  branding: FiSliders,
+  tenantAiControls: FiCpu,
+  schoolAnalytics: FiBarChart2,
+  platformAnalytics: FiGrid,
+  tenants: FiShield,
+  platformAiControls: FiCpu,
+  aiCost: FiBarChart2,
+  audit: FiFlag,
+  selectedSchoolUsers: FiUsers,
+  selectedSchoolWorkspace: FiLayers,
+  selectedSchoolSubjects: FiBookOpen,
+  selectedSchoolBranding: FiSliders,
+  selectedSchoolAiControls: FiCpu,
+  selectedSchoolAnalytics: FiBarChart2,
+};
 
-function SidebarSection({ section, activeTenantId, onNavigate }) {
+function formatRole(role) {
+  if (role === ROLES.SUPERADMIN) return "Super Admin";
+  if (!role) return "Student";
+  return role.charAt(0) + role.slice(1).toLowerCase();
+}
+
+function userInitials(user) {
+  const source =
+    [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
+    user?.name ||
+    user?.username ||
+    user?.email ||
+    "PG";
+  return source
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
+
+function displayName(user) {
   return (
-    <div className="dash-sec">
-      <div className="dash-sec-title">{section.section}</div>
+    [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
+    user?.name ||
+    user?.username ||
+    user?.email ||
+    "PreGen User"
+  );
+}
+
+function SidebarSection({ section, activeTenantId, collapsed, onNavigate }) {
+  return (
+    <div className="pg-sidebar__section">
+      <div className="pg-sidebar__section-title">{section.section}</div>
       {section.helper ? (
-        <div className="dash-sec-helper">{section.helper}</div>
+        <div className="pg-sidebar__helper">{section.helper}</div>
       ) : null}
 
       {section.items.map((item) => {
+        const Icon = ICONS[item.key] || FiGrid;
         const isDisabled = item.requiresActiveTenant && !activeTenantId;
 
         if (isDisabled) {
           return (
-            <div
+            <span
               key={item.key}
-              className="dash-link is-disabled"
+              className="pg-nav-item is-disabled"
+              role="link"
               aria-disabled="true"
               title="Select a school from Schools to unlock this area"
             >
-              {item.label}
-            </div>
+              <span className="pg-nav-item__icon" aria-hidden="true">
+                <Icon />
+              </span>
+              <span className="pg-nav-item__text">{item.label}</span>
+            </span>
           );
         }
 
@@ -38,11 +119,15 @@ function SidebarSection({ section, activeTenantId, onNavigate }) {
             key={item.key}
             to={item.to}
             onClick={onNavigate}
+            title={collapsed ? item.label : undefined}
             className={({ isActive }) =>
-              `dash-link ${isActive ? "is-active" : ""}`
+              `pg-nav-item ${isActive ? "is-active" : ""}`
             }
           >
-            {item.label}
+            <span className="pg-nav-item__icon" aria-hidden="true">
+              <Icon />
+            </span>
+            <span className="pg-nav-item__text">{item.label}</span>
           </NavLink>
         );
       })}
@@ -50,10 +135,13 @@ function SidebarSection({ section, activeTenantId, onNavigate }) {
   );
 }
 
-export default function Sidebar() {
-  const { user } = useAuthContext();
+export default function Sidebar({
+  collapsed = false,
+  onToggleCollapsed,
+  onNavigate,
+}) {
+  const { user, logout } = useAuthContext();
   const role = normalizeRole(user?.role);
-  const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const { tenantId: activeTenantId, tenantName: activeTenantName } =
     useActiveTenantScope();
@@ -69,163 +157,104 @@ export default function Sidebar() {
       .filter((section) => section.items.length);
   }, [role]);
 
-  const selectedSchoolLabel = activeTenantName || activeTenantId || "";
   const isSuperAdmin = role === ROLES.SUPERADMIN;
-
-  const closeDrawer = () => setOpen(false);
+  const selectedSchoolLabel = activeTenantName || activeTenantId || "";
 
   const clearSchoolContext = () => {
     clearActiveTenantId();
-    closeDrawer();
+    onNavigate?.();
     navigate("/dashboard/superadmin/analytics");
   };
 
   const goToSchools = () => {
-    closeDrawer();
+    onNavigate?.();
     navigate("/dashboard/superadmin/tenants");
   };
 
   return (
-    <>
-      <button
-        className="dash-burger"
-        onClick={() => setOpen(true)}
-        type="button"
-        aria-label="Open dashboard navigation"
-      >
-        Menu
-      </button>
-
-      <aside className="dash-sidebar">
-        <div className="dash-brand">PreGen LMS</div>
-
-        {isSuperAdmin ? (
-          <div className="dash-context-card">
-            <div className="dash-context-eyebrow">Selected School</div>
-            {activeTenantId ? (
-              <>
-                <div className="dash-context-title">{selectedSchoolLabel}</div>
-                <div className="dash-context-meta">
-                  {activeTenantName ? activeTenantId : "School-scoped tools are active."}
-                </div>
-                <div className="dash-context-actions">
-                  <NavLink
-                    to="/dashboard/admin/users"
-                    className="dash-context-link"
-                  >
-                    Open School Tools
-                  </NavLink>
-                  <button
-                    type="button"
-                    className="dash-context-clear"
-                    onClick={clearSchoolContext}
-                  >
-                    Return to Platform
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="dash-context-title">No school selected</div>
-                <div className="dash-context-meta">
-                  Choose a school to unlock school-scoped administration, AI
-                  controls, branding, and analytics.
-                </div>
-                <button
-                  type="button"
-                  className="dash-context-link dash-context-link-button"
-                  onClick={goToSchools}
-                >
-                  Choose a School
-                </button>
-              </>
-            )}
-          </div>
-        ) : null}
-
-        <nav className="dash-nav">
-          {sections.map((section) => (
-            <SidebarSection
-              key={section.section}
-              section={section}
-              activeTenantId={activeTenantId}
-              onNavigate={closeDrawer}
-            />
-          ))}
-        </nav>
-      </aside>
-
-      <div className={`dash-drawer ${open ? "is-open" : ""}`}>
-        <div className="dash-drawer-card">
-          <div className="dash-drawer-head">
-            <div className="dash-brand">PreGen LMS</div>
-            <button
-              className="dash-x"
-              onClick={closeDrawer}
-              type="button"
-              aria-label="Close dashboard navigation"
-            >
-              Close
-            </button>
-          </div>
-
-          {isSuperAdmin ? (
-            <div className="dash-context-card dash-context-card-mobile">
-              <div className="dash-context-eyebrow">Selected School</div>
-              {activeTenantId ? (
-                <>
-                  <div className="dash-context-title">{selectedSchoolLabel}</div>
-                  <div className="dash-context-meta">
-                    {activeTenantName ? activeTenantId : "School-scoped tools are active."}
-                  </div>
-                  <div className="dash-context-actions">
-                    <NavLink
-                      to="/dashboard/admin/users"
-                      onClick={closeDrawer}
-                      className="dash-context-link"
-                    >
-                      Open School Tools
-                    </NavLink>
-                    <button
-                      type="button"
-                      className="dash-context-clear"
-                      onClick={clearSchoolContext}
-                    >
-                      Return to Platform
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="dash-context-title">No school selected</div>
-                  <div className="dash-context-meta">
-                    Choose a school before editing school-scoped settings.
-                  </div>
-                  <button
-                    type="button"
-                    className="dash-context-link dash-context-link-button"
-                    onClick={goToSchools}
-                  >
-                    Choose a School
-                  </button>
-                </>
-              )}
-            </div>
-          ) : null}
-
-          <nav className="dash-nav">
-            {sections.map((section) => (
-              <SidebarSection
-                key={section.section}
-                section={section}
-                activeTenantId={activeTenantId}
-                onNavigate={closeDrawer}
-              />
-            ))}
-          </nav>
-        </div>
-        <div className="dash-drawer-backdrop" onClick={closeDrawer} />
+    <aside className="pg-sidebar" aria-label="Dashboard navigation">
+      <div className="pg-sidebar__brand">
+        <span className="pg-sidebar__mark" aria-hidden="true">
+          P
+        </span>
+        <span className="pg-sidebar__wordmark">PreGen LMS</span>
       </div>
-    </>
+
+      <div className="pg-sidebar__profile">
+        <span className="pg-avatar" aria-hidden="true">
+          {userInitials(user)}
+        </span>
+        <div className="pg-sidebar__user">
+          <div className="pg-sidebar__name">{displayName(user)}</div>
+          <div className="pg-sidebar__role">{formatRole(role)}</div>
+        </div>
+        <span className="pg-plan-badge">LMS</span>
+      </div>
+
+      {isSuperAdmin ? (
+        <div className="pg-school-scope">
+          <div className="pg-school-scope__label">Selected School</div>
+          {activeTenantId ? (
+            <>
+              <div className="pg-school-scope__title">{selectedSchoolLabel}</div>
+              <div className="pg-school-scope__meta">
+                {activeTenantName ? activeTenantId : "School tools active"}
+              </div>
+              <button
+                type="button"
+                className="pg-school-scope__button"
+                onClick={clearSchoolContext}
+              >
+                Return to Platform
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="pg-school-scope__title">No school selected</div>
+              <button
+                type="button"
+                className="pg-school-scope__button"
+                onClick={goToSchools}
+              >
+                Choose School
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      <nav className="pg-sidebar__nav">
+        {sections.map((section) => (
+          <SidebarSection
+            key={section.section}
+            section={section}
+            activeTenantId={activeTenantId}
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+          />
+        ))}
+      </nav>
+
+      <div className="pg-sidebar__footer">
+        <button
+          className="pg-sidebar__logout"
+          type="button"
+          onClick={logout}
+          title={collapsed ? "Sign out" : undefined}
+        >
+          <FiLogOut aria-hidden="true" />
+          <span>Sign out</span>
+        </button>
+        <button
+          className="pg-sidebar__collapse"
+          type="button"
+          onClick={onToggleCollapsed}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? <FiChevronRight /> : <FiChevronLeft />}
+          <span>{collapsed ? "Expand" : "Collapse"}</span>
+        </button>
+      </div>
+    </aside>
   );
 }

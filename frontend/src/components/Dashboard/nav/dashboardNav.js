@@ -101,7 +101,7 @@ export const dashboardNav = [
       },
       {
         key: "tenantAiControls",
-        label: "AI Controls",
+        label: "LLM Settings",
         to: "/dashboard/admin/ai-controls",
         allowedRoles: [ROLES.ADMIN],
       },
@@ -130,7 +130,7 @@ export const dashboardNav = [
       },
       {
         key: "platformAiControls",
-        label: "Platform AI Controls",
+        label: "Platform LLM",
         to: "/dashboard/superadmin/ai-controls",
         allowedRoles: [ROLES.SUPERADMIN],
       },
@@ -182,7 +182,7 @@ export const dashboardNav = [
       },
       {
         key: "selectedSchoolAiControls",
-        label: "School AI Controls",
+        label: "School LLM Settings",
         to: "/dashboard/admin/ai-controls",
         allowedRoles: [ROLES.SUPERADMIN],
         requiresActiveTenant: true,

@@ -23,13 +23,13 @@ const DEFAULTS = {
 const FEATURES = [
   {
     key: "aiGrading",
-    label: "AI Grading",
-    desc: "Auto-grade quiz and assignment submissions using AI.",
+    label: "AI-assisted grading",
+    desc: "Auto-grade quiz and assignment submissions using the AI assistant.",
   },
   {
     key: "aiQuizGen",
-    label: "AI Quiz Generation",
-    desc: "Allow teachers to generate quizzes and related assessment drafts with AI.",
+    label: "AI-assisted quiz generation",
+    desc: "Allow teachers to generate quizzes and related assessment drafts with the AI assistant.",
   },
   {
     key: "aiTutor",
@@ -38,18 +38,18 @@ const FEATURES = [
   },
   {
     key: "aiSummaries",
-    label: "AI Summaries",
-    desc: "Allow AI summaries and lesson condensation workflows.",
+    label: "AI-assisted summaries",
+    desc: "Allow AI-assisted summaries and lesson condensation workflows.",
   },
 ];
 
 const SCALAR_FIELDS = [
   {
     key: "enabled",
-    label: "AI enabled",
+    label: "LLM enabled",
     type: "boolean",
     description:
-      "Master switch for AI. Turning this off blocks AI requests for the selected scope.",
+      "Master switch for LLM tools. Turning this off blocks AI-assisted requests for the selected scope.",
     format: (value) => (value ? "Enabled" : "Disabled"),
   },
   {
@@ -258,7 +258,7 @@ function TenantOverrideField({
   options = [],
 }) {
   return (
-    <div className="dash-surface-panel h-100">
+    <div className="dash-surface-panel h-100" role="group" aria-label={label}>
       <div className="d-flex flex-wrap align-items-start justify-content-between gap-2">
         <div>
           <div className="fw-semibold">{label}</div>
@@ -387,7 +387,7 @@ export default function AIControlsPage() {
         setTenantOverrideBaseline(override);
       }
     } catch (error) {
-      toast.error(error?.message || "Failed to load AI controls");
+      toast.error(error?.message || "Failed to load LLM settings");
     } finally {
       setLoading(false);
     }
@@ -475,7 +475,7 @@ export default function AIControlsPage() {
         const merged = mergeSettings(response?.effective || response?.settings || payload);
         setPlatformDraft(merged);
         setPlatformBaseline(merged);
-        toast.success("Platform AI defaults saved");
+        toast.success("Platform LLM defaults saved");
       } else {
         const platformDefaults = mergeSettings(
           response?.platformDefaults || tenantPlatformDefaults,
@@ -484,10 +484,10 @@ export default function AIControlsPage() {
         setTenantPlatformDefaults(platformDefaults);
         setTenantOverrideDraft(override);
         setTenantOverrideBaseline(override);
-        toast.success(`Tenant AI override saved for ${tenantLabel}`);
+        toast.success(`Tenant LLM override saved for ${tenantLabel}`);
       }
     } catch (error) {
-      toast.error(error?.message || "Failed to save AI controls");
+      toast.error(error?.message || "Failed to save LLM settings");
     } finally {
       setSaving(false);
     }
@@ -508,7 +508,7 @@ export default function AIControlsPage() {
     if (!selectedTenantId) return;
     if (
       !window.confirm(
-        `Reset "${tenantLabel}" back to inherited platform AI defaults?`,
+        `Reset "${tenantLabel}" back to inherited platform LLM defaults?`,
       )
     ) {
       return;
@@ -526,7 +526,7 @@ export default function AIControlsPage() {
       setTenantPlatformDefaults(platformDefaults);
       setTenantOverrideDraft(override);
       setTenantOverrideBaseline(override);
-      toast.success("Tenant AI override reset to platform inheritance");
+      toast.success("Tenant LLM override reset to platform inheritance");
     } catch (error) {
       toast.error(error?.message || "Failed to reset tenant override");
     } finally {
@@ -535,7 +535,7 @@ export default function AIControlsPage() {
   };
 
   if (loading) {
-    return <LoadingSpinner message="Loading AI controls..." />;
+    return <LoadingSpinner message="Loading LLM settings..." />;
   }
 
   return (
@@ -543,7 +543,7 @@ export default function AIControlsPage() {
       <div className="dash-page-header">
         <div>
           <div className="dash-page-kicker">Platform Scope</div>
-          <h2 className="dash-page-title">Platform AI Controls</h2>
+          <h2 className="dash-page-title">Platform LLM</h2>
           <p className="dash-page-subtitle">
             Edit platform defaults directly, or switch to a tenant and store only
             the override fields that should differ from the platform baseline.

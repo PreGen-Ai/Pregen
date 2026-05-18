@@ -97,23 +97,23 @@ export default function TeacherPortal() {
     <div className="quizzes-page">
       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
         <div>
-          <h2>Teacher Dashboard</h2>
+          <h2>Teacher dashboard</h2>
           <p className="text-muted mb-0">
             Keep track of upcoming work, recent content, announcements, and grading.
           </p>
         </div>
         <div className="d-flex gap-2 flex-wrap">
-          <Link className="btn btn-outline-light" to="/dashboard/teacher/assignments">
-            Assignments
+          <Link className="btn btn-primary" to="/dashboard/teacher/quizzes">
+            Generate quiz
           </Link>
           <Link className="btn btn-outline-light" to="/dashboard/teacher/quizzes">
-            Quizzes
+            Quiz builder
           </Link>
-          <Link className="btn btn-outline-light" to="/dashboard/materials">
-            Materials
+          <Link className="btn btn-outline-light" to="/dashboard/teacher/assignments">
+            Create assignment
           </Link>
           <Link className="btn btn-outline-light" to="/dashboard/grades">
-            Gradebook
+            View gradebook
           </Link>
         </div>
       </div>

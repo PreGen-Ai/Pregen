@@ -3,12 +3,11 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import ProtectedRoute from "./ProtectedRoute";
 import AdminRoute from "./AdminRoute";
+import { useAuthContext } from "../../context/AuthContext";
 
 jest.mock("../../context/AuthContext", () => ({
   useAuthContext: jest.fn(),
 }));
-
-import { useAuthContext } from "../../context/AuthContext";
 
 function renderWithRouter(ui, initialEntries = ["/secure"]) {
   return render(

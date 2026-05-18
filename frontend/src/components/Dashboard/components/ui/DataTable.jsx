@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
+import EmptyState from "./EmptyState";
+import LoadingSkeleton from "./LoadingSkeleton";
 
 export default function DataTable({
   columns,
@@ -52,9 +54,9 @@ export default function DataTable({
       </div>
 
       {loading ? (
-        <div className="pg-table-loading">Loading {itemLabel}...</div>
+        <LoadingSkeleton rows={5} />
       ) : !safeRows.length ? (
-        <div className="pg-table-empty">{emptyMessage}</div>
+        <EmptyState title="No results" message={emptyMessage} />
       ) : null}
 
       <footer className="pg-table-footer">

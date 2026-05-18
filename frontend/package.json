@@ -35,6 +35,7 @@
     "react-dom": "^18.3.1",
     "react-error-boundary": "^6.0.0",
     "react-hook-form": "^7.65.0",
+    "react-hot-toast": "^2.6.0",
     "react-icons": "^5.5.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^6.23.1",
@@ -50,7 +51,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 react-scripts build",
     "test": "react-scripts test",
     "test:unit": "react-scripts test --watchAll=false --coverage",
     "test:ci": "CI=true react-scripts test --watchAll=false",
@@ -79,6 +80,8 @@
     ]
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "cross-env": "^7.0.3",
     "cypress": "^13.10.0",
     "source-map-explorer": "^2.5.3"
   }

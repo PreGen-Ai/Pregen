@@ -4,10 +4,11 @@ import {
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { MemoryRouter } from "react-router-dom";
+import TeacherQuiz from "../../components/Dashboard/pages/TeacherQuiz.jsx";
+import api from "../../services/api/api";
 
 jest.mock("../../services/api/api", () => ({
   __esModule: true,
@@ -45,9 +46,6 @@ jest.mock("react-toastify", () => ({
   },
 }));
 
-import TeacherQuiz from "../../components/Dashboard/pages/TeacherQuiz.jsx";
-import api from "../../services/api/api";
-
 const futureDueDate = new Date(Date.now() + 86400000).toISOString();
 
 function renderTeacherQuiz({ quizzes = [] } = {}) {
@@ -83,16 +81,14 @@ async function waitForInitialLoad() {
   );
 }
 
-function fillCreateForm(container) {
-  const detailsCard = screen
-    .getByRole("heading", { name: /details & assign/i })
-    .closest(".dash-card");
-  const textInputs = detailsCard.querySelectorAll(
-    'input.form-control:not([type]), input.form-control[type="text"]',
-  );
-  fireEvent.change(textInputs[0], { target: { value: "Energy Quiz" } });
-  fireEvent.change(textInputs[1], { target: { value: "Science" } });
-  fireEvent.change(within(detailsCard).getByPlaceholderText("Question text"), {
+function fillCreateForm() {
+  fireEvent.change(screen.getByLabelText("Title"), {
+    target: { value: "Energy Quiz" },
+  });
+  fireEvent.change(screen.getByLabelText("Subject"), {
+    target: { value: "Science" },
+  });
+  fireEvent.change(screen.getByPlaceholderText("Question text"), {
     target: { value: "What is energy?" },
   });
 }

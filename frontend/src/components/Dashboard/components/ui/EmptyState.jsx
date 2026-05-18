@@ -1,25 +1,27 @@
-// Shared empty state component — consistent across all dashboard pages
 import React from "react";
+import Button from "./Button";
 
-export default function EmptyState({ icon, title, message, action, onAction }) {
+export default function EmptyState({
+  icon,
+  title = "No results",
+  message = "Try adjusting your filters or check back later.",
+  action,
+  onAction,
+}) {
   return (
-    <div className="dash-card text-center py-5">
-      {icon && (
-        <div style={{ fontSize: 40, opacity: 0.35, marginBottom: 12 }}>{icon}</div>
-      )}
-      <h5 style={{ color: "var(--text-heading)", marginBottom: 8 }}>
-        {title || "Nothing here yet"}
-      </h5>
-      {message && (
-        <p className="text-muted mb-0" style={{ maxWidth: 420, margin: "0 auto" }}>
-          {message}
-        </p>
-      )}
-      {action && onAction && (
-        <button className="btn btn-primary mt-4" onClick={onAction}>
+    <div className="pg-empty-state">
+      {icon ? (
+        <div className="pg-empty-state__icon" aria-hidden="true">
+          {icon}
+        </div>
+      ) : null}
+      <h3 className="pg-empty-state__title">{title}</h3>
+      <p className="pg-empty-state__message">{message}</p>
+      {action && onAction ? (
+        <Button variant="primary" onClick={onAction}>
           {action}
-        </button>
-      )}
+        </Button>
+      ) : null}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // frontend/src/__tests__/pages/Login.test.jsx
 // Tests for the login page/form behavior
 import React from "react";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { MemoryRouter } from "react-router-dom";
 
@@ -107,10 +107,9 @@ describe("Login Page — API mock integration", () => {
   });
 
   test("Login page renders without crashing (if component found)", () => {
-    const result = renderLoginPage();
-    if (!result) {
+    const view = renderLoginPage();
+    if (!view) {
       // Component not found at expected path — skip
-      expect(true).toBe(true);
       return;
     }
     expect(document.body).toBeTruthy();

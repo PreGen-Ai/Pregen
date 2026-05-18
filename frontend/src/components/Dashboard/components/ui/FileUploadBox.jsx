@@ -7,6 +7,7 @@ export default function FileUploadBox({
   accept,
   onChange,
   fileNames,
+  helper = "Up to 5 files. Max file size: 10 MB each.",
 }) {
   const names = Array.isArray(fileNames) ? fileNames.filter(Boolean) : [];
 
@@ -18,7 +19,7 @@ export default function FileUploadBox({
       <span className="pg-upload-box__title">
         {names.length ? names.join(", ") : "Browse or drag and drop files"}
       </span>
-      <span className="pg-upload-box__meta">PNG, JPG, DOCX, PDF max 10MB</span>
+      <span className="pg-upload-box__meta">{helper}</span>
       <input
         id={id}
         type="file"

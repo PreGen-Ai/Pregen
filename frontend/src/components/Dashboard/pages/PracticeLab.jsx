@@ -10,6 +10,7 @@ import "../../styles/PracticeLab.css";
 import Casio from "../../casio";
 import api from "../../../services/api/api";
 import { useAuthContext } from "../../../context/AuthContext";
+import { Drawer } from "../components/ui";
 import {
   getPracticeEntityId,
   mergePractices,
@@ -151,6 +152,7 @@ export default function PracticeLab() {
   const [selectedMaterialId, setSelectedMaterialId] = useState("");
   const [warming, setWarming] = useState(false);
   const [warmingCountdown, setWarmingCountdown] = useState(0);
+  const [showGenerateDrawer, setShowGenerateDrawer] = useState(false);
 
   // Refs
   const dragRef = useRef({ dragging: false, offsetX: 0, offsetY: 0 });
@@ -1276,18 +1278,183 @@ export default function PracticeLab() {
   return (
     <div className="practice-lab-page">
       {/* Header with title, subtitle and mobile tabs */}
-      <div className="d-flex justify-content-between align-items-center mb-3">
+      <div className="pg-page-header">
         <div>
-          <h2>Practice Lab</h2>
-          <p className="text-muted">
+          <h1 className="pg-page-title">Practice Lab</h1>
+          <p className="pg-page-subtitle">
             Generate, solve, grade, and export — optimized for mobile and
             desktop.
           </p>
         </div>
-        {isMobile && tabs}
+        <div className="pg-page-actions">
+          {isMobile && tabs}
+          <button
+            className="btn btn-primary"
+            type="button"
+            onClick={() => setShowGenerateDrawer(true)}
+          >
+            Generate practice
+          </button>
+        </div>
       </div>
 
-      <div className="dash-card" style={{ padding: 0 }}>
+      <Drawer
+        open={showGenerateDrawer}
+        title="Generate new practice"
+        subtitle="Choose what to practice and let the AI assistant prepare questions for you."
+        onClose={() => setShowGenerateDrawer(false)}
+        footer={
+          <>
+            <button
+              className="btn btn-outline-secondary"
+              type="button"
+              onClick={() => setShowGenerateDrawer(false)}
+              disabled={loading}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={generatePractice}
+              disabled={loading || !topic.trim()}
+            >
+              {loading ? "Generating..." : "Generate Practice"}
+            </button>
+          </>
+        }
+      >
+        <div className="pg-form-stack">
+          <div className="control-group">
+            <label htmlFor="drawer-topic">Topic</label>
+            <p className="pg-field__help">What do you want to practice?</p>
+            <input
+              id="drawer-topic"
+              type="text"
+              placeholder="e.g., Trigonometry, World War II"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+            />
+          </div>
+          <div className="control-group">
+            <label htmlFor="drawer-course">Course context</label>
+            <p className="pg-field__help">Choose a course to match your class material.</p>
+            <select
+              id="drawer-course"
+              value={selectedCourseId}
+              onChange={(e) => setSelectedCourseId(e.target.value)}
+            >
+              <option value="">No specific course</option>
+              {courses.map((course) => (
+                <option key={course._id} value={course._id}>
+                  {course.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="control-group">
+            <label htmlFor="drawer-material">Lesson material</label>
+            <p className="pg-field__help">Optional. Select a lesson or keep it general.</p>
+            <select
+              id="drawer-material"
+              value={selectedMaterialId}
+              onChange={(e) => setSelectedMaterialId(e.target.value)}
+              disabled={!selectedCourseId || !materialOptions.length}
+            >
+              <option value="">General course practice</option>
+              {materialOptions.map((item) => (
+                <option key={item._id} value={item._id}>
+                  {item.moduleTitle}: {item.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="pg-form-grid">
+            <div className="control-group">
+              <label htmlFor="drawer-subject">Subject</label>
+              <select
+                id="drawer-subject"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+              >
+                <option value="General">General</option>
+                <option value="Mathematics">Mathematics</option>
+                <option value="Physics">Physics</option>
+                <option value="Chemistry">Chemistry</option>
+                <option value="Biology">Biology</option>
+                <option value="History">History</option>
+              </select>
+            </div>
+            <div className="control-group">
+              <label htmlFor="drawer-curriculum">Curriculum</label>
+              <select
+                id="drawer-curriculum"
+                value={curriculum}
+                onChange={(e) => setCurriculum(e.target.value)}
+              >
+                <option value="IGCSE">IGCSE</option>
+                <option value="IB">IB</option>
+                <option value="American">American</option>
+              </select>
+            </div>
+            <div className="control-group">
+              <label htmlFor="drawer-type">Type</label>
+              <select
+                id="drawer-type"
+                value={practiceType}
+                onChange={(e) => setPracticeType(e.target.value)}
+              >
+                <option value="practice">Practice</option>
+                <option value="worksheet">Worksheet</option>
+                <option value="assessment">Assessment</option>
+                <option value="project">Project</option>
+              </select>
+            </div>
+            <div className="control-group">
+              <label htmlFor="drawer-question-type">Question type</label>
+              <select
+                id="drawer-question-type"
+                value={questionType}
+                onChange={(e) => setQuestionType(e.target.value)}
+              >
+                <option value="multiple_choice">Multiple Choice</option>
+                <option value="essay">Essay</option>
+                <option value="short_answer">Short Answer</option>
+                <option value="true_false">True/False</option>
+                <option value="problem_solving">Problem Solving</option>
+              </select>
+            </div>
+            <div className="control-group">
+              <label htmlFor="drawer-difficulty">Difficulty</label>
+              <select
+                id="drawer-difficulty"
+                value={difficulty}
+                onChange={(e) => setDifficulty(e.target.value)}
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+            <div className="control-group">
+              <label htmlFor="drawer-count">Number of questions</label>
+              <select
+                id="drawer-count"
+                value={numQuestions}
+                onChange={(e) => setNumQuestions(parseInt(e.target.value, 10))}
+              >
+                {[3, 5, 10, 15].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      </Drawer>
+
+      <div className="practice-studio">
         <div className="dashboard-container">
           {/* KPI Tiles */}
           <div className="stats-grid">
@@ -1308,7 +1475,7 @@ export default function PracticeLab() {
             <div className="stat-card accent-amber">
               <span className="stat-icon accent-amber">⚠️</span>
               <div className="stat-content">
-                <h3>Weak Concepts</h3>
+                <h3>Week Concepts</h3>
                 <p>{weakConcepts}</p>
               </div>
             </div>
@@ -1383,8 +1550,9 @@ export default function PracticeLab() {
               <div className="left-col">
                 {/* Generate Practice Card */}
                 <section
-                  className="feature-section"
-                  aria-label="Generate Practice"
+                  className="feature-section practice-generator-legacy"
+                  aria-label="Practice setup"
+                  hidden
                 >
                   <h3>Generate New Practice</h3>
                   <div className="assignment-controls">

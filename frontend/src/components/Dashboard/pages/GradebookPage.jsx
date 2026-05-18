@@ -594,7 +594,7 @@ export default function GradebookPage() {
                         item.status ||
                         "pending"}
                     </span>
-                    {item.aiScore !== null && item.aiScore !== undefined && (
+                    {canEdit && item.aiScore !== null && item.aiScore !== undefined && (
                       <div className="text-muted mt-1" style={{ fontSize: "0.75em" }}>
                         AI: {Number(item.aiScore).toFixed(0)}%
                       </div>

@@ -11,7 +11,7 @@ const REVIEW_STATUS_LABELS = {
 
 const SYSTEM_STATUS_LABELS = {
   submitted: "Submitted",
-  ai_graded: "AI Graded",
+  ai_graded: "AI-assisted",
   pending_teacher_review: "Teacher Queue",
   grading_delayed: "Delayed",
   final: "Finalized",
@@ -235,7 +235,7 @@ function QuestionReviewCard({
       <div className="d-flex gap-2 flex-wrap mb-2">
         <ScorePill label="Current" value={currentScore} variant="dark" />
         <ScorePill label="Auto" value={question.autoScore} variant="secondary" />
-        <ScorePill label="AI" value={question.aiScore} variant="warning text-dark" />
+        <ScorePill label="AI-assisted" value={question.aiScore} variant="warning text-dark" />
         <ScorePill label="Teacher" value={question.teacherScore} variant="info" />
       </div>
 
@@ -249,7 +249,7 @@ function QuestionReviewCard({
             whiteSpace: "pre-wrap",
           }}
         >
-          <div className="fw-semibold mb-1">AI feedback</div>
+          <div className="fw-semibold mb-1">AI-assisted feedback</div>
           {question.aiFeedback}
         </div>
       ) : null}
@@ -625,7 +625,7 @@ export default function GradeReviewPanel({ item, onClose, onSaved }) {
             >
               <div className="d-flex gap-2 flex-wrap align-items-center mb-2">
                 <ScorePill label="Current total" value={detail.score} variant="dark" />
-                <ScorePill label="AI total" value={detail.aiScore} variant="warning text-dark" />
+                <ScorePill label="AI-assisted total" value={detail.aiScore} variant="warning text-dark" />
                 <ScorePill
                   label="Teacher total"
                   value={detail.teacherAdjustedScore}

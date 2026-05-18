@@ -1,38 +1,59 @@
-// Shared status badge — consistent pill badges across all dashboard pages
 import React from "react";
 
-const BADGE_MAP = {
-  published: "bg-primary",
-  active: "bg-primary",
-  open: "bg-primary",
-  graded: "bg-success",
-  submitted: "bg-success",
-  complete: "bg-success",
-  completed: "bg-success",
-  healthy: "bg-success",
-  draft: "bg-warning text-dark",
-  pending: "bg-warning text-dark",
-  trial: "bg-warning text-dark",
-  review: "bg-info text-dark",
-  grading: "bg-info text-dark",
-  closed: "bg-secondary",
-  missing: "bg-secondary",
-  inactive: "bg-secondary",
-  disabled: "bg-secondary",
-  error: "bg-danger",
-  failed: "bg-danger",
-  suspended: "bg-danger",
+const TONE_BY_STATUS = {
+  graded: "success",
+  returned: "success",
+  released: "success",
+  final: "success",
+  submitted: "info",
+  published: "info",
+  active: "info",
+  open: "info",
+  in_progress: "info",
+  "in progress": "info",
+  generating: "warning",
+  grading: "warning",
+  pending: "warning",
+  pending_review: "warning",
+  pending_teacher_review: "warning",
+  "pending review": "warning",
+  draft: "neutral",
+  missing: "neutral",
+  closed: "neutral",
+  inactive: "neutral",
+  disabled: "neutral",
+  trial: "warning",
+  reviewed: "ai",
+  ai_assisted: "ai",
+  "ai-assisted": "ai",
+  failed: "error",
+  error: "error",
+  overdue: "error",
+  suspended: "error",
 };
 
-export default function StatusBadge({ status, className = "" }) {
+const LABELS = {
+  pending_review: "Pending review",
+  pending_teacher_review: "Pending review",
+  ai_assisted: "AI-assisted",
+  in_progress: "In progress",
+};
+
+export function getStatusTone(status) {
   const normalized = String(status || "").trim().toLowerCase();
-  const cls = BADGE_MAP[normalized] || "bg-secondary";
+  return TONE_BY_STATUS[normalized] || "neutral";
+}
+
+export default function StatusBadge({ status, tone, className = "" }) {
+  const normalized = String(status || "").trim().toLowerCase();
+  const label = LABELS[normalized] || status || "Draft";
+  const resolvedTone = tone || getStatusTone(status);
+
   return (
     <span
-      className={`badge rounded-pill ${cls} ${className}`}
-      style={{ fontSize: "0.73em", padding: "0.33em 0.65em", letterSpacing: "0.01em" }}
+      className={`pg-status-badge pg-status-badge--${resolvedTone} ${className}`.trim()}
     >
-      {status || "—"}
+      {label}
     </span>
   );
 }

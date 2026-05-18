@@ -251,18 +251,18 @@ describe("admin and superadmin analytics pages", () => {
     renderWithRouter(<AdminAIControlsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("School AI Controls")).toBeInTheDocument();
+      expect(screen.getByText("School LLM Settings")).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/Choose a school before editing school-scoped AI controls/i)).toBeInTheDocument();
-    expect(screen.getByText(/School AI controls are intentionally separated from platform AI controls/i)).toBeInTheDocument();
+    expect(screen.getByText(/Choose a school before editing school-scoped LLM settings/i)).toBeInTheDocument();
+    expect(screen.getByText(/School LLM settings are intentionally separated from platform LLM settings/i)).toBeInTheDocument();
   });
 
   test("SuperAdmin AI controls clearly render platform-default copy", async () => {
     renderWithRouter(<SuperAdminAIControlsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Platform AI Controls")).toBeInTheDocument();
+      expect(screen.getByText("Platform LLM")).toBeInTheDocument();
     });
 
     expect(screen.getByText(/Edit platform defaults directly, or switch to a tenant/i)).toBeInTheDocument();
@@ -376,7 +376,7 @@ describe("admin and superadmin analytics pages", () => {
     renderWithRouter(<SuperAdminAIControlsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Platform AI Controls")).toBeInTheDocument();
+      expect(screen.getByText("Platform LLM")).toBeInTheDocument();
     });
 
     fireEvent.change(screen.getByLabelText("Editing scope"), {
@@ -396,9 +396,7 @@ describe("admin and superadmin analytics pages", () => {
       screen.getByText(/Platform default: Enabled. Effective for this tenant: Disabled\./i),
     ).toBeInTheDocument();
 
-    const enabledPanel = screen
-      .getByText("AI enabled")
-      .closest(".dash-surface-panel");
+    const enabledPanel = screen.getByRole("group", { name: "LLM enabled" });
     const sourceSelect = within(enabledPanel).getByDisplayValue("Inherited from platform");
     fireEvent.change(sourceSelect, { target: { value: "override" } });
 

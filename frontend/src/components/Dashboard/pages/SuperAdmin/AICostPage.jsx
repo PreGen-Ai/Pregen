@@ -369,7 +369,7 @@ export default function AICostPage() {
         </div>
 
         <div className="mt-3 d-flex flex-wrap gap-3">
-          <SourcePill label="AI provider" status={sourceStatus.aiProvider} />
+          <SourcePill label="LLM provider" status={sourceStatus.aiProvider} />
           <SourcePill label="Usage logging" status={sourceStatus.aiLogging} />
           <SourcePill label="Audit logging" status={sourceStatus.auditLogging} />
         </div>

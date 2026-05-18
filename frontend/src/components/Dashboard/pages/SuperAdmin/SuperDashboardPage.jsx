@@ -222,11 +222,11 @@ export default function SuperDashboardPage() {
         label: "Open AI Usage & Cost",
       },
       {
-        title: "Platform AI Controls",
+        title: "Platform LLM",
         icon: FaMoneyBillWave,
         desc: "Configure platform defaults and inspect school-level overrides from one control surface.",
         to: "/dashboard/superadmin/ai-controls",
-        label: "Open Platform AI Controls",
+        label: "Open Platform LLM",
       },
       {
         title: "Audit Logs",
@@ -300,7 +300,7 @@ export default function SuperDashboardPage() {
               <div className="dash-card h-100">
                 <h3 className="dash-card-title mb-3">Telemetry Status</h3>
                 <div className="d-grid gap-3">
-                  <SourceStatusPill label="AI provider" status={sourceStatus.aiProvider} />
+                  <SourceStatusPill label="LLM provider" status={sourceStatus.aiProvider} />
                   <SourceStatusPill label="Usage logging" status={sourceStatus.aiLogging} />
                   <SourceStatusPill label="Audit logging" status={sourceStatus.auditLogging} />
                 </div>

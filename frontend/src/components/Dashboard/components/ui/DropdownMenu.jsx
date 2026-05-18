@@ -30,8 +30,11 @@ export default function DropdownMenu({ items, label = "Actions" }) {
             .map((item) => (
               <button
                 key={item.label}
-                className="pg-dropdown__item"
+                className={`pg-dropdown__item ${
+                  item.destructive ? "is-destructive" : ""
+                }`}
                 type="button"
+                role="menuitem"
                 disabled={item.disabled}
                 onClick={() => {
                   setOpen(false);

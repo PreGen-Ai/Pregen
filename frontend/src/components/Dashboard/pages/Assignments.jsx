@@ -12,6 +12,7 @@ import useRealtimeRefresh from "../../../hooks/useRealtimeRefresh";
 import { withRequestId } from "../../../utils/requestId";
 import { useAuthContext } from "../../../context/AuthContext";
 import GradeReviewPanel from "./GradeReviewPanel";
+import { Modal, UploadDropzone } from "../components/ui";
 import "../../styles/dashboard.css";
 
 const ASSIGNMENT_TYPES = [
@@ -345,6 +346,14 @@ function StudentAssignmentsView() {
       .slice(0, 5);
   }, [items, quizzes]);
 
+  const activeAssignment = useMemo(
+    () => items.find((item) => item._id === activeId) || null,
+    [activeId, items],
+  );
+  const activeSubmissionState = activeAssignment
+    ? submissionState[activeAssignment._id] || { textSubmission: "", files: [] }
+    : { textSubmission: "", files: [] };
+
   return (
     <div className="quizzes-page">
       <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
@@ -408,7 +417,7 @@ function StudentAssignmentsView() {
                     (item?.assignmentId === assignment._id ||
                       item?.sourceId === assignment._id),
                 );
-                const showForm = activeId === assignment._id && !submission;
+                const showForm = false;
                 const studentState = assignmentStudentState({
                   assignment,
                   submission,
@@ -664,6 +673,80 @@ function StudentAssignmentsView() {
           </div>
         </div>
       )}
+      <Modal
+        open={Boolean(activeAssignment)}
+        title="Submit assignment"
+        subtitle="Add notes for your teacher, if needed."
+        onClose={() => setActiveId(null)}
+        wide
+        footer={
+          <>
+            <button
+              className="btn btn-outline-secondary"
+              type="button"
+              onClick={() => setActiveId(null)}
+            >
+              Cancel
+            </button>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => activeAssignment && submitAssignment(activeAssignment)}
+            >
+              Submit assignment
+            </button>
+          </>
+        }
+      >
+        {activeAssignment ? (
+          <div className="pg-form-stack">
+            <div>
+              <div className="dash-card-title mb-1">
+                {activeAssignment.title || "Untitled assignment"}
+              </div>
+              <p className="dash-card-muted mb-0">
+                Due {formatDate(activeAssignment.dueDate)}
+              </p>
+            </div>
+            <div>
+              <label className="form-label" htmlFor="assignment-notes">
+                Notes
+              </label>
+              <textarea
+                id="assignment-notes"
+                className="form-control"
+                rows={5}
+                value={activeSubmissionState.textSubmission || ""}
+                onChange={(event) =>
+                  updateSubmissionField(
+                    activeAssignment._id,
+                    "textSubmission",
+                    event.target.value,
+                  )
+                }
+              />
+            </div>
+            <UploadDropzone
+              id="assignment-files"
+              multiple
+              files={activeSubmissionState.files || []}
+              helper="Up to 5 files. Max file size: 10 MB each."
+              onChange={(files) =>
+                updateSubmissionField(activeAssignment._id, "files", files)
+              }
+              onRemove={(_, index) =>
+                updateSubmissionField(
+                  activeAssignment._id,
+                  "files",
+                  (activeSubmissionState.files || []).filter(
+                    (__, fileIndex) => fileIndex !== index,
+                  ),
+                )
+              }
+            />
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

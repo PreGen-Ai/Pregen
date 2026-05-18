@@ -9,6 +9,10 @@ jest.mock("../../services/api/api", () => ({
     gradebook: {
       getSubmission: jest.fn(),
       getQuizAttempt: jest.fn(),
+      reviewSubmission: jest.fn(),
+      reviewQuizAttempt: jest.fn(),
+      approveSubmission: jest.fn(),
+      approveQuizAttempt: jest.fn(),
       updateSubmission: jest.fn(),
       updateQuizAttempt: jest.fn(),
     },
@@ -53,6 +57,7 @@ describe("GradeReviewPanel", () => {
         reviewStatus: "pending_review",
         gradingStatus: "pending_teacher_review",
         score: 70,
+        aiScore: 70,
         questions: [
           {
             questionId: "q-1",
@@ -68,7 +73,7 @@ describe("GradeReviewPanel", () => {
         ],
       },
     });
-    api.gradebook.updateQuizAttempt.mockResolvedValue({
+    api.gradebook.reviewQuizAttempt.mockResolvedValue({
       item: {
         _id: "attempt-1",
         reviewStatus: "reviewed",
@@ -101,6 +106,17 @@ describe("GradeReviewPanel", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/Correct answer:/i)).toBeInTheDocument();
     expect(screen.getByText(/Student answer/i)).toBeInTheDocument();
+    expect(screen.getByText(/Pending Review/i)).toBeInTheDocument();
+    expect(screen.getByText(/Teacher Queue/i)).toBeInTheDocument();
+    expect(screen.getByText(/AI-assisted total:/i)).toBeInTheDocument();
+    expect(screen.getByText(/AI-assisted feedback/i)).toBeInTheDocument();
+    expect(screen.getByText(/Correct objective answer\./i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Return to student/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Save draft/i }),
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Teacher score"), {
       target: { value: "1" },
@@ -108,16 +124,13 @@ describe("GradeReviewPanel", () => {
     fireEvent.change(screen.getByLabelText("Final feedback"), {
       target: { value: "Reviewed by teacher." },
     });
-    fireEvent.change(screen.getByLabelText("Review status"), {
-      target: { value: "reviewed" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
 
     await waitFor(() => {
-      expect(api.gradebook.updateQuizAttempt).toHaveBeenCalledWith(
+      expect(api.gradebook.reviewQuizAttempt).toHaveBeenCalledWith(
         "attempt-1",
         expect.objectContaining({
-          reviewStatus: "reviewed",
+          reviewStatus: "pending_review",
           score: 100,
           feedback: "Reviewed by teacher.",
           questions: [

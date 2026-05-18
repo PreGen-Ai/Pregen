@@ -1,7 +1,7 @@
 // frontend/src/__tests__/pages/Assignments.test.jsx
 // React Testing Library tests for the Assignments page
 import React from "react";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { MemoryRouter } from "react-router-dom";
 
@@ -90,9 +90,9 @@ describe("Assignments Page — STUDENT view", () => {
   });
 
   test("Assignments page renders without crashing for STUDENT", () => {
-    const result = renderWithRole("STUDENT");
+    const view = renderWithRole("STUDENT");
     // If component couldn't be imported, skip
-    if (!result) return;
+    if (!view) return;
     expect(document.body).toBeTruthy();
   });
 });
