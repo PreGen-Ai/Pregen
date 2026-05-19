@@ -232,11 +232,6 @@ const QuestionCard = ({
   /* ==========================================================
      RENDERERS WITH IMPROVED COMPARISON LOGIC
   ========================================================== */
-  const normalizedOptions = useMemo(
-    () => question.options?.map((opt) => cleanValue(opt)) || [],
-    [question.options]
-  );
-
   // ---------- MULTIPLE CHOICE WITH SANITIZED COMPARISON ----------
   const renderMCQ = () => {
     return (

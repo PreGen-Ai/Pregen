@@ -1,7 +1,5 @@
 // frontend/src/__tests__/api/api.test.js
 // Unit tests for the frontend API client (api.js) — structure, shape, error handling
-import axios from "axios";
-
 // Mock axios
 jest.mock("axios", () => {
   const mockAxiosInstance = {

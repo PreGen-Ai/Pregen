@@ -192,7 +192,7 @@ export default function AuditLogsPage() {
         actor: item.provider || "ai",
         message:
           item.status === "error"
-            ? `AI request failed for ${item.feature || item.endpoint || "unknown feature"}`
+            ? `AI request needs attention for ${item.feature || item.endpoint || "unknown feature"}`
             : `${item.feature || item.endpoint || "AI request"}${item.latencyMs ? ` | ${Math.round(item.latencyMs)} ms` : ""}`,
         raw: item,
       })),

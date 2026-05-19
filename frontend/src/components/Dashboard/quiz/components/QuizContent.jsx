@@ -3,16 +3,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import QuestionCard from "./QuestionCard";
 import "./QuizContent.css";
 
-// Utility functions
-const normalizeId = (raw, index) => {
-  if (typeof raw === "number") return String(raw);
-  if (!raw || raw === "" || raw === "null" || raw === "undefined")
-    return String(index + 1); // CRITICAL FIX: Use numeric strings
-
-  // Sanitize: remove special characters, keep only alphanumeric, dash, underscore
-  return raw.toString().replace(/[^a-zA-Z0-9_-]/g, "_");
-};
-
 const debounce = (func, wait) => {
   let timeout;
   return function executedFunction(...args) {
@@ -185,16 +175,6 @@ const QuizContent = ({
     }
   }, [localAnswers, localEssayAnswers]);
 
-  // Review mode
-  const [reviewMode, setReviewMode] = useState(false);
-  const [reviewFilter, setReviewFilter] = useState("all");
-  const [reviewList, setReviewList] = useState({
-    all: [],
-    flagged: [],
-    correct: [],
-    incorrect: [],
-  });
-
   /* ==========================================================
      4) IMPROVED RESET LOGIC - ONLY ON ACTUAL QUIZ CHANGE
      ========================================================== */
@@ -213,7 +193,6 @@ const QuizContent = ({
       setMarkedQuestions(new Set());
       setQuizTimer(0);
       setTimePerQuestion({});
-      setReviewMode(false);
       questionRefs.current = [];
 
       prevQuizSignature.current = currentSignature;
@@ -256,46 +235,6 @@ const QuizContent = ({
     });
     setTimePerQuestion(init);
   }, [questionIds]);
-
-  /* ==========================================================
-     7) REVIEW MODE SETUP - FIXED TO USE PROPER QUESTION IDS
-     ========================================================== */
-  useEffect(() => {
-    if (showResults && detailedResults) {
-      console.log("🔍 Setting up review mode");
-      const qa = detailedResults?.report_data?.question_analysis || [];
-
-      const correct = qa
-        .filter((x) => x.is_correct)
-        .map((x) => {
-          // Match with our normalized IDs
-          const question = questions.find(
-            (q) => q._normalizedId === String(x.question_id)
-          );
-          return question?._normalizedId || String(x.question_id);
-        });
-
-      const incorrect = qa
-        .filter((x) => !x.is_correct)
-        .map((x) => {
-          const question = questions.find(
-            (q) => q._normalizedId === String(x.question_id)
-          );
-          return question?._normalizedId || String(x.question_id);
-        });
-
-      setReviewList({
-        all: questionIds, // Use the proper questionIds array
-        flagged: Array.from(markedQuestions),
-        correct,
-        incorrect,
-      });
-
-      setReviewMode(true);
-    } else {
-      setReviewMode(false);
-    }
-  }, [showResults, detailedResults, markedQuestions, questions, questionIds]);
 
   /* ==========================================================
      8) OPTIMIZED ANSWER TRACKING - FIXED

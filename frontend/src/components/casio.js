@@ -65,8 +65,6 @@ export default function CasioCalculator() {
   const [calculatorMode, setCalculatorMode] = useState("COMP"); // COMP, STAT, CMPLX, EQN, MATRIX, VECTOR, BASE-N, TABLE
   const [variables, setVariables] = useState({}); // Store variables A, B, C, D, E, F, X, Y, M
   const [statData, setStatData] = useState([]); // For STAT mode
-  const [matrixData, setMatrixData] = useState({}); // For MATRIX mode
-  const [vectorData, setVectorData] = useState({}); // For VECTOR mode
   const rootRef = useRef(null);
 
   useEffect(() => {
@@ -240,38 +238,6 @@ export default function CasioCalculator() {
       result *= n - i;
     }
     return result;
-  };
-
-  // Fraction conversion
-  const handleFraction = (input) => {
-    if (input.includes(" ")) {
-      const parts = input.split(" ");
-      if (parts.length === 3) {
-        const whole = parseInt(parts[0]) || 0;
-        const fractionParts = parts[2].split("/");
-        if (fractionParts.length === 2) {
-          const numerator = parseInt(fractionParts[0]);
-          const denominator = parseInt(fractionParts[1]);
-          if (denominator !== 0) {
-            return whole + numerator / denominator;
-          }
-        }
-      }
-    } else if (
-      input.includes("/") &&
-      !input.includes("nCr") &&
-      !input.includes("nPr")
-    ) {
-      const parts = input.split("/");
-      if (parts.length === 2) {
-        const numerator = parseInt(parts[0]);
-        const denominator = parseInt(parts[1]);
-        if (denominator !== 0) {
-          return numerator / denominator;
-        }
-      }
-    }
-    return "Error";
   };
 
   const clampResultString = (v) => {

@@ -10,21 +10,6 @@ const QUESTION_TYPE_LABELS = {
   file_upload: "File Upload",
 };
 
-const REVIEW_STATUS_LABELS = {
-  pending_review: "Pending Review",
-  reviewed: "Under Review",
-  returned: "Returned",
-};
-
-function formatStudentName(student) {
-  return (
-    [student?.firstName, student?.lastName].filter(Boolean).join(" ") ||
-    student?.email ||
-    student?.username ||
-    "Student"
-  );
-}
-
 function formatAnswerValue(value) {
   if (value === null || value === undefined || value === "") return "No answer provided";
   if (typeof value === "string") return value;

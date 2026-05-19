@@ -1,23 +1,27 @@
 import React, { useMemo } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
-  FiAward,
-  FiBarChart2,
-  FiBell,
-  FiBookOpen,
-  FiChevronLeft,
-  FiChevronRight,
-  FiClipboard,
-  FiCpu,
-  FiFlag,
-  FiGrid,
-  FiLayers,
-  FiLogOut,
-  FiPenTool,
-  FiShield,
-  FiSliders,
-  FiUsers,
-} from "react-icons/fi";
+  FaAward,
+  FaBook,
+  FaBookOpen,
+  FaBullhorn,
+  FaChartBar,
+  FaChevronLeft,
+  FaChevronRight,
+  FaClipboardList,
+  FaCubes,
+  FaFlag,
+  FaGraduationCap,
+  FaLayerGroup,
+  FaPalette,
+  FaRobot,
+  FaSchool,
+  FaSearch,
+  FaSignOutAlt,
+  FaSlidersH,
+  FaThLarge,
+  FaUsers,
+} from "react-icons/fa";
 
 import { clearActiveTenantId } from "../../../../services/api/http.js";
 import { useAuthContext } from "../../../../context/AuthContext";
@@ -26,32 +30,32 @@ import { dashboardNav } from "../../nav/dashboardNav";
 import { ROLES, normalizeRole } from "../../nav/roles";
 
 const ICONS = {
-  practiceLab: FiPenTool,
-  assignmentsTake: FiClipboard,
-  quizzesTake: FiAward,
-  materials: FiBookOpen,
-  assignmentsManage: FiClipboard,
-  quizzesManage: FiAward,
-  announcements: FiBell,
-  gradebook: FiBarChart2,
-  aiTutor: FiCpu,
-  users: FiUsers,
-  workspace: FiLayers,
-  subjects: FiBookOpen,
-  branding: FiSliders,
-  tenantAiControls: FiCpu,
-  schoolAnalytics: FiBarChart2,
-  platformAnalytics: FiGrid,
-  tenants: FiShield,
-  platformAiControls: FiCpu,
-  aiCost: FiBarChart2,
-  audit: FiFlag,
-  selectedSchoolUsers: FiUsers,
-  selectedSchoolWorkspace: FiLayers,
-  selectedSchoolSubjects: FiBookOpen,
-  selectedSchoolBranding: FiSliders,
-  selectedSchoolAiControls: FiCpu,
-  selectedSchoolAnalytics: FiBarChart2,
+  practiceLab: FaSearch,
+  assignmentsTake: FaClipboardList,
+  quizzesTake: FaBookOpen,
+  materials: FaBook,
+  assignmentsManage: FaClipboardList,
+  quizzesManage: FaAward,
+  announcements: FaBullhorn,
+  gradebook: FaGraduationCap,
+  aiTutor: FaRobot,
+  users: FaUsers,
+  workspace: FaLayerGroup,
+  subjects: FaBookOpen,
+  branding: FaPalette,
+  tenantAiControls: FaSlidersH,
+  schoolAnalytics: FaChartBar,
+  platformAnalytics: FaThLarge,
+  tenants: FaSchool,
+  platformAiControls: FaSlidersH,
+  aiCost: FaChartBar,
+  audit: FaFlag,
+  selectedSchoolUsers: FaUsers,
+  selectedSchoolWorkspace: FaLayerGroup,
+  selectedSchoolSubjects: FaBookOpen,
+  selectedSchoolBranding: FaPalette,
+  selectedSchoolAiControls: FaSlidersH,
+  selectedSchoolAnalytics: FaChartBar,
 };
 
 function formatRole(role) {
@@ -94,7 +98,7 @@ function SidebarSection({ section, activeTenantId, collapsed, onNavigate }) {
       ) : null}
 
       {section.items.map((item) => {
-        const Icon = ICONS[item.key] || FiGrid;
+        const Icon = ICONS[item.key] || FaCubes;
         const isDisabled = item.requiresActiveTenant && !activeTenantId;
 
         if (isDisabled) {
@@ -104,6 +108,7 @@ function SidebarSection({ section, activeTenantId, collapsed, onNavigate }) {
               className="pg-nav-item is-disabled"
               role="link"
               aria-disabled="true"
+              aria-label={collapsed ? item.label : undefined}
               title="Select a school from Schools to unlock this area"
             >
               <span className="pg-nav-item__icon" aria-hidden="true">
@@ -120,6 +125,7 @@ function SidebarSection({ section, activeTenantId, collapsed, onNavigate }) {
             to={item.to}
             onClick={onNavigate}
             title={collapsed ? item.label : undefined}
+            aria-label={collapsed ? item.label : undefined}
             className={({ isActive }) =>
               `pg-nav-item ${isActive ? "is-active" : ""}`
             }
@@ -242,7 +248,7 @@ export default function Sidebar({
           onClick={logout}
           title={collapsed ? "Sign out" : undefined}
         >
-          <FiLogOut aria-hidden="true" />
+          <FaSignOutAlt aria-hidden="true" />
           <span>Sign out</span>
         </button>
         <button
@@ -251,7 +257,7 @@ export default function Sidebar({
           onClick={onToggleCollapsed}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? <FiChevronRight /> : <FiChevronLeft />}
+          {collapsed ? <FaChevronRight /> : <FaChevronLeft />}
           <span>{collapsed ? "Expand" : "Collapse"}</span>
         </button>
       </div>

@@ -255,8 +255,14 @@ export default function AICostPage() {
   const requestMeta = reqListState?.meta || {};
 
   const costSummary = costPayload?.summary || {};
-  const byTenant = Array.isArray(costPayload?.byTenant) ? costPayload.byTenant : [];
-  const byFeature = Array.isArray(costPayload?.byFeature) ? costPayload.byFeature : [];
+  const byTenant = useMemo(
+    () => (Array.isArray(costPayload?.byTenant) ? costPayload.byTenant : []),
+    [costPayload?.byTenant],
+  );
+  const byFeature = useMemo(
+    () => (Array.isArray(costPayload?.byFeature) ? costPayload.byFeature : []),
+    [costPayload?.byFeature],
+  );
   const charts = costPayload?.charts || {};
   const sourceStatus = costPayload?.sourceStatus || reqSummary?.sourceStatus || {};
 

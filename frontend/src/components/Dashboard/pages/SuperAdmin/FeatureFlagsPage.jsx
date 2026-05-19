@@ -78,7 +78,10 @@ export default function FeatureFlagsPage() {
     };
   }, []);
 
-  const flags = Array.isArray(payload?.items) ? payload.items : [];
+  const flags = useMemo(
+    () => (Array.isArray(payload?.items) ? payload.items : []),
+    [payload?.items],
+  );
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();

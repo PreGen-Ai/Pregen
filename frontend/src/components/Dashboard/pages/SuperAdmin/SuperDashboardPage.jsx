@@ -138,10 +138,10 @@ export default function SuperDashboardPage() {
     };
   }, [load]);
 
-  const metrics = overview?.metrics || {};
+  const metrics = useMemo(() => overview?.metrics || {}, [overview?.metrics]);
   const alerts = collectionItems(overview?.alerts || { items: overview?.spikes || [] });
   const sourceStatus = overview?.sourceStatus || {};
-  const health = overview?.health || {};
+  const health = useMemo(() => overview?.health || {}, [overview?.health]);
 
   const cards = useMemo(
     () => [

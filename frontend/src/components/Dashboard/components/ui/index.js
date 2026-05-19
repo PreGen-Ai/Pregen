@@ -5,6 +5,7 @@ export { default as ConfirmModal } from "./ConfirmModal";
 export { default as DataTable } from "./DataTable";
 export { default as Drawer } from "./Drawer";
 export { default as DropdownMenu } from "./DropdownMenu";
+export { default as EmptyState } from "./EmptyState";
 export { default as FileUploadBox } from "./FileUploadBox";
 export {
   default as FormField,

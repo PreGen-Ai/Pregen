@@ -111,19 +111,6 @@ const NavBar = () => {
   const closeNav = useCallback(() => setExpanded(false), []);
   const toggleNav = useCallback(() => setExpanded((v) => !v), []);
 
-  const requireAuth = useCallback(
-    (nextPath) => {
-      if (!isAuthenticated) {
-        closeNav();
-        navigate("/login");
-        return;
-      }
-      closeNav();
-      navigate(nextPath);
-    },
-    [isAuthenticated, navigate, closeNav],
-  );
-
   const handleLogout = useCallback(async () => {
     try {
       await logout();

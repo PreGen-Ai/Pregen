@@ -2,7 +2,6 @@
 
 import api from "./apiConfig";
 import { handleApiError, ApiError } from "../errorHandler";
-import reportsApi from "./reportsApi"; // ✅ Use correct reports API (Model-A)
 
 /*───────────────────────────────────────────────────────────
  📘 QUIZ GENERATION + FAIR-SCORING GRADING (MODEL-A ALIGNED)
@@ -19,7 +18,6 @@ export const quizApi = {
       const data = response.data;
 
       let rawQuestions = null;
-      let meta = {};
 
       if (Array.isArray(data?.quiz)) rawQuestions = data.quiz;
       else if (Array.isArray(data?.questions)) rawQuestions = data.questions;

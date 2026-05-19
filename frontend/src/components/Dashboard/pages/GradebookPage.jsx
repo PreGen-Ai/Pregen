@@ -6,6 +6,7 @@ import { withRequestId } from "../../../utils/requestId";
 import { useAuthContext } from "../../../context/AuthContext";
 import GradeReviewPanel from "./GradeReviewPanel";
 import StudentReviewPanel from "./StudentReviewPanel";
+import { EmptyState, LoadingSkeleton } from "../components/ui";
 
 /**
  * Normalise course list from various API response shapes.
@@ -510,11 +511,14 @@ export default function GradebookPage() {
 
       {loading ? (
         <div className="dash-card">
-          <p className="text-muted mb-0">Loading gradebook...</p>
+          <LoadingSkeleton rows={5} />
         </div>
       ) : items.length === 0 ? (
         <div className="dash-card">
-          <p className="text-muted mb-0">No grades are available yet.</p>
+          <EmptyState
+            title="No grades yet"
+            message="Grades and teacher feedback will appear here once work is reviewed."
+          />
         </div>
       ) : (
         <div className="table-responsive dash-card">

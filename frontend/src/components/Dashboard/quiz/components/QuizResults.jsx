@@ -35,15 +35,6 @@ import {
   isQuestionCorrect,
 } from "../utils/quizStats";
 
-const CHART_COLORS = [
-  "#10b981",
-  "#6366f1",
-  "#f59e0b",
-  "#ef4444",
-  "#22c55e",
-  "#06b6d4",
-];
-
 // Extracted Components for better maintainability
 const ScoreCard = ({
   score,

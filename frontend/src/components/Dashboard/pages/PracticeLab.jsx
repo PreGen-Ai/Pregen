@@ -10,7 +10,14 @@ import "../../styles/PracticeLab.css";
 import Casio from "../../casio";
 import api from "../../../services/api/api";
 import { useAuthContext } from "../../../context/AuthContext";
-import { Drawer } from "../components/ui";
+import {
+  ActionMenu,
+  Button,
+  Drawer,
+  EmptyState,
+  LoadingSkeleton,
+  StatusBadge,
+} from "../components/ui";
 import {
   getPracticeEntityId,
   mergePractices,
@@ -124,14 +131,14 @@ export default function PracticeLab() {
   );
   const [loading, setLoading] = useState(false);
   const [topic, setTopic] = useState("");
-  const [gradeLevel, setGradeLevel] = useState("high school");
+  const gradeLevel = "high school";
   const [subject, setSubject] = useState("General");
   const [numQuestions, setNumQuestions] = useState(5);
   const [difficulty, setDifficulty] = useState("medium");
   const [questionType, setQuestionType] = useState("multiple_choice");
   const [practiceType, setPracticeType] = useState("practice");
   const [curriculum, setCurriculum] = useState("IGCSE");
-  const [examFocus, setExamFocus] = useState("practice");
+  const examFocus = "practice";
   const [currentPractice, setCurrentPractice] = useState(null);
   const [studentAnswers, setStudentAnswers] = useState({});
   const [gradingResults, setGradingResults] = useState(null);
@@ -141,7 +148,6 @@ export default function PracticeLab() {
     y: 100,
   });
   const [enhancedExplanations, setEnhancedExplanations] = useState({});
-  const [studyMode, setStudyMode] = useState("general");
   const [mistakeExplanations, setMistakeExplanations] = useState({});
   const [explainMistakeLoading, setExplainMistakeLoading] = useState({});
   const [alertMessage, setAlertMessage] = useState("");
@@ -153,6 +159,8 @@ export default function PracticeLab() {
   const [warming, setWarming] = useState(false);
   const [warmingCountdown, setWarmingCountdown] = useState(0);
   const [showGenerateDrawer, setShowGenerateDrawer] = useState(false);
+  const [practiceSearch, setPracticeSearch] = useState("");
+  const [practiceDateFilter, setPracticeDateFilter] = useState("");
 
   // Refs
   const dragRef = useRef({ dragging: false, offsetX: 0, offsetY: 0 });
@@ -1105,7 +1113,7 @@ export default function PracticeLab() {
         max_score: q.points || 1,
         feedback: isCorrect
           ? "Correct!"
-          : `Incorrect. Correct answer: ${correctAnswer}`,
+          : "Incorrect. Review the lesson material and try again.",
       };
     });
 
@@ -1212,6 +1220,99 @@ export default function PracticeLab() {
     return types[type] || type || "Practice";
   };
 
+  const getPracticeCreatedAt = (practice) =>
+    practice?.generated_at ||
+    practice?.createdAt ||
+    practice?.created_at ||
+    practice?.submittedAt ||
+    practice?.updatedAt ||
+    null;
+
+  const formatPracticeDate = (value) => {
+    if (!value) return "Not scheduled";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Not scheduled";
+    return date.toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  const isPracticeFailed = (practice) => {
+    const statusText = String(
+      practice?.status ||
+        practice?.generation_status ||
+        practice?.grading_status ||
+        practice?.reviewStatus ||
+        "",
+    ).toLowerCase();
+    return (
+      statusText.includes("fail") ||
+      Boolean(practice?.error || practice?.generation_error)
+    );
+  };
+
+  const getPracticeStatus = (practice) => {
+    if (isPracticeFailed(practice)) return "Failed";
+    const rawStatus =
+      practice?.status ||
+      practice?.reviewStatus ||
+      practice?.grading_status ||
+      practice?.generation_status;
+    if (rawStatus) return rawStatus;
+    if (practice?.submitted_at || practice?.submittedAt) return "Submitted";
+    if (practice?.score != null || practice?.grade != null) return "Graded";
+    if (practice?.questions?.length) return "Draft";
+    return "Generating";
+  };
+
+  const getPracticeDetails = (practice) => {
+    if (isPracticeFailed(practice)) return "Generation failed";
+    const questionCount = practice?.questions?.length || practice?.num_questions || 0;
+    if (practice?.materialTitle) return practice.materialTitle;
+    if (practice?.courseTitle) return practice.courseTitle;
+    return questionCount ? `${questionCount} questions` : "Practice ready";
+  };
+
+  const getPracticeSchool = (practice) =>
+    practice?.schoolName ||
+    practice?.tenantName ||
+    practice?.school?.name ||
+    practice?.tenant?.name ||
+    "PreGen";
+
+  const openPractice = (practice) => {
+    setCurrentPractice(practice);
+    setAlertMessage("");
+    if (isMobile) setMobileTab("practice");
+  };
+
+  const practiceQuery = practiceSearch.trim().toLowerCase();
+  const filteredPractices = practices.filter((practice) => {
+    const createdAt = getPracticeCreatedAt(practice);
+    const matchesDate =
+      !practiceDateFilter ||
+      (createdAt &&
+        !Number.isNaN(new Date(createdAt).getTime()) &&
+        new Date(createdAt).toISOString().slice(0, 10) === practiceDateFilter);
+    if (!matchesDate) return false;
+    if (!practiceQuery) return true;
+    return [
+      practice?.title,
+      practice?.topic,
+      practice?.subject,
+      practice?.courseTitle,
+      practice?.materialTitle,
+      getPracticeTypeDisplay(practice?.assignment_type),
+      getPracticeSchool(practice),
+      getPracticeStatus(practice),
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(practiceQuery));
+  });
+
   // ---------- Calculator Drag ----------
   const onCalculatorMouseDown = (e) => {
     dragRef.current.dragging = true;
@@ -1288,13 +1389,12 @@ export default function PracticeLab() {
         </div>
         <div className="pg-page-actions">
           {isMobile && tabs}
-          <button
-            className="btn btn-primary"
-            type="button"
+          <Button
+            variant="primary"
             onClick={() => setShowGenerateDrawer(true)}
           >
             Generate practice
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -1305,22 +1405,22 @@ export default function PracticeLab() {
         onClose={() => setShowGenerateDrawer(false)}
         footer={
           <>
-            <button
-              className="btn btn-outline-secondary"
-              type="button"
+            <Button
+              variant="tertiary"
               onClick={() => setShowGenerateDrawer(false)}
               disabled={loading}
             >
               Cancel
-            </button>
-            <button
-              className="btn btn-primary"
-              type="button"
+            </Button>
+            <Button
+              variant="primary"
               onClick={generatePractice}
               disabled={loading || !topic.trim()}
+              loading={loading}
+              loadingText="Generating..."
             >
-              {loading ? "Generating..." : "Generate Practice"}
-            </button>
+              Generate Practice
+            </Button>
           </>
         }
       >
@@ -1488,6 +1588,130 @@ export default function PracticeLab() {
             </div>
           </div>
 
+          <section className="practice-history-card" aria-label="Practice history">
+            <div className="practice-history-toolbar">
+              <label className="practice-history-filter">
+                <span>Date filter</span>
+                <input
+                  type="date"
+                  value={practiceDateFilter}
+                  onChange={(event) => setPracticeDateFilter(event.target.value)}
+                />
+              </label>
+              <div className="practice-history-search">
+                <input
+                  type="search"
+                  placeholder="Search practices"
+                  aria-label="Search practices"
+                  value={practiceSearch}
+                  onChange={(event) => setPracticeSearch(event.target.value)}
+                />
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setPracticeDateFilter("");
+                    setPracticeSearch("");
+                  }}
+                >
+                  Clear filters
+                </Button>
+              </div>
+            </div>
+
+            <div className="practice-history-table pg-table-card">
+              {loading && practices.length === 0 ? (
+                <LoadingSkeleton rows={4} />
+              ) : practices.length === 0 ? (
+                <EmptyState
+                  title="No practices yet"
+                  message="Generate your first practice to start learning."
+                  action="Generate practice"
+                  onAction={() => setShowGenerateDrawer(true)}
+                />
+              ) : filteredPractices.length === 0 ? (
+                <EmptyState
+                  title="No matching practices"
+                  message="Try adjusting your filters or search terms."
+                  action="Clear filters"
+                  onAction={() => {
+                    setPracticeDateFilter("");
+                    setPracticeSearch("");
+                  }}
+                />
+              ) : (
+                <div className="pg-table-scroll">
+                  <table className="pg-table practice-table">
+                    <thead>
+                      <tr>
+                        <th>Subject</th>
+                        <th>Date &amp; time</th>
+                        <th>Type</th>
+                        <th>School</th>
+                        <th>Details</th>
+                        <th>Status</th>
+                        <th aria-label="Actions" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredPractices.map((practice) => {
+                        const practiceId =
+                          getPracticeEntityId(practice) ||
+                          practice.title ||
+                          practice.topic;
+                        const status = getPracticeStatus(practice);
+
+                        return (
+                          <tr key={practiceId}>
+                            <td>
+                              <button
+                                className="practice-table__link"
+                                type="button"
+                                onClick={() => openPractice(practice)}
+                              >
+                                {practice.subject || practice.topic || "Practice"}
+                              </button>
+                            </td>
+                            <td>{formatPracticeDate(getPracticeCreatedAt(practice))}</td>
+                            <td>{getPracticeTypeDisplay(practice.assignment_type)}</td>
+                            <td>{getPracticeSchool(practice)}</td>
+                            <td>{getPracticeDetails(practice)}</td>
+                            <td>
+                              <StatusBadge status={status} />
+                            </td>
+                            <td className="practice-table__actions">
+                              <ActionMenu
+                                label={`Actions for ${practice.title || practice.topic || "practice"}`}
+                                items={[
+                                  {
+                                    label: "View details",
+                                    onClick: () => openPractice(practice),
+                                  },
+                                  {
+                                    label: "Export (PDF)",
+                                    disabled: loading || isPracticeFailed(practice),
+                                    onClick: () => {
+                                      setCurrentPractice(practice);
+                                      setTimeout(() => generatePDFReport(), 0);
+                                    },
+                                  },
+                                  {
+                                    label: "Remove",
+                                    destructive: true,
+                                    onClick: () => deletePractice(practiceId),
+                                  },
+                                ]}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
+
           {/* Alert */}
           {alertMessage && (
             <div
@@ -1548,264 +1772,21 @@ export default function PracticeLab() {
             {/* Left Column: Practice (Generator + Current) */}
             {showPracticePanel && (
               <div className="left-col">
-                {/* Generate Practice Card */}
-                <section
-                  className="feature-section practice-generator-legacy"
-                  aria-label="Practice setup"
-                  hidden
-                >
-                  <h3>Generate New Practice</h3>
-                  <div className="assignment-controls">
-                    <div className="control-group">
-                      <label htmlFor="topic">Topic</label>
-                      <input
-                        id="topic"
-                        type="text"
-                        placeholder="e.g., Trigonometry, World War II"
-                        value={topic}
-                        onChange={(e) => setTopic(e.target.value)}
-                        className="topic-input"
-                      />
-                    </div>
-
-                    <div className="control-row">
-                      <div className="control-group">
-                        <label>
-                          Course context
-                          {!selectedCourseId && (
-                            <span
-                              style={{
-                                marginLeft: 6,
-                                fontSize: "0.75em",
-                                color: "var(--warm-amber,#F59E0B)",
-                                fontWeight: 600,
-                              }}
-                            >
-                              — recommended for scoped practice
-                            </span>
-                          )}
-                        </label>
-                        <select
-                          value={selectedCourseId}
-                          onChange={(e) => setSelectedCourseId(e.target.value)}
-                          style={
-                            !selectedCourseId
-                              ? { borderColor: "var(--warm-amber,#F59E0B)" }
-                              : {}
-                          }
-                        >
-                          <option value="">No specific course</option>
-                          {courses.map((course) => (
-                            <option key={course._id} value={course._id}>
-                              {course.title}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="control-group">
-                        <label>Lesson material</label>
-                        <select
-                          value={selectedMaterialId}
-                          onChange={(e) => setSelectedMaterialId(e.target.value)}
-                          disabled={!selectedCourseId || !materialOptions.length}
-                        >
-                          <option value="">General course practice</option>
-                          {materialOptions.map((item) => (
-                            <option key={item._id} value={item._id}>
-                              {item.moduleTitle}: {item.title}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="card-inner" style={{ marginTop: 12 }}>
-                      <h5 className="mb-1">Study scope</h5>
-                      {selectedMaterial ? (
-                        <p className="mb-0">
-                          Practice anchored to{" "}
-                          <strong>{selectedMaterial.title}</strong>
-                          {selectedCourse?.title ? ` in ${selectedCourse.title}` : ""}.
-                        </p>
-                      ) : selectedCourse ? (
-                        <p className="mb-0">
-                          Practice aligned to{" "}
-                          <strong>{selectedCourse.title}</strong>.
-                        </p>
-                      ) : (
-                        <p className="mb-0" style={{ color: "var(--warm-amber,#F59E0B)" }}>
-                          No course selected — practice will be general and not scoped to your curriculum.
-                          Select a course above for focused practice.
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="control-row">
-                      <div className="control-group">
-                        <label>Subject</label>
-                        <select
-                          value={subject}
-                          onChange={(e) => setSubject(e.target.value)}
-                        >
-                          <option value="General">General</option>
-                          <option value="Mathematics">Mathematics</option>
-                          <option value="Physics">Physics</option>
-                          <option value="Chemistry">Chemistry</option>
-                          <option value="Biology">Biology</option>
-                          <option value="History">History</option>
-                        </select>
-                      </div>
-                      <div className="control-group">
-                        <label>Curriculum</label>
-                        <select
-                          value={curriculum}
-                          onChange={(e) => setCurriculum(e.target.value)}
-                        >
-                          <option value="IGCSE">IGCSE</option>
-                          <option value="IB">IB</option>
-                          <option value="American">American</option>
-                        </select>
-                      </div>
-                      <div className="control-group">
-                        <label>Type</label>
-                        <select
-                          value={practiceType}
-                          onChange={(e) => setPracticeType(e.target.value)}
-                        >
-                          <option value="practice">Practice</option>
-                          <option value="worksheet">Worksheet</option>
-                          <option value="assessment">Assessment</option>
-                          <option value="project">Project</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="control-row">
-                      <div className="control-group">
-                        <label>Question Type</label>
-                        <select
-                          value={questionType}
-                          onChange={(e) => setQuestionType(e.target.value)}
-                        >
-                          <option value="multiple_choice">
-                            Multiple Choice
-                          </option>
-                          <option value="essay">Essay</option>
-                          <option value="short_answer">Short Answer</option>
-                          <option value="true_false">True/False</option>
-                          <option value="problem_solving">
-                            Problem Solving
-                          </option>
-                        </select>
-                      </div>
-                      <div className="control-group">
-                        <label>Difficulty</label>
-                        <select
-                          value={difficulty}
-                          onChange={(e) => setDifficulty(e.target.value)}
-                        >
-                          <option value="easy">Easy</option>
-                          <option value="medium">Medium</option>
-                          <option value="hard">Hard</option>
-                        </select>
-                      </div>
-                      <div className="control-group">
-                        <label>Grade Level</label>
-                        <select
-                          value={gradeLevel}
-                          onChange={(e) => setGradeLevel(e.target.value)}
-                        >
-                          <option value="elementary">Elementary</option>
-                          <option value="middle school">Middle School</option>
-                          <option value="high school">High School</option>
-                          <option value="college">College</option>
-                        </select>
-                      </div>
-                      <div className="control-group">
-                        <label>Questions</label>
-                        <select
-                          value={numQuestions}
-                          onChange={(e) =>
-                            setNumQuestions(parseInt(e.target.value, 10))
-                          }
-                        >
-                          {[3, 5, 10, 15].map((n) => (
-                            <option key={n} value={n}>
-                              {n}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="control-group">
-                        <label>Exam Focus</label>
-                        <select
-                          value={examFocus}
-                          onChange={(e) => setExamFocus(e.target.value)}
-                        >
-                          <option value="practice">Practice</option>
-                          <option value="exam">Exam</option>
-                          <option value="revision">Revision</option>
-                          <option value="conceptual">Conceptual</option>
-                        </select>
-                      </div>
-                      <div className="control-group">
-                        <label>Study Mode</label>
-                        <select
-                          value={studyMode}
-                          onChange={(e) => setStudyMode(e.target.value)}
-                        >
-                          <option value="general">General</option>
-                          <option value="explain_simply">Explain Simply</option>
-                          <option value="explain_deeply">Explain Deeply</option>
-                          <option value="give_example">Give Example</option>
-                          <option value="quiz_me">Quiz Me</option>
-                          <option value="summarize">Summarize</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="action-buttons">
-                      <button
-                        onClick={generatePractice}
-                        disabled={loading}
-                        className="btn btn-primary generate-btn"
-                      >
-                        {loading ? "Generating..." : "Generate Practice"}
-                      </button>
-                      {currentPractice &&
-                        currentPractice.questions?.length > 0 && (
-                          <button
-                            onClick={resetPractice}
-                            className="btn btn-secondary"
-                          >
-                            New Practice
-                          </button>
-                        )}
-                    </div>
-                  </div>
-                </section>
-
                 {/* Current Practice */}
                 {currentPractice && (
                   <section
                     className="feature-section"
                     aria-label="Current Practice"
                   >
-                    <div className="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
-                      <h3 className="mb-0">Current Practice</h3>
-                      <span
-                        style={{
-                          background: "var(--warm-amber,#F59E0B)",
-                          color: "#1a1a1a",
-                          fontSize: "0.75em",
-                          padding: "0.3em 0.7em",
-                          borderRadius: 99,
-                          fontWeight: 600,
-                          display: "inline-block",
-                        }}
+                    <div className="practice-detail-heading">
+                      <Button
+                        variant="tertiary"
+                        className="practice-detail-back"
+                        onClick={() => setCurrentPractice(null)}
                       >
-                        AI Generated
-                      </span>
+                        Back to Practice Lab
+                      </Button>
+                      <StatusBadge status="AI-assisted" />
                     </div>
                     <div className="assignment-header">
                       <h4>{currentPractice.title}</h4>
@@ -1813,12 +1794,6 @@ export default function PracticeLab() {
                         {currentPractice.report_id && (
                           <span className="badge slate">
                             Report: {currentPractice.report_id}
-                          </span>
-                        )}
-                        {currentPractice.confidence < 0.7 && (
-                          <span className="badge amber">
-                            Confidence:{" "}
-                            {Math.round(currentPractice.confidence * 100)}%
                           </span>
                         )}
                       </div>
@@ -1859,10 +1834,67 @@ export default function PracticeLab() {
                           ⏱️ {currentPractice.estimated_time}
                         </span>
                       )}
-                      <span className="badge mint">
-                        Confidence:{" "}
-                        {Math.round(currentPractice.confidence * 100)}%
-                      </span>
+                    </div>
+
+                    <div className="practice-detail-summary-grid">
+                      <div className="practice-score-card">
+                        <span className="practice-score-card__label">Score</span>
+                        <strong>
+                          {gradingResults?.overall_score != null
+                            ? `${gradingResults.overall_score}%`
+                            : "Pending"}
+                        </strong>
+                        <p>
+                          {gradingResults?.overall_score >= 80
+                            ? "Great work"
+                            : gradingResults?.overall_score != null
+                              ? "Needs review"
+                              : "Submit this practice to see your score."}
+                        </p>
+                      </div>
+                      <div className="practice-detail-card">
+                        <h5>Details</h5>
+                        <dl className="practice-detail-list">
+                          <div>
+                            <dt>Course</dt>
+                            <dd>{currentPractice.courseTitle || "General practice"}</dd>
+                          </div>
+                          <div>
+                            <dt>Status</dt>
+                            <dd>
+                              <StatusBadge
+                                status={gradingResults ? "Graded" : "Draft"}
+                              />
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Submitted date</dt>
+                            <dd>
+                              {formatPracticeDate(
+                                currentPractice.submitted_at ||
+                                  currentPractice.generated_at,
+                              )}
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
+                      <div className="practice-detail-card practice-feedback-card">
+                        <h5>Teacher feedback</h5>
+                        {gradingResults?.feedback ||
+                        currentPractice.teacher_feedback ||
+                        currentPractice.feedback ? (
+                          <p>
+                            {gradingResults?.feedback ||
+                              currentPractice.teacher_feedback ||
+                              currentPractice.feedback}
+                          </p>
+                        ) : (
+                          <EmptyState
+                            title="No feedback yet"
+                            message="Your teacher feedback will appear here once it is available."
+                          />
+                        )}
+                      </div>
                     </div>
 
                     {currentPractice.instructions && (
@@ -1886,7 +1918,11 @@ export default function PracticeLab() {
                     )}
 
                     <div className="questions-section">
-                      {currentPractice.questions.map((q, index) => (
+                      <div className="practice-section-title-row">
+                        <h5>Question review</h5>
+                      </div>
+                      {currentPractice.questions?.length ? (
+                        currentPractice.questions.map((q, index) => (
                         <div key={q.id} className="question-card card-inner">
                           <div className="question-header">
                             <h5>
@@ -1999,7 +2035,13 @@ export default function PracticeLab() {
                             </div>
                           )}
                         </div>
-                      ))}
+                        ))
+                      ) : (
+                        <EmptyState
+                          title="No question review available"
+                          message="Your detailed answers will appear here once the practice is graded."
+                        />
+                      )}
                     </div>
 
                     <div className="assignment-actions">
@@ -2264,102 +2306,6 @@ export default function PracticeLab() {
                         <span>New Practice</span>
                       </button>
                     </div>
-                  </section>
-                )}
-
-                {/* Saved Practices (Library) */}
-                {showLibraryPanel && (
-                  <section
-                    className="upcoming-section"
-                    aria-label="Saved Practices"
-                  >
-                    <h3>Your Practices ({practices.length})</h3>
-                    {practices.length === 0 ? (
-                      <div className="state-empty">
-                        <p>No practices yet. Generate one on the left.</p>
-                      </div>
-                    ) : (
-                      <div className="assignment-grid">
-                        {practices.map((practice) => (
-                          <div
-                            key={getPracticeEntityId(practice) || practice.title}
-                            className="card assignment-card"
-                          >
-                            <h4>{practice.title}</h4>
-                            <div className="assignment-meta">
-                              {practice.courseTitle ? (
-                                <span className="badge slate">
-                                  Course: {practice.courseTitle}
-                                </span>
-                              ) : null}
-                              {practice.materialTitle ? (
-                                <span className="badge cyan">
-                                  Material: {practice.materialTitle}
-                                </span>
-                              ) : null}
-                              <span className="badge slate">
-                                Topic: {practice.topic}
-                              </span>
-                              <span className="badge cyan">
-                                {practice.subject}
-                              </span>
-                              <span className="badge amber">
-                                {practice.difficulty}
-                              </span>
-                              <span className="badge purple">
-                                {practice.curriculum}
-                              </span>
-                              <span className="badge gold">
-                                {getPracticeTypeDisplay(
-                                  practice.assignment_type,
-                                )}
-                              </span>
-                              <span className="badge mint">
-                                Q: {practice.questions?.length || 0}
-                              </span>
-                            </div>
-
-                            {practice.confidence < 0.7 && (
-                              <p className="confidence-indicator badge amber">
-                                {Math.round(practice.confidence * 100)}%
-                                Confidence
-                              </p>
-                            )}
-
-                            <div className="card-actions">
-                              <button
-                                onClick={() => {
-                                  setCurrentPractice(practice);
-                                  setAlertMessage("");
-                                  if (isMobile) setMobileTab("practice");
-                                }}
-                                className="btn btn-small btn-primary"
-                              >
-                                View
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setCurrentPractice(practice);
-                                  setTimeout(() => generatePDFReport(), 0);
-                                }}
-                                className="btn btn-small btn-secondary"
-                                disabled={loading}
-                              >
-                                PDF
-                              </button>
-                              <button
-                                onClick={() =>
-                                  deletePractice(getPracticeEntityId(practice))
-                                }
-                                className="btn btn-small btn-outline danger"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </section>
                 )}
 

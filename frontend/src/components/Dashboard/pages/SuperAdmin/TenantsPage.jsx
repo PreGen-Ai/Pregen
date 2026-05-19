@@ -680,7 +680,7 @@ export default function TenantsPage() {
           }}
         >
           <div>
-            <div className="admin-title">Schools and Universities</div>
+            <h2 className="admin-title">Schools and Universities</h2>
             <div style={{ color: "#D1D5DB", marginTop: 6 }}>
               Platform directory for school accounts, plans, headcounts, and AI
               telemetry signals.

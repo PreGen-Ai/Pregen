@@ -10,12 +10,6 @@ const REDIRECT_URL = "https://preprod-pregen.netlify.app/";
  */
 const WEBHOOK_URL = process.env.REACT_APP_DEMO_WEBHOOK_URL;
 
-function toFormUrlEncoded(obj) {
-  return Object.keys(obj)
-    .map((k) => encodeURIComponent(k) + "=" + encodeURIComponent(obj[k] ?? ""))
-    .join("&");
-}
-
 export default function DemoRequestModal({ show, onHide }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");

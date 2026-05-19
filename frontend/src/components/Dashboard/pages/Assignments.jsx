@@ -12,7 +12,7 @@ import useRealtimeRefresh from "../../../hooks/useRealtimeRefresh";
 import { withRequestId } from "../../../utils/requestId";
 import { useAuthContext } from "../../../context/AuthContext";
 import GradeReviewPanel from "./GradeReviewPanel";
-import { Modal, UploadDropzone } from "../components/ui";
+import { EmptyState, LoadingSkeleton, Modal, UploadDropzone } from "../components/ui";
 import "../../styles/dashboard.css";
 
 const ASSIGNMENT_TYPES = [
@@ -399,7 +399,7 @@ function StudentAssignmentsView() {
 
       {loading ? (
         <div className="dash-card">
-          <p className="dash-card-muted mb-0">Loading assignments...</p>
+          <LoadingSkeleton rows={4} />
         </div>
       ) : (
         <div className="row g-4">
@@ -579,7 +579,10 @@ function StudentAssignmentsView() {
               })
             ) : (
               <div className="dash-card">
-                <p className="dash-card-muted mb-0">No assignments available yet.</p>
+                <EmptyState
+                  title="No assignments yet"
+                  message="Published assignments will appear here when your teacher adds new work."
+                />
               </div>
             )}
           </div>
@@ -626,8 +629,11 @@ function StudentAssignmentsView() {
                     </div>
                   ))}
                 </div>
-              ) : (
-                <p className="dash-card-muted mb-0">No announcements yet.</p>
+            ) : (
+                <EmptyState
+                  title="No announcements yet"
+                  message="Class updates and reminders will appear here."
+                />
               )}
             </div>
 
@@ -1370,7 +1376,7 @@ function TeacherAssignmentsView() {
             </h3>
 
             {loading ? (
-              <p className="dash-card-muted mb-0">Loading assignments...</p>
+              <LoadingSkeleton rows={4} />
             ) : assignments.length ? (
               <div className="d-flex flex-column gap-3">
                 {assignments.map((assignment) => (
@@ -1424,7 +1430,10 @@ function TeacherAssignmentsView() {
                 ))}
               </div>
             ) : (
-              <p className="dash-card-muted mb-0">No assignments created yet.</p>
+              <EmptyState
+                title="No assignments created"
+                message="Create your first assignment to collect and review student work."
+              />
             )}
           </div>
 
@@ -1540,7 +1549,10 @@ function TeacherAssignmentsView() {
                 ))}
 
                 {!(review?.submissions || []).length ? (
-                  <p className="dash-card-muted mb-0">No submissions yet.</p>
+                  <EmptyState
+                    title="No submissions yet"
+                    message="Student submissions will appear here as they are turned in."
+                  />
                 ) : null}
               </div>
 

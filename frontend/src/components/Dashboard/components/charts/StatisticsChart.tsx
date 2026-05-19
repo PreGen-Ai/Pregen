@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useRef, useContext } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Chart from "react-apexcharts";
 import { ApexOptions } from "apexcharts";
 import axios from "axios";
-import { DashboardContext } from "../../../../context/DashboardContext";
 import { useAuthContext } from "../../../../context/AuthContext";
 
 // Stock tickers
@@ -29,7 +28,6 @@ const allButtons = [...timeRanges, "predict"];
 
 export default function StatisticsChart() {
   const { user } = useAuthContext();
-  const { profileData } = useContext(DashboardContext); // currently unused, can be used later
   const [range, setRange] = useState<string>("1y");
   const [selectedSymbol, setSelectedSymbol] = useState<string>("AAPL");
   const [categories, setCategories] = useState<string[]>([]);
